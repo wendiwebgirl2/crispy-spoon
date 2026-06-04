@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Avatar Studio · cue:creative</title>
+<style>
+  :root {
+    --ink: #14110f;
+    --paper: #f4f1ea;
+    --accent: #c8553d;
+    --accent-deep: #a8432f;
+    --muted: #6b6358;
+    --line: #d9d2c5;
+    --good: #3d7a4f;
+    --amber: #b8852a;
+    font-family: ui-sans-serif, "Helvetica Neue", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(120% 80% at 50% -10%, #fbf9f4 0%, var(--paper) 55%), var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 32px 20px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  .brand { font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  h1 { font-size: 26px; margin-top: 8px; font-weight: 650; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin-top: 6px; font-size: 14px; line-height: 1.5; }
+  .panel {
+    background: #fffdf8; border: 1px solid var(--line); border-radius: 16px;
+    padding: 24px; margin-top: 24px;
+    box-shadow: 0 18px 50px -30px rgba(20,17,15,0.4);
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; font-weight: 600; }
+  textarea {
+    width: 100%; min-height: 110px; padding: 14px; font: inherit; font-size: 15px;
+    border: 1px solid var(--line); border-radius: 10px; background: #fffdf8; resize: vertical; line-height: 1.5;
+  }
+  .row { display: flex; gap: 12px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-weight: 600; font-size: 15px; padding: 13px 24px;
+    border-radius: 10px; border: 1px solid transparent; cursor: pointer;
+    transition: transform 0.08s ease, background 0.15s ease;
+  }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-deep); }
+  .hint { font-size: 12px; color: var(--muted); }
+  .status { margin-top: 12px; font-size: 14px; min-height: 18px; color: var(--muted); }
+  .status.ok { color: var(--good); font-weight: 600; }
+  .status.err { color: var(--accent-deep); font-weight: 600; }
+  h2 { font-size: 15px; margin: 28px 0 4px; font-weight: 650; }
+  .vid {
+    border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 12px; background: #fffdf8;
+  }
+  .vid-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .vid-title { font-weight: 600; font-size: 14px; }
+  .badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+  .badge.rendering { background: #fbf0d8; color: var(--amber); }
+  .badge.ready { background: #dcefe1; color: var(--good); }
+  .badge.failed { background: #f3dcd6; color: var(--accent-deep); }
+  .vid-script { font-size: 13px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+  video { width: 100%; border-radius: 8px; margin-top: 12px; background: #000; }
+  .empty { color: var(--muted); font-size: 14px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">cue:creative</div>
+  <h1>Avatar Studio</h1>
+  <p class="sub">Type a script and generate a talking-avatar video. This demo uses a stock HeyGen avatar; the same flow drives your trained avatar once enabled.</p>
+
+  <div class="panel">
+    <label for="script">Script for the avatar to speak</label>
+    <textarea id="script" placeholder="e.g. Hi! Welcome to cue:creative. We help you turn a quick recording into a lifelike avatar video."></textarea>
+    <div class="row">
+      <button class="btn-primary" id="genBtn">Generate video</button>
+      <span class="hint">Each generation uses HeyGen API credits.</span>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <h2>Generated videos</h2>
+  <div id="list"><div class="empty">No videos yet. Generate one above.</div></div>
+</div>
+
+<script>
+  const API_BASE = "https://cue-caster-api-production.up.railway.app";
+  const params = new URLSearchParams(location.search);
+  const TOKEN = params.get("token") || "TESTTOKEN123";
+
+  const scriptEl = document.getElementById("script");
+  const genBtn = document.getElementById("genBtn");
+  const statusEl = document.getElementById("status");
+  const listEl = document.getElementById("list");
+
+  function setStatus(msg, kind) {
+    statusEl.textContent = msg;
+    statusEl.className = "status" + (kind ? " " + kind : "");
+  }
+
+  function render(videos) {
+    if (!videos || videos.length === 0) {
+      listEl.innerHTML = '<div class="empty">No videos yet. Generate one above.</div>';
+      return;
+    }
+    listEl.innerHTML = videos.map(function (v) {
+      var badge = v.status === "ready" ? "ready" : (v.status === "failed" ? "failed" : "rendering");
+      var label = v.status === "ready" ? "Ready" : (v.status === "failed" ? "Failed" : "Rendering…");
+      var player = v.status === "ready" && v.url
+        ? '<video controls src="' + v.url + '"></video>' : "";
+      var fail = v.status === "failed" && v.failure_reason
+        ? '<div class="vid-script">Reason: ' + v.failure_reason + "</div>" : "";
+      return '<div class="vid">' +
+        '<div class="vid-head"><span class="vid-title">' + (v.title || "Untitled") + "</span>" +
+        '<span class="badge ' + badge + '">' + label + "</span></div>" +
+        fail + player + "</div>";
+    }).join("");
+  }
+
+  async function refresh() {
+    try {
+      const resp = await fetch(API_BASE + "/api/videos/" + encodeURIComponent(TOKEN));
+      const data = await resp.json();
+      if (data.ok) {
+        render(data.videos);
+        // Keep polling while anything is still rendering.
+        if (data.videos.some(function (v) { return v.status === "rendering"; })) {
+          setTimeout(refresh, 5000);
+        }
+      }
+    } catch (e) { /* ignore transient errors during polling */ }
+  }
+
+  genBtn.addEventListener("click", async () => {
+    const script = scriptEl.value.trim();
+    if (!script) { setStatus("Please enter a script first.", "err"); return; }
+    genBtn.disabled = true;
+    setStatus("Submitting to HeyGen…");
+    try {
+      const resp = await fetch(API_BASE + "/api/videos/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: TOKEN, script: script }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || ("HTTP " + resp.status));
+      setStatus("Generation started. The video will appear below when ready.", "ok");
+      scriptEl.value = "";
+      refresh();
+    } catch (err) {
+      setStatus("Could not generate: " + err.message, "err");
+    } finally {
+      genBtn.disabled = false;
+    }
+  });
+
+  // Initial load.
+  refresh();
+</script>
+</body>
+</html>
