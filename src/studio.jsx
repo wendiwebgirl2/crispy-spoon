@@ -1,7 +1,22 @@
-// components/studio.jsx — Script-to-video generation
+// components/studio.jsx — Script-to-video generation (WIRED to live API)
+//
+// UI is unchanged from the prototype. What changed:
+//   - generate() now calls the real backend (POST /api/videos/generate) and
+//     polls (GET /api/videos/:token) every 5s until nothing is rendering.
+//   - the render queue is fed by live data, normalized to the shape VideoRow
+//     expects so the existing markup keeps working.
+//   - VideoRow plays the real video URL when ready (the prototype never could).
+//
+// NOTE (Option 3 / pre-auth slice): the right-rail avatar picker is currently
+// cosmetic. The backend route is token-scoped and renders with the server's
+// configured stock avatar regardless of which avatar is selected here. The
+// picker becomes functional in the later auth slice when routes go
+// client/avatar-scoped. Left in place because it's the correct final UI.
+
 import React from 'react'
-import { AVATARS, GENERATED_VIDEOS, clientFor } from './data.jsx'
+import { AVATARS, clientFor } from './data.jsx'
 import { AvatarTile, Icon, StatusBadge } from './shared.jsx'
+import { listVideos, generateVideo, currentToken } from './api.js'
 
 const SCENES = [
   { id: 'plain',     label: 'Plain', desc: 'No background.' },
@@ -10,6 +25,40 @@ const SCENES = [
   { id: 'outdoor',   label: 'Outdoor', desc: 'Natural light.' },
 ];
 
+// ---- live → display normalization ------------------------------------------
+// The API returns: { id, heygen_video_id, title, status, progress, url,
+//                    failure_reason, created_at }
+// VideoRow was written for the mock shape: { id, avatarId, title, status,
+//                    duration, createdAt, progress }
+// Map one to the other so the existing markup renders without crashing.
+function friendlyTime(ts) {
+  if (!ts) return '';
+  const then = new Date(ts.replace(' ', 'T') + (ts.includes('Z') ? '' : 'Z'));
+  if (isNaN(then)) return '';
+  const secs = Math.floor((Date.now() - then.getTime()) / 1000);
+  if (secs < 60) return 'just now';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function normalizeVideo(v) {
+  return {
+    id: v.id,
+    avatarId: v.avatar_id || null,   // live API doesn't expose this per-row; ok
+    title: v.title || 'Untitled',
+    status: v.status,                // ready | rendering | failed
+    url: v.url || null,              // real, playable URL when ready
+    duration: v.duration || null,    // live API rarely sends this; VideoRow guards
+    createdAt: friendlyTime(v.created_at),
+    progress: v.progress != null ? v.progress : (v.status === 'rendering' ? null : 100),
+    failureReason: v.failure_reason || null,
+  };
+}
+
 const StudioView = () => {
   const [avatarId, setAvatarId] = React.useState('av_jonah');
   const [script, setScript] = React.useState("Hey team — quick cue for Tuesday. Discipline over motivation. Motivation is a mood. Discipline is a system you've already paid into. Today's rep is showing up for the system, even when the mood disagrees.");
@@ -17,7 +66,10 @@ const StudioView = () => {
   const [language, setLanguage] = React.useState('EN');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
   const [generating, setGenerating] = React.useState(false);
-  const [queue, setQueue] = React.useState(GENERATED_VIDEOS);
+  const [queue, setQueue] = React.useState([]);
+  const [loadError, setLoadError] = React.useState(null);
+
+  const pollRef = React.useRef(null);
 
   const avatar = AVATARS.find(a => a.id === avatarId);
   const readyAvatars = AVATARS.filter(a => a.status === 'ready');
@@ -25,30 +77,42 @@ const StudioView = () => {
   const estSeconds = Math.max(5, Math.round(wordCount / 2.5));
   const estCost = (estSeconds * 0.04).toFixed(2);
 
-  const generate = () => {
-    if (!script.trim()) return;
-    setGenerating(true);
-    const newJob = {
-      id: 'gv_' + Date.now(),
-      avatarId,
-      title: script.slice(0, 60) + (script.length > 60 ? '…' : ''),
-      status: 'rendering',
-      duration: `0:${String(estSeconds).padStart(2,'0')}`,
-      createdAt: 'just now',
-      progress: 0
-    };
-    setQueue(q => [newJob, ...q]);
-    // simulate progress
-    let p = 0;
-    const t = setInterval(() => {
-      p += 8;
-      setQueue(q => q.map(v => v.id === newJob.id ? { ...v, progress: Math.min(p, 100) } : v));
-      if (p >= 100) {
-        clearInterval(t);
-        setQueue(q => q.map(v => v.id === newJob.id ? { ...v, status: 'ready', progress: 100 } : v));
+  // Load the real queue on mount, and poll while anything is rendering.
+  const refresh = React.useCallback(async () => {
+    try {
+      const data = await listVideos();
+      const vids = (data.videos || []).map(normalizeVideo);
+      setQueue(vids);
+      setLoadError(null);
+      const stillWorking = vids.some(v => v.status === 'rendering' || (v.status === 'ready' && !v.url));
+      if (stillWorking) {
+        clearTimeout(pollRef.current);
+        pollRef.current = setTimeout(refresh, 5000);
+      } else {
         setGenerating(false);
       }
-    }, 280);
+    } catch (err) {
+      setLoadError(err.message);
+      setGenerating(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    refresh();
+    return () => clearTimeout(pollRef.current);
+  }, [refresh]);
+
+  const generate = async () => {
+    if (!script.trim()) return;
+    setGenerating(true);
+    try {
+      await generateVideo(script.trim(), { title: script.slice(0, 60) });
+      // Start polling immediately; the new row appears as 'rendering'.
+      refresh();
+    } catch (err) {
+      setLoadError(err.message);
+      setGenerating(false);
+    }
   };
 
   return (
@@ -141,7 +205,16 @@ const StudioView = () => {
           <span className="mono">{queue.length} videos</span>
         </div>
 
+        {loadError && (
+          <div className="mono" style={{ color: 'var(--accent)', marginBottom: 12 }}>
+            Couldn’t reach the render service: {loadError}
+          </div>
+        )}
+
         <div className="col" style={{ gap: 10 }}>
+          {queue.length === 0 && !loadError && (
+            <div className="mono" style={{ opacity: 0.6 }}>No renders yet. Generate one above.</div>
+          )}
           {queue.map(v => <VideoRow key={v.id} video={v} />)}
         </div>
       </div>
@@ -233,7 +306,7 @@ const StudioView = () => {
 
         <button className="btn primary lg" onClick={generate} disabled={generating || !script.trim()}
           style={{ justifyContent: 'center', opacity: (generating || !script.trim()) ? 0.5 : 1 }}>
-          {generating ? <>Queueing…</> : <><Icon name="sparkle" size={14} /> Generate video</>}
+          {generating ? <>Generating…</> : <><Icon name="sparkle" size={14} /> Generate video</>}
         </button>
       </div>
     </div>
@@ -241,53 +314,72 @@ const StudioView = () => {
 };
 
 const VideoRow = ({ video }) => {
-  const avatar = AVATARS.find(a => a.id === video.avatarId);
+  // Live rows have no resolvable avatar; guard so we never crash on undefined.
+  const avatar = video.avatarId ? AVATARS.find(a => a.id === video.avatarId) : null;
+  const who = avatar ? avatar.contact.split(' ')[0] : 'Avatar';
+  const [expanded, setExpanded] = React.useState(false);
+
   return (
-    <div className="row" style={{
+    <div className="col" style={{
       padding: 12,
       border: '1px solid var(--border)',
       borderRadius: 'var(--r-md)',
       background: 'var(--surface)',
-      gap: 14
+      gap: 12
     }}>
-      <div style={{ width: 80, aspectRatio: '16/9', borderRadius: 'var(--r-sm)', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-        <AvatarTile avatar={avatar} />
-        {video.status === 'ready' && (
-          <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'rgba(0,0,0,0.2)' }}>
-            <Icon name="play" size={18} style={{ color: '#fff' }} />
-          </div>
-        )}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {video.title}
+      <div className="row" style={{ gap: 14 }}>
+        <div
+          onClick={() => video.status === 'ready' && video.url && setExpanded(e => !e)}
+          style={{ width: 80, aspectRatio: '16/9', borderRadius: 'var(--r-sm)', overflow: 'hidden', flexShrink: 0, position: 'relative', cursor: (video.status === 'ready' && video.url) ? 'pointer' : 'default', background: '#0a0a0a' }}>
+          {avatar ? <AvatarTile avatar={avatar} /> : <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: 'var(--text-3)' }}><Icon name="studio" size={16} /></div>}
+          {video.status === 'ready' && video.url && (
+            <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'rgba(0,0,0,0.25)' }}>
+              <Icon name={expanded ? 'pause' : 'play'} size={18} style={{ color: '#fff' }} />
+            </div>
+          )}
         </div>
-        <div className="row" style={{ marginTop: 4 }}>
-          <span className="mono">{avatar.contact.split(' ')[0]}</span>
-          <span className="mono">·</span>
-          <span className="mono">{video.duration}</span>
-          <span className="mono">·</span>
-          <span className="mono">{video.createdAt}</span>
-        </div>
-        {video.status === 'rendering' && (
-          <div style={{ marginTop: 8, height: 3, background: 'var(--surface-2)', borderRadius: 2, overflow: 'hidden' }}>
-            <div style={{ width: `${video.progress || 0}%`, height: '100%', background: 'var(--accent)', transition: 'width 200ms linear' }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {video.title}
           </div>
-        )}
+          <div className="row" style={{ marginTop: 4 }}>
+            <span className="mono">{who}</span>
+            {video.duration && <><span className="mono">·</span><span className="mono">{video.duration}</span></>}
+            {video.createdAt && <><span className="mono">·</span><span className="mono">{video.createdAt}</span></>}
+          </div>
+          {video.status === 'rendering' && (
+            <div style={{ marginTop: 8, height: 3, background: 'var(--surface-2)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ width: `${video.progress || 30}%`, height: '100%', background: 'var(--accent)', transition: 'width 200ms linear' }} />
+            </div>
+          )}
+          {video.status === 'failed' && video.failureReason && (
+            <div className="mono" style={{ marginTop: 6, color: 'var(--accent)' }}>Reason: {video.failureReason}</div>
+          )}
+        </div>
+        <div className="row" style={{ gap: 6 }}>
+          {video.status === 'ready' && video.url && (
+            <>
+              <a className="icon-btn" href={video.url} target="_blank" rel="noopener" title="Open in new tab"><Icon name="arrow-r" size={14} /></a>
+              <a className="icon-btn" href={video.url} download title="Download"><Icon name="download" size={14} /></a>
+            </>
+          )}
+          {video.status === 'rendering' && <StatusBadge status="training" progress={video.progress} />}
+          {video.status === 'failed' && <StatusBadge status="failed" />}
+        </div>
       </div>
-      <div className="row" style={{ gap: 6 }}>
-        {video.status === 'ready' && (
-          <>
-            <button className="icon-btn" title="Download"><Icon name="download" size={14} /></button>
-            <button className="icon-btn" title="More"><Icon name="more" size={14} /></button>
-          </>
-        )}
-        {video.status === 'rendering' && <StatusBadge status="training" progress={video.progress} />}
-        {video.status === 'queued' && <StatusBadge status="queued" />}
-      </div>
+
+      {/* inline player — the real win: ready videos actually play */}
+      {expanded && video.url && (
+        <video
+          controls
+          autoPlay
+          playsInline
+          src={video.url}
+          style={{ width: '100%', borderRadius: 'var(--r-sm)', background: '#000' }}
+        />
+      )}
     </div>
   );
 };
-
 
 export default StudioView;

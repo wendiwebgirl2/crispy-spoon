@@ -1,10 +1,10 @@
 import React from 'react'
 import { Icon, CueLogo, Wordmark } from './shared.jsx'
-import { AVATARS, INVITATIONS, CONVERSATIONS, GENERATED_VIDEOS } from './data.jsx'
+import { AVATARS, INVITATIONS, GENERATED_VIDEOS } from './data.jsx'
 import { AvatarsView } from './avatars.jsx'
 import { AvatarDetailView } from './avatar-detail.jsx'
 import { InvitationsView } from './invitations.jsx'
-import { ConversationsView } from './conversations.jsx'
+import { PlannerView } from './planner.jsx'
 import StudioView from './studio.jsx'
 import { OnboardingView } from './onboarding.jsx'
 import { SettingsView } from './settings.jsx'
@@ -12,7 +12,7 @@ import { SettingsView } from './settings.jsx'
 const NAV = [
   { id: 'avatars',       label: 'Avatars',       icon: 'avatars',  countKey: 'avatars' },
   { id: 'invitations',   label: 'Invitations',   icon: 'send',     countKey: 'invitations' },
-  { id: 'conversations', label: 'Conversations', icon: 'chat',     countKey: 'conversations' },
+  { id: 'planner',       label: 'Planner',       icon: 'history',  countKey: 'planner' },
   { id: 'studio',        label: 'Studio',        icon: 'studio',   countKey: 'rendering' },
   { id: 'onboarding',    label: 'Record on-site', icon: 'mic' },
   { id: 'settings',      label: 'Settings',      icon: 'settings' },
@@ -22,7 +22,7 @@ const HEADER_TITLES = {
   avatars:       { title: 'Avatars',       sub: 'your client roster of digital twins' },
   'avatar-detail': { title: 'Avatar',      sub: 'identity · renders · conversations · brief' },
   invitations:   { title: 'Invitations',   sub: 'notifications sent to clients — live status' },
-  conversations: { title: 'Conversations', sub: 'chat with your avatars — they answer in their voice' },
+  planner:       { title: 'Planner',       sub: 'production status + publishing schedule' },
   studio:        { title: 'Studio',        sub: 'cast a script into a HeyGen render' },
   onboarding:    { title: 'On-site record', sub: 'record an avatar in person, no email needed' },
   settings:      { title: 'Settings',      sub: 'workspace · branding · integrations' },
@@ -36,7 +36,7 @@ function App() {
   const counts = {
     avatars:       AVATARS.length,
     invitations:   INVITATIONS.filter(i => ['sent','opened','started','recording','submitted','consented','training'].includes(i.status)).length,
-    conversations: CONVERSATIONS.length,
+    planner:       0,
     rendering:     GENERATED_VIDEOS.filter(v => v.status === 'rendering' || v.status === 'queued').length,
   };
 
@@ -51,9 +51,13 @@ function App() {
     setView('avatar-detail');
   };
 
+  // Conversations view was removed. openChat is still passed to Avatars/
+  // AvatarDetail as a prop; repoint it to open the avatar's detail rather than
+  // the (now gone) chat view, so those components keep working unchanged.
   const openChat = (avatar) => {
     setChatAvatarId(avatar.id);
-    setView('conversations');
+    setDetailAvatarId(avatar.id);
+    setView('avatar-detail');
   };
 
   return (
@@ -159,7 +163,7 @@ function App() {
             />
           )}
           {view === 'invitations' && <InvitationsView onOpenAvatar={openAvatar} />}
-          {view === 'conversations' && <ConversationsView initialAvatarId={chatAvatarId} />}
+          {view === 'planner' && <PlannerView />}
           {view === 'studio' && <StudioView />}
           {view === 'onboarding' && (
             <OnboardingView
