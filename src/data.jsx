@@ -97,6 +97,9 @@ const briefFor = (avatar) => BRIEFS[avatar.id] || { phone: '', address: '', mail
 
 // Lookup helpers
 const clientFor = (avatar) => CLIENTS.find(c => c.id === avatar.clientId);
+// clients → avatars → episodes
+const avatarsForClient = (clientId) => AVATARS.filter(a => a.clientId === clientId);
+const episodesForAvatar = (avatarId) => GENERATED_VIDEOS.filter(v => v.avatarId === avatarId);
 
 // Sample chat — Amelia (the LLM responding *as* her digital twin)
 const SAMPLE_CHAT = [
@@ -262,6 +265,8 @@ export {
   CLIENTS,
   AVATARS,
   clientFor,
+  avatarsForClient,
+  episodesForAvatar,
   SAMPLE_CHAT,
   CONVERSATIONS,
   GENERATED_VIDEOS,

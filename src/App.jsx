@@ -1,7 +1,7 @@
 import React from 'react'
 import { Icon, CueLogo, Wordmark } from './shared.jsx'
-import { AVATARS, INVITATIONS, GENERATED_VIDEOS } from './data.jsx'
-import { AvatarsView } from './avatars.jsx'
+import { CLIENTS, AVATARS, INVITATIONS, GENERATED_VIDEOS } from './data.jsx'
+import { ClientsView } from './clients.jsx'
 import { AvatarDetailView } from './avatar-detail.jsx'
 import { InvitationsView } from './invitations.jsx'
 import { PlannerView } from './planner.jsx'
@@ -10,7 +10,7 @@ import { OnboardingView } from './onboarding.jsx'
 import { SettingsView } from './settings.jsx'
 
 const NAV = [
-  { id: 'avatars',       label: 'Avatars',       icon: 'avatars',  countKey: 'avatars' },
+  { id: 'clients',       label: 'Clients',       icon: 'avatars',  countKey: 'clients' },
   { id: 'invitations',   label: 'Invitations',   icon: 'send',     countKey: 'invitations' },
   { id: 'planner',       label: 'Planner',       icon: 'history',  countKey: 'planner' },
   { id: 'studio',        label: 'Studio',        icon: 'studio',   countKey: 'rendering' },
@@ -19,7 +19,7 @@ const NAV = [
 ];
 
 const HEADER_TITLES = {
-  avatars:       { title: 'Avatars',       sub: 'your client roster of digital twins' },
+  clients:       { title: 'Clients',       sub: 'your roster — clients · avatars · episodes' },
   'avatar-detail': { title: 'Avatar',      sub: 'identity · renders · conversations · brief' },
   invitations:   { title: 'Invitations',   sub: 'notifications sent to clients — live status' },
   planner:       { title: 'Planner',       sub: 'production status + publishing schedule' },
@@ -29,12 +29,12 @@ const HEADER_TITLES = {
 };
 
 function App() {
-  const [view, setView] = React.useState('avatars');
+  const [view, setView] = React.useState('clients');
   const [chatAvatarId, setChatAvatarId] = React.useState('av_amelia');
   const [detailAvatarId, setDetailAvatarId] = React.useState(null);
 
   const counts = {
-    avatars:       AVATARS.length,
+    clients:       CLIENTS.length,
     invitations:   INVITATIONS.filter(i => ['sent','opened','started','recording','submitted','consented','training'].includes(i.status)).length,
     planner:       0,
     rendering:     GENERATED_VIDEOS.filter(v => v.status === 'rendering' || v.status === 'queued').length,
@@ -43,7 +43,7 @@ function App() {
   const detailAvatar = detailAvatarId ? AVATARS.find(a => a.id === detailAvatarId) : null;
   const hd = (view === 'avatar-detail' && detailAvatar)
     ? { title: detailAvatar.contact, sub: detailAvatar.id }
-    : HEADER_TITLES[view] || HEADER_TITLES.avatars;
+    : HEADER_TITLES[view] || HEADER_TITLES.clients;
 
   const openAvatar = (avatar) => {
     setDetailAvatarId(avatar.id);
@@ -51,7 +51,7 @@ function App() {
     setView('avatar-detail');
   };
 
-  // Conversations view was removed. openChat is still passed to Avatars/
+  // Conversations view was removed. openChat is still passed to Clients/
   // AvatarDetail as a prop; repoint it to open the avatar's detail rather than
   // the (now gone) chat view, so those components keep working unchanged.
   const openChat = (avatar) => {
@@ -134,7 +134,7 @@ function App() {
           <div className="hd-spacer" />
           <div className="hd-search">
             <Icon name="search" size={14} />
-            <input placeholder="Search avatars, videos, scripts…" />
+            <input placeholder="Search clients, avatars, episodes…" />
             <span className="hd-kbd">⌘K</span>
           </div>
           <button className="icon-btn" title="Activity"><Icon name="history" size={16} /></button>
@@ -145,8 +145,8 @@ function App() {
         </header>
 
         <section className="view" key={view + (view === 'avatar-detail' ? ':' + detailAvatarId : '')}>
-          {view === 'avatars' && (
-            <AvatarsView
+          {view === 'clients' && (
+            <ClientsView
               onOpenAvatar={openAvatar}
               onAddNew={() => setView('invitations')}
               onChat={openChat}
@@ -155,7 +155,7 @@ function App() {
           {view === 'avatar-detail' && (
             <AvatarDetailView
               avatarId={detailAvatarId}
-              onBack={() => setView('avatars')}
+              onBack={() => setView('clients')}
               onChat={openChat}
               onGenerate={(av) => { setChatAvatarId(av.id); setView('studio'); }}
               onEditBrief={() => setView('settings')}
@@ -167,8 +167,8 @@ function App() {
           {view === 'studio' && <StudioView />}
           {view === 'onboarding' && (
             <OnboardingView
-              onDone={() => setView('avatars')}
-              onCancel={() => setView('avatars')}
+              onDone={() => setView('clients')}
+              onCancel={() => setView('clients')}
             />
           )}
           {view === 'settings' && <SettingsView />}
