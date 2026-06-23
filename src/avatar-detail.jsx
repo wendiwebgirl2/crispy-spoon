@@ -10,7 +10,8 @@ import {
   CONVERSATIONS,
   INVITATIONS,
   clientFor,
-  briefFor
+  briefFor,
+  repoForClient
 } from './data.jsx'
 import { AvatarTile, Icon, StatusBadge, paletteForId } from './shared.jsx'
 
@@ -575,7 +576,17 @@ const ConvoRow = ({ convo, onOpen, expanded }) => (
 /* ────────────────────────────────────────────────────────────
  * BRIEF TAB
  * ──────────────────────────────────────────────────────────── */
+const RepoField = ({ label, value }) => (
+  <div>
+    <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12, marginBottom: 4 }}>{label}</div>
+    <div style={{ fontSize: 13, lineHeight: 1.6, color: value ? 'var(--text)' : 'var(--text-4)', whiteSpace: 'pre-line' }}>
+      {value || '— not yet collected'}
+    </div>
+  </div>
+);
+
 const BriefTab = ({ brief, client, onEdit }) => {
+  const repo = repoForClient(client.id);
   const SOCIAL_KEYS = ['facebook','instagram','youtube','podcast','website'];
   const SOCIAL_LABELS = {
     facebook: 'Facebook', instagram: 'Instagram', youtube: 'YouTube', podcast: 'Podcast', website: 'Website'
@@ -622,6 +633,20 @@ const BriefTab = ({ brief, client, onEdit }) => {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* business repository — client-level, drives script generation (merged from studio) */}
+      <div className="card card-pad" style={{ gridColumn: '1 / -1' }}>
+        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 18 }}>
+          <SectionHeader title="Positioning · Audience · Tone" sub="business repository — what script generation reads from" inline />
+          <button className="btn sm" onClick={onEdit}><Icon name="doc" size={12} /> Edit</button>
+        </div>
+        <div className="col" style={{ gap: 14 }}>
+          <RepoField label="Positioning" value={repo.positioning} />
+          <RepoField label="Audience" value={repo.audience} />
+          <RepoField label="Brand tone" value={repo.tone} />
+          <RepoField label="Notes" value={repo.notes} />
         </div>
       </div>
     </div>

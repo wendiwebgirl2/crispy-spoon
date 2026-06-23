@@ -101,6 +101,51 @@ const clientFor = (avatar) => CLIENTS.find(c => c.id === avatar.clientId);
 const avatarsForClient = (clientId) => AVATARS.filter(a => a.clientId === clientId);
 const episodesForAvatar = (avatarId) => GENERATED_VIDEOS.filter(v => v.avatarId === avatarId);
 
+// Business repository (client-level) — positioning / audience / tone / notes.
+// Merged in from the cast.cuecreative.com studio; this is what script
+// generation reads from. Keyed by client id, since one brief serves all of a
+// client's avatars.
+const CLIENT_REPO = {
+  cl_1: {
+    positioning: 'Energy-transition private equity — disciplined, thesis-driven capital for institutional partners.',
+    audience: 'Limited partners, institutional allocators, and prospective co-investors.',
+    tone: 'Measured, data-anchored, quietly confident. Conviction without hype.',
+    notes: 'Lead with net IRR and realized exits. Never pre-announce unsigned deals. Q2 LP cycle is the current focus.',
+  },
+  cl_2: {
+    positioning: 'Boutique Miami real estate — high-touch listing walkthroughs for luxury buyers and sellers.',
+    audience: 'Brickell / Miami luxury buyers, sellers, and relocating professionals.',
+    tone: 'Warm, energetic, local-expert. Bilingual EN/ES.',
+    notes: 'Listing walkthroughs are the hero format. Lead with neighborhood knowledge and lifestyle, not square footage.',
+  },
+  cl_3: {
+    positioning: 'Patient-education content from a trusted clinical voice — clear, accurate, reassuring.',
+    audience: 'Patients and caregivers seeking plain-language medical guidance.',
+    tone: 'Calm, precise, reassuring. Clinically careful — never overstates.',
+    notes: 'Avoid diagnostic claims — education, not advice. EN/HI. Currently in voice training.',
+  },
+  cl_4: {
+    positioning: 'Daily discipline coaching — short, repeatable cues that build habits over motivation.',
+    audience: 'Coaching clients and followers working on consistency and routine.',
+    tone: 'Direct, motivating, no-nonsense. One idea per cue.',
+    notes: 'The Daily Cue is the flagship. Keep segments under a minute. Habit-stacking series runs weekly.',
+  },
+  cl_5: {
+    positioning: 'Open-house and listing intros for a principal broker.',
+    audience: 'Prospective buyers and sellers in the Lumen Estates market.',
+    tone: 'Polished, approachable.',
+    notes: 'Brief not yet collected — client is at consent stage, avatar not yet trained.',
+  },
+  cl_6: {
+    positioning: 'Founder notes — candid build-in-public reflections from a company CEO.',
+    audience: 'Founders, operators, and early-stage investors following the journey.',
+    tone: 'Reflective, candid, lightly contrarian. First-person and personal.',
+    notes: 'Founder Notes is the series. EN/DE. Strategy previews stay gated until publicly announced.',
+  },
+};
+
+const repoForClient = (clientId) => CLIENT_REPO[clientId] || { positioning: '', audience: '', tone: '', notes: '' };
+
 // Sample chat — Amelia (the LLM responding *as* her digital twin)
 const SAMPLE_CHAT = [
   { role: 'user', text: 'Hey Amelia — what should I tell the limited partners about Q2?' },
@@ -267,6 +312,8 @@ export {
   clientFor,
   avatarsForClient,
   episodesForAvatar,
+  CLIENT_REPO,
+  repoForClient,
   SAMPLE_CHAT,
   CONVERSATIONS,
   GENERATED_VIDEOS,
