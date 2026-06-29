@@ -5,6 +5,7 @@ import { ClientsView } from './clients.jsx'
 import { AvatarDetailView } from './avatar-detail.jsx'
 import { InvitationsView } from './invitations.jsx'
 import { PlannerView } from './planner.jsx'
+import { ScriptsView } from './scripts.jsx'
 import StudioView from './studio.jsx'
 import { OnboardingView } from './onboarding.jsx'
 import { SettingsView } from './settings.jsx'
@@ -13,6 +14,7 @@ const NAV = [
   { id: 'clients',       label: 'Clients',       icon: 'avatars',  countKey: 'clients' },
   { id: 'invitations',   label: 'Invitations',   icon: 'send',     countKey: 'invitations' },
   { id: 'planner',       label: 'Planner',       icon: 'history',  countKey: 'planner' },
+  { id: 'scripts',       label: 'Scripts',       icon: 'doc' },
   { id: 'studio',        label: 'Studio',        icon: 'studio',   countKey: 'rendering' },
   { id: 'onboarding',    label: 'Record on-site', icon: 'mic' },
   { id: 'settings',      label: 'Settings',      icon: 'settings' },
@@ -23,6 +25,7 @@ const HEADER_TITLES = {
   'avatar-detail': { title: 'Avatar',      sub: 'identity · renders · conversations · brief' },
   invitations:   { title: 'Invitations',   sub: 'notifications sent to clients — live status' },
   planner:       { title: 'Planner',       sub: 'production status + publishing schedule' },
+  scripts:       { title: 'Scripts',       sub: 'Claude-generated copy from the client brief' },
   studio:        { title: 'Studio',        sub: 'cast a script into a HeyGen render' },
   onboarding:    { title: 'On-site record', sub: 'record an avatar in person, no email needed' },
   settings:      { title: 'Settings',      sub: 'workspace · branding · integrations' },
@@ -105,9 +108,9 @@ function App() {
             <span>Quick render</span>
             <span className="nav-count" style={{ background: 'transparent' }}>⌘G</span>
           </button>
-          <button className="nav-item">
-            <Icon name="history" size={16} className="nav-icon" />
-            <span>Activity</span>
+          <button className="nav-item" onClick={() => setView('scripts')}>
+            <Icon name="doc" size={16} className="nav-icon" />
+            <span>New script</span>
           </button>
         </div>
 
@@ -164,6 +167,7 @@ function App() {
           )}
           {view === 'invitations' && <InvitationsView onOpenAvatar={openAvatar} />}
           {view === 'planner' && <PlannerView />}
+          {view === 'scripts' && <ScriptsView />}
           {view === 'studio' && <StudioView />}
           {view === 'onboarding' && (
             <OnboardingView
