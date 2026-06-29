@@ -1,7 +1,8 @@
 import React from 'react'
 import { Icon, CueLogo, Wordmark } from './shared.jsx'
-import { CLIENTS, AVATARS, INVITATIONS, GENERATED_VIDEOS } from './data.jsx'
+import { AVATARS, INVITATIONS, GENERATED_VIDEOS } from './data.jsx'
 import { ClientsView } from './clients.jsx'
+import { BriefView } from './brief.jsx'
 import { AvatarDetailView } from './avatar-detail.jsx'
 import { InvitationsView } from './invitations.jsx'
 import { PlannerView } from './planner.jsx'
@@ -11,33 +12,35 @@ import { OnboardingView } from './onboarding.jsx'
 import { SettingsView } from './settings.jsx'
 
 const NAV = [
-  { id: 'clients',       label: 'Clients',       icon: 'avatars',  countKey: 'clients' },
-  { id: 'invitations',   label: 'Invitations',   icon: 'send',     countKey: 'invitations' },
-  { id: 'planner',       label: 'Planner',       icon: 'history',  countKey: 'planner' },
-  { id: 'scripts',       label: 'Scripts',       icon: 'doc' },
-  { id: 'studio',        label: 'Studio',        icon: 'studio',   countKey: 'rendering' },
+  { id: 'clients',       label: 'Clients',        icon: 'avatars' },
+  { id: 'brief',         label: 'Brief',          icon: 'doc' },
+  { id: 'invitations',   label: 'Invitations',    icon: 'send',     countKey: 'invitations' },
+  { id: 'planner',       label: 'Planner',        icon: 'history',  countKey: 'planner' },
+  { id: 'scripts',       label: 'Scripts',        icon: 'doc' },
+  { id: 'studio',        label: 'Studio',         icon: 'studio',   countKey: 'rendering' },
   { id: 'onboarding',    label: 'Record on-site', icon: 'mic' },
-  { id: 'settings',      label: 'Settings',      icon: 'settings' },
+  { id: 'settings',      label: 'Settings',       icon: 'settings' },
 ];
 
 const HEADER_TITLES = {
-  clients:       { title: 'Clients',       sub: 'your roster — clients · avatars · episodes' },
-  'avatar-detail': { title: 'Avatar',      sub: 'identity · renders · conversations · brief' },
-  invitations:   { title: 'Invitations',   sub: 'notifications sent to clients — live status' },
-  planner:       { title: 'Planner',       sub: 'production status + publishing schedule' },
-  scripts:       { title: 'Scripts',       sub: 'Claude-generated copy from the client brief' },
-  studio:        { title: 'Studio',        sub: 'cast a script into a HeyGen render' },
-  onboarding:    { title: 'On-site record', sub: 'record an avatar in person, no email needed' },
-  settings:      { title: 'Settings',      sub: 'workspace · branding · integrations' },
+  clients:         { title: 'Clients',        sub: 'your roster — saved to the live API' },
+  brief:           { title: 'Brief',          sub: 'contact + positioning for the selected client' },
+  'avatar-detail': { title: 'Avatar',         sub: 'identity · renders · conversations · brief' },
+  invitations:     { title: 'Invitations',    sub: 'notifications sent to clients — live status' },
+  planner:         { title: 'Planner',         sub: 'production status + publishing schedule' },
+  scripts:         { title: 'Scripts',         sub: 'Claude-generated copy from the client brief' },
+  studio:          { title: 'Studio',          sub: 'cast a script into a HeyGen render' },
+  onboarding:      { title: 'On-site record',  sub: 'record an avatar in person, no email needed' },
+  settings:        { title: 'Settings',        sub: 'workspace · branding · integrations' },
 };
 
 function App() {
   const [view, setView] = React.useState('clients');
+  const [activeClientId, setActiveClientId] = React.useState(null);
   const [chatAvatarId, setChatAvatarId] = React.useState('av_amelia');
   const [detailAvatarId, setDetailAvatarId] = React.useState(null);
 
   const counts = {
-    clients:       CLIENTS.length,
     invitations:   INVITATIONS.filter(i => ['sent','opened','started','recording','submitted','consented','training'].includes(i.status)).length,
     planner:       0,
     rendering:     GENERATED_VIDEOS.filter(v => v.status === 'rendering' || v.status === 'queued').length,
@@ -54,9 +57,6 @@ function App() {
     setView('avatar-detail');
   };
 
-  // Conversations view was removed. openChat is still passed to Clients/
-  // AvatarDetail as a prop; repoint it to open the avatar's detail rather than
-  // the (now gone) chat view, so those components keep working unchanged.
   const openChat = (avatar) => {
     setChatAvatarId(avatar.id);
     setDetailAvatarId(avatar.id);
@@ -150,11 +150,12 @@ function App() {
         <section className="view" key={view + (view === 'avatar-detail' ? ':' + detailAvatarId : '')}>
           {view === 'clients' && (
             <ClientsView
-              onOpenAvatar={openAvatar}
-              onAddNew={() => setView('invitations')}
-              onChat={openChat}
+              activeClientId={activeClientId}
+              onSelect={setActiveClientId}
+              onOpenBrief={(id) => { setActiveClientId(id); setView('brief'); }}
             />
           )}
+          {view === 'brief' && <BriefView clientId={activeClientId} />}
           {view === 'avatar-detail' && (
             <AvatarDetailView
               avatarId={detailAvatarId}

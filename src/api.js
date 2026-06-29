@@ -136,7 +136,12 @@ async function vcReq(pathname, opts = {}) {
 
 export const api = {
   listClients: () => vcReq("/clients"),
+  getClient: (id) => vcReq(`/clients/${id}`),
+  createClient: (payload) => vcReq("/clients", { method: "POST", body: JSON.stringify(payload) }),
+  renameClient: (id, payload) => vcReq(`/clients/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deleteClient: (id) => vcReq(`/clients/${id}`, { method: "DELETE" }),
   getBrief: (id) => vcReq(`/clients/${id}/brief`),
+  putBrief: (id, payload) => vcReq(`/clients/${id}/brief`, { method: "PUT", body: JSON.stringify(payload) }),
   channels: (id) => vcReq(`/clients/${id}/scripts/channels`),
   listScripts: (id) => vcReq(`/clients/${id}/scripts`),
   generate: (id, payload) => vcReq(`/clients/${id}/scripts/generate`, { method: "POST", body: JSON.stringify(payload) }),

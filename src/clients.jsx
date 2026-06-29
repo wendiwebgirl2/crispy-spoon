@@ -1,213 +1,150 @@
-// components/clients.jsx — Clients view (clients → avatars → episodes)
+import React, { useState, useEffect } from 'react'
+import { api } from './api.js'
+import { Icon } from './shared.jsx'
 
-import React from 'react'
-import { CLIENTS, AVATARS, GENERATED_VIDEOS, avatarsForClient, episodesForAvatar } from './data.jsx'
-import { AvatarTile, Icon, StatusBadge } from './shared.jsx'
+// Live Clients screen — reads and writes the same-origin VoiceCast API.
+// Entered here, a client persists to the database and becomes selectable for
+// the Brief and Scripts tabs. (The seed avatar/episode browsing lived here
+// before; that hierarchy belongs to the HeyGen/Railway side and returns when
+// that backend is wired.)
+function ClientsView({ activeClientId, onSelect, onOpenBrief }) {
+  const [clients, setClients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
 
-const ClientsView = ({ onOpenAvatar, onAddNew, onChat }) => {
-  const [filter, setFilter] = React.useState('all');
-  const [query, setQuery] = React.useState('');
-
-  const q = query.trim().toLowerCase();
-
-  // an avatar shows if it passes the status filter AND the search (search hits
-  // either the client fields or the avatar fields)
-  const matchAvatar = (client, av) => {
-    if (filter !== 'all' && av.status !== filter) return false;
-    if (q) {
-      const hay = `${client.companyName} ${client.contact} ${av.name} ${av.contact}`.toLowerCase();
-      if (!hay.includes(q)) return false;
+  const load = async () => {
+    setErr('');
+    try {
+      const cs = await api.listClients();
+      setClients(Array.isArray(cs) ? cs : (cs?.clients || []));
+    } catch (e) {
+      setErr(e.message || 'Could not load clients.');
+    } finally {
+      setLoading(false);
     }
-    return true;
   };
 
-  // build client groups, dropping any client with no matching avatars
-  const groups = CLIENTS
-    .map((client) => ({ client, avatars: avatarsForClient(client.id).filter((av) => matchAvatar(client, av)) }))
-    .filter((g) => g.avatars.length > 0);
+  useEffect(() => { load(); }, []);
 
-  const counts = {
-    all:      AVATARS.length,
-    ready:    AVATARS.filter((a) => a.status === 'ready').length,
-    training: AVATARS.filter((a) => a.status === 'training').length,
-    consent:  AVATARS.filter((a) => a.status === 'consent').length,
+  const add = async () => {
+    const n = name.trim();
+    if (!n || busy) return;
+    setBusy(true); setErr('');
+    try {
+      const c = await api.createClient({ name: n });
+      setName('');
+      await load();
+      const id = c?.id ?? c?.client?.id;
+      if (id != null) onSelect?.(id);
+    } catch (e) {
+      setErr(e.message || 'Could not add client.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rename = async (c) => {
+    const next = window.prompt('Rename client', c.name);
+    if (next == null) return;
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === c.name) return;
+    setErr('');
+    try { await api.renameClient(c.id, { name: trimmed }); await load(); }
+    catch (e) { setErr(e.message || 'Could not rename.'); }
+  };
+
+  const remove = async (c) => {
+    if (!window.confirm(`Delete "${c.name}"? This also removes its brief and scripts.`)) return;
+    setErr('');
+    try {
+      await api.deleteClient(c.id);
+      if (activeClientId === c.id) onSelect?.(null);
+      await load();
+    } catch (e) {
+      setErr(e.message || 'Could not delete.');
+    }
   };
 
   return (
     <div className="v-pad fade-in">
-      {/* hero strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 'var(--gap)', marginBottom: 28 }}>
-        <div className="card" style={{ padding: 28, position: 'relative', overflow: 'hidden', minHeight: 240 }}>
-          <div className="label" style={{ marginBottom: 12, color: 'var(--maroon)', fontSize: '12px' }}>WORKSPACE · CUE:CREATIVE</div>
-          <h1 style={{
-            lineHeight: 1.05,
-            margin: '4px 0 8px',
-            letterSpacing: '-0.015em',
-            maxWidth: 460,
-            textWrap: 'pretty',
-            color: 'var(--text)', fontFamily: 'sans-serif', fontSize: '36px'
-          }}>
-            {CLIENTS.length} clients, <em style={{ color: 'var(--maroon)' }}>each a digital twin</em>.<br />
-            <span style={{ color: 'var(--text-3)', fontStyle: 'italic' }}>Grouped by who they belong to.</span>
-          </h1>
-          <div className="row" style={{ marginTop: 20, gap: 8 }}>
-            <button className="btn primary" onClick={onAddNew} style={{ fontSize: '16px' }}>
-              <Icon name="plus" size={14} stroke={2.2} />
-              New client
-            </button>
-            <button className="btn" style={{ fontSize: '16px' }}>
-              <Icon name="upload" size={14} />
-              Bulk import
-            </button>
-          </div>
-          {/* decorative monospaced telemetry — at the foot of the card */}
-          <div className="row" style={{
-            marginTop: 24,
-            paddingTop: 16,
-            borderTop: '1px solid var(--border)',
-            fontFamily: 'var(--f-mono)', fontSize: 12, color: 'var(--text-4)',
-            gap: 20, flexWrap: 'wrap'
-          }}>
-            <div>CUE:ENGINE · v2</div>
-            <div>STATUS · <span style={{ color: 'var(--ok)' }}>● operational</span></div>
-            <div>RENDER_QUEUE · 3</div>
-          </div>
-        </div>
+      <div className="label">CLIENTS · LIVE</div>
+      <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 34, lineHeight: 1.1, margin: '6px 0 4px' }}>
+        Your <em>clients</em>, saved for real.
+      </h1>
+      <div className="mono" style={{ color: 'var(--text-3)' }}>
+        Stored in the database — these feed the Brief and Scripts tabs.
+      </div>
 
-        <div className="col" style={{ gap: 'var(--gap)' }}>
-          <StatBlock label="Clients" value={String(CLIENTS.length)} delta="top-level accounts" />
-          <StatBlock label="Avatars" value={String(AVATARS.length)} delta="digital twins on file" />
-          <StatBlock label="Episodes" value={String(GENERATED_VIDEOS.length)} delta="across all avatars" />
+      {err && (
+        <div className="card card-pad" style={{ marginTop: 16, borderColor: 'var(--accent)' }}>
+          <div className="mono" style={{ color: 'var(--accent)' }}>{err}</div>
+        </div>
+      )}
+
+      <div className="card card-pad" style={{ marginTop: 18, marginBottom: 22 }}>
+        <div className="label">ADD A CLIENT</div>
+        <div className="row" style={{ gap: 10, marginTop: 10, alignItems: 'stretch' }}>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
+            placeholder="Company or client name"
+            style={{
+              flex: 1, height: 44, padding: '0 14px',
+              background: 'var(--surface-2)', color: 'var(--text)',
+              border: '1px solid var(--border)', borderRadius: 'var(--r-sm)',
+              fontFamily: 'var(--f-mono)', fontSize: 14,
+            }}
+          />
+          <button className="btn primary" onClick={add} disabled={busy || !name.trim()}>
+            <Icon name="plus" size={14} stroke={2.2} />
+            {busy ? 'Adding…' : 'Add client'}
+          </button>
         </div>
       </div>
 
-      {/* filter + search */}
-      <div className="row" style={{ marginBottom: 18, justifyContent: 'space-between' }}>
-        <div className="row" style={{ gap: 4 }}>
-          {[
-          ['all', 'All'],
-          ['ready', 'Ready'],
-          ['training', 'Training'],
-          ['consent', 'Awaiting consent']].
-          map(([k, label]) =>
-          <button key={k}
-          onClick={() => setFilter(k)}
-          className="btn"
-          style={{
-            background: filter === k ? 'var(--surface)' : 'transparent',
-            borderColor: filter === k ? 'var(--maroon)' : 'transparent',
-            color: filter === k ? 'var(--maroon)' : 'var(--text-2)',
-            boxShadow: 'none'
-          }}>
-              {label}
-              <span className="mono" style={{ color: filter === k ? 'var(--maroon)' : 'var(--text-3)' }}>
-                {counts[k]}
-              </span>
-            </button>
-          )}
+      {loading ? (
+        <div className="mono" style={{ color: 'var(--text-3)' }}>Loading clients…</div>
+      ) : clients.length === 0 ? (
+        <div className="mono" style={{ color: 'var(--text-3)' }}>No clients yet — add your first above.</div>
+      ) : (
+        <div className="col" style={{ gap: 8 }}>
+          {clients.map((c) => {
+            const active = c.id === activeClientId;
+            return (
+              <div
+                key={c.id}
+                className="card card-pad row"
+                style={{
+                  gap: 12, alignItems: 'center',
+                  borderColor: active ? 'var(--accent)' : 'var(--border)',
+                }}
+              >
+                <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => onSelect?.(c.id)}>
+                  <div style={{ fontWeight: 600, fontSize: 15 }}>{c.name}</div>
+                  <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
+                    id {c.id}{c.created_at ? ` · added ${String(c.created_at).slice(0, 10)}` : ''}
+                  </div>
+                </div>
+                {active && <span className="badge" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>selected</span>}
+                <button className="btn sm" onClick={() => onOpenBrief?.(c.id)}>
+                  <Icon name="doc" size={13} /> Brief
+                </button>
+                <button className="icon-btn" title="Rename" onClick={() => rename(c)}>
+                  <Icon name="more" size={14} />
+                </button>
+                <button className="icon-btn" title="Delete" onClick={() => remove(c)} style={{ color: 'var(--accent)' }}>
+                  ✕
+                </button>
+              </div>
+            );
+          })}
         </div>
-        <div className="hd-search" style={{ width: 240 }}>
-          <Icon name="search" size={14} />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search clients or avatars…" />
-        </div>
-      </div>
+      )}
+    </div>
+  );
+}
 
-      {/* client groups */}
-      <div className="col" style={{ gap: 'var(--gap)' }}>
-        {groups.map(({ client, avatars }) =>
-          <ClientGroup key={client.id} client={client} avatars={avatars} onOpenAvatar={onOpenAvatar} onChat={onChat} />
-        )}
-      </div>
-
-      {groups.length === 0 &&
-      <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-3)' }}>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, fontStyle: 'italic', marginBottom: 8 }}>nothing here</div>
-          <div className="mono">no clients match "{query || filter}"</div>
-        </div>
-      }
-    </div>);
-
-};
-
-const StatBlock = ({ label, value, delta }) =>
-<div className="card" style={{ padding: 18, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', fontFamily: "\"DM Sans\"" }}>
-    <div className="label">{label}</div>
-    <div style={{ fontSize: 36, lineHeight: 1, letterSpacing: '-0.01em', marginTop: 8, fontFamily: "\"DM Sans\"" }}>{value}</div>
-    <div className="mono" style={{ marginTop: 6 }}>{delta}</div>
-  </div>;
-
-
-const ClientGroup = ({ client, avatars, onOpenAvatar, onChat }) => {
-  const episodeTotal = avatars.reduce((n, av) => n + episodesForAvatar(av.id).length, 0);
-  return (
-    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-      {/* client header — the top-level entity */}
-      <div className="row" style={{
-        justifyContent: 'space-between', alignItems: 'flex-start',
-        padding: '18px 20px', borderBottom: '1px solid var(--border)'
-      }}>
-        <div>
-          <div style={{ fontSize: 20, letterSpacing: '-0.01em', lineHeight: 1.2, fontFamily: "\"DM Sans\"" }}>
-            {client.companyName}
-          </div>
-          <div className="mono" style={{ marginTop: 4 }}>{client.contact} · {client.role}</div>
-        </div>
-        <div className="row" style={{ gap: 16, fontSize: 12, color: 'var(--text-3)' }}>
-          <span>{avatars.length} avatar{avatars.length === 1 ? '' : 's'}</span>
-          <span className="mono">{episodeTotal} episode{episodeTotal === 1 ? '' : 's'}</span>
-        </div>
-      </div>
-
-      {/* nested avatars */}
-      <div className="col" style={{ padding: '6px 0' }}>
-        {avatars.map((av) =>
-          <AvatarRow key={av.id} avatar={av} onOpen={() => onOpenAvatar(av)} onChat={() => onChat(av)} />
-        )}
-      </div>
-    </div>);
-
-};
-
-
-const AvatarRow = ({ avatar, onOpen, onChat }) => {
-  const episodes = episodesForAvatar(avatar.id).length;
-  const isReady = avatar.status === 'ready';
-  return (
-    <div
-      onClick={onOpen}
-      className="row"
-      style={{ gap: 14, padding: '12px 20px', cursor: 'pointer', transition: 'background 160ms ease' }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
-      {/* thumbnail */}
-      <div style={{ width: 44, height: 55, borderRadius: 8, overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-        <AvatarTile avatar={avatar} />
-      </div>
-      {/* name + meta */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 15, letterSpacing: '-0.01em', lineHeight: 1.2, fontFamily: "\"DM Sans\"", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {avatar.name}
-        </div>
-        <div className="row" style={{ justifyContent: 'flex-start', gap: 10, marginTop: 3, fontSize: 12, color: 'var(--text-3)' }}>
-          <span>{episodes} episode{episodes === 1 ? '' : 's'}</span>
-          <span className="mono">{avatar.minutesUsed}m · {avatar.lastGen}</span>
-        </div>
-      </div>
-      {/* status */}
-      <StatusBadge status={avatar.status} progress={avatar.progress} />
-      {/* open / chat */}
-      {isReady &&
-        <button
-          onClick={(e) => { e.stopPropagation(); onChat(); }}
-          className="icon-btn"
-          style={{ width: 34, height: 34 }}
-          title="Open avatar">
-          <Icon name="play" size={13} />
-        </button>
-      }
-    </div>);
-
-};
-
-
-export { ClientsView };
+export { ClientsView }
