@@ -3,6 +3,7 @@ import { Icon, CueLogo, Wordmark } from './shared.jsx'
 import { AVATARS, INVITATIONS, GENERATED_VIDEOS } from './data.jsx'
 import { ClientsView } from './clients.jsx'
 import { BriefView } from './brief.jsx'
+import { ClientDetailView } from './client-detail.jsx'
 import { AvatarDetailView } from './avatar-detail.jsx'
 import { InvitationsView } from './invitations.jsx'
 import { PlannerView } from './planner.jsx'
@@ -40,6 +41,7 @@ const HEADER_TITLES = {
 function App() {
   const [view, setView] = React.useState('clients');
   const [activeClientId, setActiveClientId] = React.useState(null);
+  const [detailClient, setDetailClient] = React.useState(null);
   const [chatAvatarId, setChatAvatarId] = React.useState('av_amelia');
   const [detailAvatarId, setDetailAvatarId] = React.useState(null);
 
@@ -52,6 +54,8 @@ function App() {
   const detailAvatar = detailAvatarId ? AVATARS.find(a => a.id === detailAvatarId) : null;
   const hd = (view === 'avatar-detail' && detailAvatar)
     ? { title: detailAvatar.contact, sub: detailAvatar.id }
+    : (view === 'client-detail' && detailClient)
+    ? { title: detailClient.name, sub: 'client workspace' }
     : HEADER_TITLES[view] || HEADER_TITLES.clients;
 
   const openAvatar = (avatar) => {
@@ -150,15 +154,16 @@ function App() {
           </button>
         </header>
 
-        <section className="view" key={view + (view === 'avatar-detail' ? ':' + detailAvatarId : '')}>
+        <section className="view" key={view + (view === 'avatar-detail' ? ':' + detailAvatarId : '') + (view === 'client-detail' && detailClient ? ':' + detailClient.id : '')}>
           {view === 'clients' && (
             <ClientsView
               activeClientId={activeClientId}
               onSelect={setActiveClientId}
-              onOpenBrief={(id) => { setActiveClientId(id); setView('brief'); }}
+              onOpenClient={(c) => { setActiveClientId(c.id); setDetailClient(c); setView('client-detail'); }}
             />
           )}
           {view === 'brief' && <BriefView clientId={activeClientId} />}
+          {view === 'client-detail' && <ClientDetailView client={detailClient} onBack={() => setView('clients')} />}
           {view === 'avatar-detail' && (
             <AvatarDetailView
               avatarId={detailAvatarId}
@@ -173,7 +178,7 @@ function App() {
           {view === 'planner' && <PlannerView />}
           {view === 'scripts' && <ScriptsView />}
           {view === 'studio' && <StudioView />}
-          {view === 'recordings' && <RecordingsView />}
+          {view === 'recordings' && <RecordingsView activeClientId={activeClientId} />}
           {view === 'onboarding' && (
             <OnboardingView
               onDone={() => setView('clients')}

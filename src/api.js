@@ -168,6 +168,7 @@ export const api = {
   deleteClient: (id) => vcReq(`/clients/${id}`, { method: "DELETE" }),
   getBrief: (id) => vcReq(`/clients/${id}/brief`),
   putBrief: (id, payload) => vcReq(`/clients/${id}/brief`, { method: "PUT", body: JSON.stringify(payload) }),
+  listClientInvites: (id) => vcReq(`/clients/${id}/invites`),
   channels: (id) => vcReq(`/clients/${id}/scripts/channels`),
   listScripts: (id) => vcReq(`/clients/${id}/scripts`),
   generate: (id, payload) => vcReq(`/clients/${id}/scripts/generate`, { method: "POST", body: JSON.stringify(payload) }),

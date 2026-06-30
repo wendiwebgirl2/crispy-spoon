@@ -7,7 +7,7 @@ import { Icon } from './shared.jsx'
 // the Brief and Scripts tabs. (The seed avatar/episode browsing lived here
 // before; that hierarchy belongs to the HeyGen/Railway side and returns when
 // that backend is wired.)
-function ClientsView({ activeClientId, onSelect, onOpenBrief }) {
+function ClientsView({ activeClientId, onSelect, onOpenClient }) {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -122,15 +122,15 @@ function ClientsView({ activeClientId, onSelect, onOpenBrief }) {
                   borderColor: active ? 'var(--accent)' : 'var(--border)',
                 }}
               >
-                <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => onSelect?.(c.id)}>
+                <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => onOpenClient?.(c)}>
                   <div style={{ fontWeight: 600, fontSize: 15 }}>{c.name}</div>
                   <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
                     id {c.id}{c.created_at ? ` · added ${String(c.created_at).slice(0, 10)}` : ''}
                   </div>
                 </div>
                 {active && <span className="badge" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>selected</span>}
-                <button className="btn sm" onClick={() => onOpenBrief?.(c.id)}>
-                  <Icon name="doc" size={13} /> Brief
+                <button className="btn sm" onClick={() => onOpenClient?.(c)}>
+                  Open <Icon name="send" size={13} />
                 </button>
                 <button className="icon-btn" title="Rename" onClick={() => rename(c)}>
                   <Icon name="more" size={14} />
