@@ -170,7 +170,7 @@ function App() {
               onResend={() => setView('invitations')}
             />
           )}
-          {view === 'invitations' && <InvitationsView onOpenAvatar={openAvatar} />}
+          {view === 'invitations' && <InvitationsView />}
           {view === 'planner' && <PlannerView />}
           {view === 'scripts' && <ScriptsView />}
           {view === 'studio' && <StudioView />}
