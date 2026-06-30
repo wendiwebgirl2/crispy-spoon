@@ -148,10 +148,6 @@ function App() {
             <span className="hd-kbd">⌘K</span>
           </div>
           <button className="icon-btn" title="Activity"><Icon name="history" size={16} /></button>
-          <button className="btn primary" onClick={() => setView('invitations')}>
-            <Icon name="send" size={14} stroke={2.2} />
-            New invitation
-          </button>
         </header>
 
         <section className="view" key={view + (view === 'avatar-detail' ? ':' + detailAvatarId : '') + (view === 'client-detail' && detailClient ? ':' + detailClient.id : '')}>

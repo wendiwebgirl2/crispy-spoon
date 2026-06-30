@@ -74,14 +74,38 @@ function InvitesSection({ clientId }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [copied, setCopied] = useState(null);
+  // create form
+  const [email, setEmail] = useState('');
+  const [label, setLabel] = useState('');
+  const [days, setDays] = useState(7);
+  const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true); setErr('');
-    api.listClientInvites(clientId)
+    return api.listClientInvites(clientId)
       .then((r) => setInvites(Array.isArray(r) ? r : (r.invites || [])))
       .catch((e) => setErr(e.message || 'Could not load invites.'))
       .finally(() => setLoading(false));
-  }, [clientId]);
+  };
+
+  useEffect(() => { load(); }, [clientId]);
+
+  const create = async () => {
+    setCreating(true); setErr('');
+    try {
+      await api.createInvite(clientId, {
+        clientEmail: email.trim() || null,
+        label: label.trim() || null,
+        days: Number(days) || 7,
+      });
+      setEmail(''); setLabel('');
+      await load();
+    } catch (e) {
+      setErr(e.message || 'Could not create invite.');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const copyLink = async (token) => {
     const url = 'https://record.cuecreative.com/record.html?token=' + encodeURIComponent(token);
@@ -89,28 +113,76 @@ function InvitesSection({ clientId }) {
     catch { setErr('Could not copy to clipboard.'); }
   };
 
-  if (loading) return <div className="mono" style={{ color: 'var(--text-3)' }}>Loading invites…</div>;
-  if (err) return <div className="mono" style={{ color: 'var(--accent)' }}>{err}</div>;
-  if (invites.length === 0) return <div className="mono" style={{ color: 'var(--text-3)' }}>No invites for this client yet.</div>;
+  const inputStyle = {
+    background: 'var(--surface-2)', color: 'var(--text)',
+    border: '1px solid var(--border)', borderRadius: 'var(--r-sm)',
+    fontFamily: 'var(--f-mono)', fontSize: 13, padding: '9px 11px', height: 40,
+    boxSizing: 'border-box',
+  };
 
   return (
-    <div className="col" style={{ gap: 8 }}>
-      {invites.map((inv) => (
-        <div key={inv.id} className="card card-pad row" style={{ gap: 12, alignItems: 'center' }}>
-          <Icon name="send" size={16} style={{ color: 'var(--text-3)' }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{inv.label || inv.client_email || 'Invite'}</div>
-            <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {inv.token} · created {fmtDate(inv.created_at)} · expires {fmtDate(inv.expires_at)}
-            </div>
+    <div className="col" style={{ gap: 14 }}>
+      {/* create */}
+      <div className="card card-pad">
+        <div className="label" style={{ marginBottom: 10 }}>NEW INVITE</div>
+        <div className="col" style={{ gap: 8 }}>
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Client email (optional)"
+            style={{ ...inputStyle, width: '100%' }}
+          />
+          <div className="row" style={{ gap: 8, alignItems: 'stretch' }}>
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Label (e.g. CEO avatar)"
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <select value={days} onChange={(e) => setDays(e.target.value)} style={{ ...inputStyle, width: 90 }}>
+              <option value={3}>3 days</option>
+              <option value={7}>7 days</option>
+              <option value={14}>14 days</option>
+              <option value={30}>30 days</option>
+            </select>
+            <button className="btn primary" onClick={create} disabled={creating}>
+              <Icon name="send" size={13} />
+              {creating ? 'Creating…' : 'Create invite'}
+            </button>
           </div>
-          <span className="badge">{inv.status || 'pending'}</span>
-          <button className="btn sm" onClick={() => copyLink(inv.token)}>
-            <Icon name="send" size={13} />
-            {copied === inv.token ? 'Copied' : 'Copy link'}
-          </button>
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
+            Creates a record link for this client. Email auto-send is a separate step.
+          </div>
         </div>
-      ))}
+      </div>
+
+      {err && <div className="mono" style={{ color: 'var(--accent)' }}>{err}</div>}
+
+      {/* list */}
+      {loading ? (
+        <div className="mono" style={{ color: 'var(--text-3)' }}>Loading invites…</div>
+      ) : invites.length === 0 ? (
+        <div className="mono" style={{ color: 'var(--text-3)' }}>No invites for this client yet.</div>
+      ) : (
+        <div className="col" style={{ gap: 8 }}>
+          {invites.map((inv) => (
+            <div key={inv.id} className="card card-pad row" style={{ gap: 12, alignItems: 'center' }}>
+              <Icon name="send" size={16} style={{ color: 'var(--text-3)' }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{inv.label || inv.client_email || 'Invite'}</div>
+                <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {inv.token} · created {fmtDate(inv.created_at)} · expires {fmtDate(inv.expires_at)}
+                </div>
+              </div>
+              <span className="badge">{inv.status || 'pending'}</span>
+              <button className="btn sm" onClick={() => copyLink(inv.token)}>
+                <Icon name="send" size={13} />
+                {copied === inv.token ? 'Copied' : 'Copy link'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

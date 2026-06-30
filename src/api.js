@@ -169,6 +169,7 @@ export const api = {
   getBrief: (id) => vcReq(`/clients/${id}/brief`),
   putBrief: (id, payload) => vcReq(`/clients/${id}/brief`, { method: "PUT", body: JSON.stringify(payload) }),
   listClientInvites: (id) => vcReq(`/clients/${id}/invites`),
+  createInvite: (id, payload) => vcReq(`/clients/${id}/invites`, { method: "POST", body: JSON.stringify(payload) }),
   channels: (id) => vcReq(`/clients/${id}/scripts/channels`),
   listScripts: (id) => vcReq(`/clients/${id}/scripts`),
   generate: (id, payload) => vcReq(`/clients/${id}/scripts/generate`, { method: "POST", body: JSON.stringify(payload) }),
