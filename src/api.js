@@ -101,6 +101,19 @@ export function uploadRecording(blob, { token = currentToken(), filename = "take
   return apiPostForm("/api/recordings", form);
 }
 
+// List the R2 masters for a token's client (the read-back route).
+export function listRecordings(token = currentToken()) {
+  return apiGet("/api/recordings/" + encodeURIComponent(token));
+}
+
+// Get a short-lived signed download URL for one recording master.
+export function recordingDownloadUrl(recordingId, token = currentToken()) {
+  return apiGet(
+    "/api/recordings/" + encodeURIComponent(token) +
+    "/" + encodeURIComponent(recordingId) + "/url"
+  );
+}
+
 // ============================================================================
 // VoiceCast API (same-origin) — clients, brief, scripts.
 //

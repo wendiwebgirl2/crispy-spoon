@@ -8,6 +8,7 @@ import { InvitationsView } from './invitations.jsx'
 import { PlannerView } from './planner.jsx'
 import { ScriptsView } from './scripts.jsx'
 import StudioView from './studio.jsx'
+import { RecordingsView } from './recordings.jsx'
 import { OnboardingView } from './onboarding.jsx'
 import { SettingsView } from './settings.jsx'
 
@@ -18,6 +19,7 @@ const NAV = [
   { id: 'planner',       label: 'Planner',        icon: 'history',  countKey: 'planner' },
   { id: 'scripts',       label: 'Scripts',        icon: 'doc' },
   { id: 'studio',        label: 'Studio',         icon: 'studio',   countKey: 'rendering' },
+  { id: 'recordings',    label: 'Recordings',     icon: 'play' },
   { id: 'onboarding',    label: 'Record on-site', icon: 'mic' },
   { id: 'settings',      label: 'Settings',       icon: 'settings' },
 ];
@@ -30,6 +32,7 @@ const HEADER_TITLES = {
   planner:         { title: 'Planner',         sub: 'production status + publishing schedule' },
   scripts:         { title: 'Scripts',         sub: 'Claude-generated copy from the client brief' },
   studio:          { title: 'Studio',          sub: 'cast a script into a HeyGen render' },
+  recordings:      { title: 'Recordings',      sub: 'R2 masters + HeyGen renders for the active token' },
   onboarding:      { title: 'On-site record',  sub: 'record an avatar in person, no email needed' },
   settings:        { title: 'Settings',        sub: 'workspace · branding · integrations' },
 };
@@ -170,6 +173,7 @@ function App() {
           {view === 'planner' && <PlannerView />}
           {view === 'scripts' && <ScriptsView />}
           {view === 'studio' && <StudioView />}
+          {view === 'recordings' && <RecordingsView />}
           {view === 'onboarding' && (
             <OnboardingView
               onDone={() => setView('clients')}
