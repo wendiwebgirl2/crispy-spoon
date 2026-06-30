@@ -68,6 +68,11 @@ export async function apiPostForm(path, formData) {
   return parse(resp);
 }
 
+export async function apiDelete(path) {
+  const resp = await fetch(API_BASE + path, { method: "DELETE" });
+  return parse(resp);
+}
+
 // ---- Domain calls: avatar videos (Studio) -----------------------------------
 // These mirror the routes proven out by studio.html.
 
@@ -111,6 +116,14 @@ export function recordingDownloadUrl(recordingId, token = currentToken()) {
   return apiGet(
     "/api/recordings/" + encodeURIComponent(token) +
     "/" + encodeURIComponent(recordingId) + "/url"
+  );
+}
+
+// Permanently delete a recording master (R2 object + DB row).
+export function deleteRecording(recordingId, token = currentToken()) {
+  return apiDelete(
+    "/api/recordings/" + encodeURIComponent(token) +
+    "/" + encodeURIComponent(recordingId)
   );
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { listRecordings, recordingDownloadUrl, listVideos, currentToken } from './api.js'
+import { listRecordings, recordingDownloadUrl, deleteRecording, listVideos, currentToken } from './api.js'
 import { Icon } from './shared.jsx'
 
 // Recordings view — the first dashboard screen onto the R2 masters and the
@@ -29,6 +29,7 @@ function RecordingsView() {
   const [err, setErr] = useState('');
   const [player, setPlayer] = useState(null);   // { id, url }
   const [urlBusy, setUrlBusy] = useState(null);  // recording id being signed
+  const [delBusy, setDelBusy] = useState(null);  // recording id being deleted
 
   const load = async () => {
     setErr('');
@@ -59,6 +60,25 @@ function RecordingsView() {
       setErr(e.message || 'Could not get a playback URL.');
     } finally {
       setUrlBusy(null);
+    }
+  };
+
+  const remove = async (rec) => {
+    const ok = window.confirm(
+      'Permanently delete this master?\n\n' + takeName(rec.storage_key) +
+      '\n\nThis removes the original recording from R2 and cannot be undone. ' +
+      'Any output built from it will lose its source.'
+    );
+    if (!ok) return;
+    setDelBusy(rec.id); setErr('');
+    try {
+      await deleteRecording(rec.id, token);
+      if (player?.id === rec.id) setPlayer(null);
+      await load();
+    } catch (e) {
+      setErr(e.message || 'Could not delete the recording.');
+    } finally {
+      setDelBusy(null);
     }
   };
 
@@ -102,6 +122,15 @@ function RecordingsView() {
                 <button className="btn sm" onClick={() => play(rec)} disabled={urlBusy === rec.id}>
                   <Icon name="play" size={13} />
                   {urlBusy === rec.id ? 'Loading…' : (player?.id === rec.id ? 'Reload' : 'Play')}
+                </button>
+                <button
+                  className="icon-btn"
+                  title="Delete master"
+                  onClick={() => remove(rec)}
+                  disabled={delBusy === rec.id}
+                  style={{ color: 'var(--accent)' }}
+                >
+                  {delBusy === rec.id ? '…' : '✕'}
                 </button>
               </div>
               {player?.id === rec.id && (
