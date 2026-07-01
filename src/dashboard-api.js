@@ -1,5 +1,4 @@
 // dashboard-api.js — same-origin VoiceCast episodes/schedule + Railway HeyGen video.
-// Kept separate so api.js (its two coexisting clients) stays untouched.
 const RAILWAY = 'https://cue-caster-api-production.up.railway.app';
 
 async function j(res) {
@@ -21,6 +20,7 @@ export const ep = {
   del: (cid, id) => del(`/api/clients/${cid}/episodes/${id}`),
   upload: (cid, id, slot, file) => { const f = new FormData(); f.append('slot', slot); f.append('file', file); return postForm(`/api/clients/${cid}/episodes/${id}/upload`, f); },
   useAudio: (cid, id, slot, audioOutputId) => post(`/api/clients/${cid}/episodes/${id}/use-audio`, { slot, audioOutputId }),
+  useRecording: (cid, id, slot, recordingId, token) => post(`/api/clients/${cid}/episodes/${id}/use-recording`, { slot, recordingId, token }),
   genCover: (cid, id, body) => post(`/api/clients/${cid}/episodes/${id}/cover/generate`, body),
   genMusic: (cid, id, body) => post(`/api/clients/${cid}/episodes/${id}/music/generate`, body),
   musicMode: (cid, id, mode) => put(`/api/clients/${cid}/episodes/${id}/music/mode`, { mode }),
@@ -29,6 +29,10 @@ export const ep = {
   fileUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/file`,
   coverUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/cover`,
   voiceOutputs: (cid) => get(`/api/clients/${cid}/voice/outputs`),
+};
+
+export const rec = {
+  list: (token) => get(`${RAILWAY}/api/recordings/${encodeURIComponent(token)}`),
 };
 
 export const sched = {

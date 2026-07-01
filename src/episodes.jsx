@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Icon } from './shared.jsx'
-import { ep, video, clientToken } from './dashboard-api.js'
+import { ep, video, rec, clientToken } from './dashboard-api.js'
 
 const inputStyle = {
   background: 'var(--surface-2)', color: 'var(--text)',
@@ -9,7 +9,8 @@ const inputStyle = {
   boxSizing: 'border-box', width: '100%',
 };
 
-function SlotCard({ name, label, pathField, full, busy, audioOpts, onUpload, onSynth }) {
+function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = [], onUpload, onSynth, onUseRecording }) {
+  const [recPick, setRecPick] = useState('');
   return (
     <div className="card card-pad" style={{ marginBottom: 10 }}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
@@ -29,6 +30,16 @@ function SlotCard({ name, label, pathField, full, busy, audioOpts, onUpload, onS
         )}
         {busy === name && <span className="mono" style={{ color: 'var(--text-3)' }}>working…</span>}
       </div>
+      {recordings.length > 0 && (
+        <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+          <span className="mono" style={{ color: 'var(--text-4)' }}>or client recording:</span>
+          <select value={recPick} onChange={(e) => setRecPick(e.target.value)} style={{ ...inputStyle, width: 240 }}>
+            <option value="">—</option>
+            {recordings.map((r) => <option key={r.id} value={r.id}>take {String(r.id).slice(0, 8)} · {Math.round((r.bytes || 0) / 1024)}KB</option>)}
+          </select>
+          <button className="btn sm" onClick={() => { if (recPick) onUseRecording(name, recPick); }}>Use recording</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -102,11 +113,13 @@ function VideoCard({ cid, title }) {
 function EpisodeEditor({ cid, epId, onChange }) {
   const [full, setFull] = useState(null);
   const [outs, setOuts] = useState([]);
+  const [recordings, setRecordings] = useState([]);
+  const [recToken, setRecToken] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
   const [bust, setBust] = useState(Date.now());
   const [coverPrompt, setCoverPrompt] = useState('');
-  const [coverProvider, setCoverProvider] = useState('mock');
+  const [coverProvider, setCoverProvider] = useState('openai');
   const [coverOverlay, setCoverOverlay] = useState('');
   const [introMusicPrompt, setIntroMusicPrompt] = useState('');
   const [musicPrompt, setMusicPrompt] = useState('');
@@ -118,6 +131,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
     setErr('');
     refresh();
     ep.voiceOutputs(cid).then((o) => setOuts(Array.isArray(o) ? o : (o.outputs || []))).catch(() => setOuts([]));
+    clientToken(cid).then((t) => { setRecToken(t); if (t) rec.list(t).then((d) => setRecordings((d && d.recordings) || [])).catch(() => setRecordings([])); }).catch(() => {});
   }, [cid, epId]);
 
   const doUpload = async (slot, file) => {
@@ -130,6 +144,12 @@ function EpisodeEditor({ cid, epId, onChange }) {
     if (!audioOutputId) return;
     setBusy(slot); setErr('');
     try { await ep.useAudio(cid, epId, slot, Number(audioOutputId)); await refresh(); }
+    catch (e) { setErr(e.message); } finally { setBusy(''); }
+  };
+  const useRecording = async (slot, recordingId) => {
+    if (!recToken) { setErr('No client token — create an invite first.'); return; }
+    setBusy(slot); setErr('');
+    try { await ep.useRecording(cid, epId, slot, recordingId, recToken); await refresh(); }
     catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
   const genCover = async () => {
@@ -194,7 +214,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
         </div>
       </div>
 
-      <SlotCard name="intro" label="Intro (VO)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} onUpload={doUpload} onSynth={useSynth} />
+      <SlotCard name="intro" label="Intro (VO)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} />
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -212,8 +232,8 @@ function EpisodeEditor({ cid, epId, onChange }) {
         </div>
       </div>
 
-      <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} onUpload={doUpload} onSynth={useSynth} />
-      <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} onUpload={doUpload} onSynth={useSynth} />
+      <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} />
+      <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} />
 
       <button className="btn primary" onClick={stitch} disabled={busy === 'stitch' || !full.body_path} style={{ marginTop: 6 }}>
         <Icon name="sparkle" size={13} /> {busy === 'stitch' ? 'Stitching…' : 'Stitch into finished episode'}
