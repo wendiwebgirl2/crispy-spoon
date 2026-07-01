@@ -151,7 +151,7 @@ function InvitesSection({ clientId }) {
             </button>
           </div>
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
-            Creates a record link for this client. Email auto-send is a separate step.
+            Creates a record link for this client. If an email is provided, it's sent automatically.
           </div>
         </div>
       </div>

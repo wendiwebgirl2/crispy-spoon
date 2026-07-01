@@ -154,7 +154,7 @@ const ComposeView = ({ onClose }) => {
         label: label.trim() || null,
         days: Number(days) || 7,
       });
-      setCreated({ token: res?.token });
+      setCreated({ token: res?.token, email: res?.email, to: email.trim() });
     } catch (e) {
       setErr(e.message || 'Could not create invitation.');
     } finally {
@@ -173,7 +173,7 @@ const ComposeView = ({ onClose }) => {
         <div className="card card-pad" style={{ maxWidth: 560 }}>
           <div className="label" style={{ color: 'var(--ok)', marginBottom: 8 }}>INVITE CREATED</div>
           <div className="mono" style={{ color: 'var(--text-3)', marginBottom: 12 }}>
-            Share this record link with the client. (Email auto-send is a separate step.)
+            {created.email?.sent ? <>Emailed to <span style={{ color: 'var(--ok)' }}>{created.to}</span>. You can also copy the link below.</> : created.to ? <>Couldn't auto-email {created.to} — copy the link below to share it.</> : 'Share this record link with the client.'}
           </div>
           <div className="mono" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: 12, fontSize: 12, wordBreak: 'break-all', marginBottom: 12 }}>
             {recordUrl}
