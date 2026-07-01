@@ -10,6 +10,7 @@ import { PlannerView } from './planner.jsx'
 import { ScriptsView } from './scripts.jsx'
 import StudioView from './studio.jsx'
 import { RecordingsView } from './recordings.jsx'
+import { EpisodesView } from './episodes.jsx'
 import { OnboardingView } from './onboarding.jsx'
 import { SettingsView } from './settings.jsx'
 
@@ -20,6 +21,7 @@ const NAV = [
   { id: 'planner',       label: 'Planner',        icon: 'history',  countKey: 'planner' },
   { id: 'scripts',       label: 'Scripts',        icon: 'doc' },
   { id: 'studio',        label: 'Studio',         icon: 'studio',   countKey: 'rendering' },
+  { id: 'episodes',      label: 'Episodes',       icon: 'play' },
   { id: 'recordings',    label: 'Recordings',     icon: 'play' },
   { id: 'onboarding',    label: 'Record on-site', icon: 'mic' },
   { id: 'settings',      label: 'Settings',       icon: 'settings' },
@@ -33,6 +35,7 @@ const HEADER_TITLES = {
   planner:         { title: 'Planner',         sub: 'production status + publishing schedule' },
   scripts:         { title: 'Scripts',         sub: 'Claude-generated copy from the client brief' },
   studio:          { title: 'Studio',          sub: 'cast a script into a HeyGen render' },
+  episodes:        { title: 'Episodes',        sub: 'stitch audio + generate video for the selected client' },
   recordings:      { title: 'Recordings',      sub: 'R2 masters + HeyGen renders for the active token' },
   onboarding:      { title: 'On-site record',  sub: 'record an avatar in person, no email needed' },
   settings:        { title: 'Settings',        sub: 'workspace · branding · integrations' },
@@ -72,7 +75,6 @@ function App() {
 
   return (
     <div className="shell">
-      {/* —— sidebar —— */}
       <aside className="side">
         <div className="side-brand">
           <CueLogo size={32} />
@@ -133,7 +135,6 @@ function App() {
         </div>
       </aside>
 
-      {/* —— main —— */}
       <main className="main" style={{ gridTemplateRows: '4px calc(var(--hd-h) - 4px) 1fr' }}>
         <div className="wood" style={{ height: 4 }} />
         <header className="hd">
@@ -171,9 +172,10 @@ function App() {
             />
           )}
           {view === 'invitations' && <InvitationsView />}
-          {view === 'planner' && <PlannerView />}
+          {view === 'planner' && <PlannerView activeClientId={activeClientId} />}
           {view === 'scripts' && <ScriptsView />}
           {view === 'studio' && <StudioView />}
+          {view === 'episodes' && <EpisodesView activeClientId={activeClientId} />}
           {view === 'recordings' && <RecordingsView activeClientId={activeClientId} />}
           {view === 'onboarding' && (
             <OnboardingView
