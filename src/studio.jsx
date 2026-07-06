@@ -4,14 +4,8 @@
 // cast.cuecreative.com Episodes tab.
 
 import React from 'react'
-import {
-  CLIENTS,
-  AVATARS,
-  GENERATED_VIDEOS,
-  clientFor,
-  avatarsForClient,
-  briefFor
-} from './data.jsx'
+import { api, generateVideo, listVideos } from './api.js'
+import { clientToken } from './dashboard-api.js'
 import { AvatarTile, Icon, StatusBadge } from './shared.jsx'
 
 const SCENES = [
@@ -57,18 +51,50 @@ const StudioView = () => {
   const [language, setLanguage] = React.useState('EN');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
   const [generating, setGenerating] = React.useState(false);
-  const [queue, setQueue] = React.useState(GENERATED_VIDEOS);
+  const [queue, setQueue] = React.useState([]);
 
-  const client = clientId ? CLIENTS.find(c => c.id === clientId) : null;
-  const clientAvatars = clientId ? avatarsForClient(clientId) : [];
+  // —— live data ——
+  const [clients, setClients] = React.useState([]);
+  const [avatars, setAvatars] = React.useState([]);   // for the selected client
+  const [brief, setBrief] = React.useState(null);
+  const [token, setToken] = React.useState(null);
+
+  React.useEffect(() => {
+    api.listClients().then(setClients).catch(() => setClients([]));
+  }, []);
+
+  const normalizeAvatar = (a) => ({
+    ...a,
+    contact: a.name || 'Avatar',
+    languages: Array.isArray(a.languages) ? a.languages : [],
+    // render is proven to work while HeyGen is still 'processing', so a real
+    // heygen_avatar_id counts as castable.
+    status: a.heygen_avatar_id ? 'ready' : (a.status || 'processing'),
+  });
+
+  const loadClient = async (id) => {
+    setAvatars([]); setBrief(null); setToken(null); setQueue([]);
+    try {
+      const tok = await clientToken(id);
+      setToken(tok);
+      if (tok) {
+        const res = await api.listAvatars(tok).catch(() => ({ avatars: [] }));
+        setAvatars((res.avatars || []).map(normalizeAvatar));
+      }
+    } catch { /* no token / no avatars yet */ }
+    api.getBrief(id).then(setBrief).catch(() => setBrief(null));
+  };
+
+  const client = clientId ? clients.find(c => c.id === clientId) : null;
+  const clientAvatars = avatars;
   const primaryAvatar = clientAvatars[0] || null;
-  const brief = primaryAvatar ? briefFor(primaryAvatar) : null;
 
   const pickClient = (id) => {
     setClientId(id);
     setDestination(null);
     setContentType(null);
     setStep('destination');
+    loadClient(id);
   };
   const pickDestination = (k) => {
     setDestination(k);
@@ -105,20 +131,18 @@ const StudioView = () => {
         </h1>
         <div className="mono" style={{ marginBottom: 24 }}>Pick the client, then where it's going and what shape it takes.</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--gap)' }}>
-          {CLIENTS.map(c => {
-            const avs = avatarsForClient(c.id);
-            const ready = avs.filter(a => a.status === 'ready').length;
-            return (
-              <button key={c.id} className="card card-pad" onClick={() => pickClient(c.id)}
-                style={{ textAlign: 'left', cursor: 'pointer', color: 'inherit', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ fontSize: 18, fontFamily: '"DM Sans"', letterSpacing: '-0.01em' }}>{c.companyName}</div>
-                <div className="mono">{c.contact} · {c.role}</div>
-                <div className="mono" style={{ color: ready ? 'var(--ok)' : 'var(--text-4)', marginTop: 2 }}>
-                  {ready ? `${ready} avatar${ready > 1 ? 's' : ''} ready` : 'no trained avatar yet'}
-                </div>
-              </button>
-            );
-          })}
+          {clients.length === 0 && (
+            <div className="mono" style={{ gridColumn: '1 / -1', color: 'var(--text-4)' }}>No clients yet.</div>
+          )}
+          {clients.map(c => (
+            <button key={c.id} className="card card-pad" onClick={() => pickClient(c.id)}
+              style={{ textAlign: 'left', cursor: 'pointer', color: 'inherit', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 18, fontFamily: '"DM Sans"', letterSpacing: '-0.01em' }}>{c.name}</div>
+              <div className="mono" style={{ color: 'var(--text-4)', marginTop: 2 }}>
+                {c.created_at ? `added ${String(c.created_at).slice(0, 10)}` : `id ${c.id}`}
+              </div>
+            </button>
+          ))}
         </div>
       </div>
     );
@@ -199,7 +223,7 @@ const StudioView = () => {
   }
 
   /* ──────────────── RENDER STEP ──────────────── */
-  const avatar = avatarId ? AVATARS.find(a => a.id === avatarId) : null;
+  const avatar = avatarId ? avatars.find(a => a.id === avatarId) : null;
   const typeLabel = (DESTINATIONS[destination].types.find(t => t.id === contentType) || {}).label || '';
 
   if (!avatar) {
@@ -217,29 +241,17 @@ const StudioView = () => {
   const estCost = (estSeconds * 0.04).toFixed(2);
   const canGenerate = !generating && !!script.trim() && avatar.status === 'ready';
 
-  const generate = () => {
-    if (!script.trim() || avatar.status !== 'ready') return;
+  const generate = async () => {
+    if (!script.trim() || !token) return;
     setGenerating(true);
-    const newJob = {
-      id: 'gv_' + Date.now(),
-      avatarId,
-      title: script.slice(0, 60) + (script.length > 60 ? '…' : ''),
-      status: 'rendering',
-      duration: `0:${String(estSeconds).padStart(2, '0')}`,
-      createdAt: 'just now',
-      progress: 0
-    };
-    setQueue(q => [newJob, ...q]);
-    let p = 0;
-    const t = setInterval(() => {
-      p += 8;
-      setQueue(q => q.map(v => v.id === newJob.id ? { ...v, progress: Math.min(p, 100) } : v));
-      if (p >= 100) {
-        clearInterval(t);
-        setQueue(q => q.map(v => v.id === newJob.id ? { ...v, status: 'ready', progress: 100 } : v));
-        setGenerating(false);
-      }
-    }, 280);
+    try {
+      await generateVideo(script, { token, title: script.slice(0, 60) });
+      const v = await listVideos(token).catch(() => ({ videos: [] }));
+      setQueue(v.videos || []);
+    } catch (e) {
+      console.error('generate failed:', e.message);
+    }
+    setGenerating(false);
   };
 
   const ModeToggle = () => (
@@ -260,7 +272,7 @@ const StudioView = () => {
       {/* top bar: breadcrumb + mode toggle */}
       <div className="row" style={{ justifyContent: 'space-between', padding: '10px var(--pad)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <Crumb label={client.companyName} onClick={() => setStep('client')} />
+          <Crumb label={client.name} onClick={() => setStep('client')} />
           <span className="mono" style={{ color: 'var(--text-4)' }}>▸</span>
           <Crumb label={DESTINATIONS[destination].label} onClick={() => setStep('destination')} />
           <span className="mono" style={{ color: 'var(--text-4)' }}>▸</span>
@@ -271,7 +283,7 @@ const StudioView = () => {
       </div>
 
       {renderMode === 'assembly'
-        ? <EpisodeAssembly avatar={avatar} clientName={client.companyName} />
+        ? <EpisodeAssembly avatar={avatar} clientName={client.name} />
         : (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', flex: 1, minHeight: 0 }}>
             {/* —— center: script editor + queue —— */}
@@ -294,7 +306,7 @@ const StudioView = () => {
                     </div>
                     <div>
                       <div style={{ fontSize: 13 }}>{avatar.contact}</div>
-                      <div className="mono">{clientFor(avatar).companyName}</div>
+                      <div className="mono">{client ? client.name : ''}</div>
                     </div>
                   </div>
                   <div className="row" style={{ gap: 8 }}>
@@ -383,7 +395,7 @@ const StudioView = () => {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{av.contact}</div>
-                        <div className="mono">{isReady ? clientFor(av).companyName : av.status}</div>
+                        <div className="mono">{isReady ? (client ? client.name : '') : av.status}</div>
                       </div>
                     </button>
                   );
