@@ -162,6 +162,7 @@ async function vcReq(pathname, opts = {}) {
 
 export const api = {
   listClients: () => vcReq("/clients"),
+  listAvatars: (token) => apiGet("/api/avatars/" + encodeURIComponent(token)),
   getClient: (id) => vcReq(`/clients/${id}`),
   createClient: (payload) => vcReq("/clients", { method: "POST", body: JSON.stringify(payload) }),
   renameClient: (id, payload) => vcReq(`/clients/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
