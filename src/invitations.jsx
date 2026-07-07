@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { Icon } from './shared.jsx'
-import { api } from './api.js'
+import { api, API_BASE } from './api.js'
 
 function fmtDate(s) {
   if (!s) return '—';
@@ -33,10 +33,34 @@ const InvitationsList = ({ onCompose }) => {
   const [filter, setFilter] = useState('all');
   const [copied, setCopied] = useState(null);
 
+  // Best-effort: ask Railway for each pending invite's real status and flip
+  // completed ones to "recorded" in place. Never blocks or fails the list.
+  const syncStatuses = (list) => {
+    const pending = list.filter((i) => i.token && (!i.status || i.status === 'pending'));
+    if (!pending.length) return;
+    Promise.all(
+      pending.map((i) =>
+        fetch(API_BASE + '/api/invitations/' + encodeURIComponent(i.token) + '/status')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => (d && d.status === 'completed' ? i.token : null))
+          .catch(() => null)
+      )
+    ).then((tokens) => {
+      const done = new Set(tokens.filter(Boolean));
+      if (done.size) {
+        setInvites((cur) => cur.map((i) => (done.has(i.token) ? { ...i, status: 'recorded' } : i)));
+      }
+    });
+  };
+
   const load = () => {
     setLoading(true); setErr('');
     return api.listAllInvites()
-      .then((r) => setInvites(Array.isArray(r) ? r : (r.invites || [])))
+      .then((r) => {
+        const list = Array.isArray(r) ? r : (r.invites || []);
+        setInvites(list);
+        syncStatuses(list);
+      })
       .catch((e) => setErr(e.message || 'Could not load invitations.'))
       .finally(() => setLoading(false));
   };
