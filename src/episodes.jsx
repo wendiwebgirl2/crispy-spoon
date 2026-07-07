@@ -115,6 +115,8 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const [outs, setOuts] = useState([]);
   const [recordings, setRecordings] = useState([]);
   const [recToken, setRecToken] = useState(null);
+  const [twinVids, setTwinVids] = useState([]);
+  const [videoChoice, setVideoChoice] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
   const [bust, setBust] = useState(Date.now());
@@ -131,7 +133,13 @@ function EpisodeEditor({ cid, epId, onChange }) {
     setErr('');
     refresh();
     ep.voiceOutputs(cid).then((o) => setOuts(Array.isArray(o) ? o : (o.outputs || []))).catch(() => setOuts([]));
-    clientToken(cid).then((t) => { setRecToken(t); if (t) rec.list(t).then((d) => setRecordings((d && d.recordings) || [])).catch(() => setRecordings([])); }).catch(() => {});
+    clientToken(cid).then((t) => {
+      setRecToken(t);
+      if (t) {
+        rec.list(t).then((d) => setRecordings((d && d.recordings) || [])).catch(() => setRecordings([]));
+        video.list(t).then((d) => setTwinVids(((d && d.videos) || []).filter((v) => v.status === 'ready' && v.url))).catch(() => setTwinVids([]));
+      }
+    }).catch(() => {});
   }, [cid, epId]);
 
   const doUpload = async (slot, file) => {
@@ -167,6 +175,12 @@ function EpisodeEditor({ cid, epId, onChange }) {
     try { await ep.genMusic(cid, epId, { prompt: musicPrompt, mode: musicMode }); await refresh(); }
     catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
+  const stitchVideoEp = async () => {
+    setBusy('stitchvideo'); setErr('');
+    try { await ep.stitchVideo(cid, epId, videoChoice ? { videoUrl: videoChoice } : {}); setBust(Date.now()); await refresh(); onChange && onChange(); }
+    catch (e) { setErr(e.message || 'Video stitch failed.'); } finally { setBusy(null); }
+  };
+
   const stitch = async () => {
     setBusy('stitch'); setErr('');
     try { await ep.stitch(cid, epId); setBust(Date.now()); await refresh(); onChange && onChange(); }
@@ -249,6 +263,34 @@ function EpisodeEditor({ cid, epId, onChange }) {
           </div>
         </div>
       )}
+
+      <div className="card card-pad" style={{ marginTop: 14 }}>
+        <div className="label" style={{ marginBottom: 8 }}>VIDEO EPISODE</div>
+        <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12, marginBottom: 8 }}>
+          Stitch this episode as a video — pick one of the client's rendered videos for the body, or use the cover art as a still over the full audio.
+        </div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <select value={videoChoice} onChange={(e) => setVideoChoice(e.target.value)} style={{ ...inputStyle, width: 'auto', maxWidth: 320 }}>
+            <option value="">Cover still + episode audio</option>
+            {twinVids.map((v) => (
+              <option key={v.id} value={v.url}>{(v.title || v.script || 'video').slice(0, 60)}</option>
+            ))}
+          </select>
+          <button className="btn primary" onClick={stitchVideoEp} disabled={busy === 'stitchvideo' || (!full.body_path && !videoChoice)}>
+            <Icon name="sparkle" size={13} /> {busy === 'stitchvideo' ? 'Stitching video…' : 'Stitch video episode'}
+          </button>
+        </div>
+        {!full.body_path && !videoChoice && <div className="mono" style={{ color: 'var(--text-4)', marginTop: 6 }}>Set a body recording or select a video first.</div>}
+        {full.video_output_path && (
+          <div style={{ marginTop: 12 }}>
+            <span className="badge" style={{ color: 'var(--ok)' }}>✓ video produced</span>
+            <video controls src={ep.videoFileUrl(cid, epId) + '?b=' + bust} style={{ width: '100%', marginTop: 8, borderRadius: 8, background: '#000' }} />
+            <div className="row" style={{ gap: 8, marginTop: 8 }}>
+              <a className="btn sm" href={ep.videoFileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download video</a>
+            </div>
+          </div>
+        )}
+      </div>
 
       <VideoCard cid={cid} title={full.title} />
     </div>
