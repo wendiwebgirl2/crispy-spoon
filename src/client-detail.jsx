@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { api } from './api.js'
+import { api, API_BASE } from './api.js'
 import { Icon } from './shared.jsx'
 import { BriefView } from './brief.jsx'
 import { RecordingsView } from './recordings.jsx'
@@ -74,7 +74,27 @@ function InvitesSection({ clientId }) {
   const load = () => {
     setLoading(true); setErr('');
     return api.listClientInvites(clientId)
-      .then((r) => setInvites(Array.isArray(r) ? r : (r.invites || [])))
+      .then((r) => {
+        const list = Array.isArray(r) ? r : (r.invites || []);
+        setInvites(list);
+        // Best-effort: flip completed invites to "recorded" from Railway status.
+        const pending = list.filter((i) => i.token && (!i.status || i.status === 'pending'));
+        if (pending.length) {
+          Promise.all(
+            pending.map((i) =>
+              fetch(API_BASE + '/api/invitations/' + encodeURIComponent(i.token) + '/status')
+                .then((res2) => (res2.ok ? res2.json() : null))
+                .then((d) => (d && d.status === 'completed' ? i.token : null))
+                .catch(() => null)
+            )
+          ).then((tokens) => {
+            const done = new Set(tokens.filter(Boolean));
+            if (done.size) {
+              setInvites((cur) => cur.map((i) => (done.has(i.token) ? { ...i, status: 'recorded' } : i)));
+            }
+          });
+        }
+      })
       .catch((e) => setErr(e.message || 'Could not load invites.'))
       .finally(() => setLoading(false));
   };

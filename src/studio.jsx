@@ -7,6 +7,7 @@ import React from 'react'
 import { api, generateVideo, listVideos } from './api.js'
 import { clientToken } from './dashboard-api.js'
 import { AvatarTile, Icon, StatusBadge } from './shared.jsx'
+import { EpisodesView } from './episodes.jsx'
 
 const SCENES = [
   { id: 'plain',     label: 'Plain', desc: 'No background.' },
@@ -84,6 +85,17 @@ const StudioView = () => {
     } catch { /* no token / no avatars yet */ }
     api.getBrief(id).then(setBrief).catch(() => setBrief(null));
   };
+
+  // Live-refresh recent renders while any video is still rendering.
+  React.useEffect(() => {
+    if (!token) return;
+    const active = queue.some((v) => v.status && v.status !== 'ready' && v.status !== 'failed');
+    if (!active) return;
+    const t = setInterval(() => {
+      listVideos(token).then((v) => setQueue(v.videos || [])).catch(() => {});
+    }, 15000);
+    return () => clearInterval(t);
+  }, [token, queue]);
 
   const client = clientId ? clients.find(c => c.id === clientId) : null;
   const clientAvatars = avatars;
@@ -283,7 +295,7 @@ const StudioView = () => {
       </div>
 
       {renderMode === 'assembly'
-        ? <EpisodeAssembly avatar={avatar} clientName={client.name} />
+        ? <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}><EpisodesView activeClientId={clientId} /></div>
         : (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', flex: 1, minHeight: 0 }}>
             {/* —— center: script editor + queue —— */}
