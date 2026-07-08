@@ -198,7 +198,7 @@ function App() {
           {view === 'invitations' && <InvitationsView />}
           {view === 'planner' && <PlannerView activeClientId={activeClientId} />}
           {view === 'scripts' && <ScriptsView />}
-          {view === 'studio' && <StudioView />}
+          {view === 'studio' && <StudioView onNavigate={setView} />}
           {view === 'episodes' && <EpisodesView activeClientId={activeClientId} />}
           {view === 'recordings' && <RecordingsView activeClientId={activeClientId} />}
           {view === 'onboarding' && (

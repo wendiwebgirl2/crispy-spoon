@@ -37,9 +37,9 @@ const STEPS = [
   { id: 'type',        n: 3, label: 'Type' },
 ];
 
-const StudioView = () => {
+const StudioView = ({ onNavigate }) => {
   // —— decision flow ——
-  const [step, setStep] = React.useState('client');   // client | destination | type | render
+  const [step, setStep] = React.useState('home');   // home | assets | client | destination | type | render
   const [clientId, setClientId] = React.useState(null);
   const [destination, setDestination] = React.useState(null);
   const [contentType, setContentType] = React.useState(null);
@@ -134,6 +134,45 @@ const StudioView = () => {
   };
 
   /* ──────────────── STEP 1 · CLIENT ──────────────── */
+  if (step === 'home') {
+    const cards = [
+      { id: 'scripts',    label: 'Scripts',       desc: 'Write & manage client scripts',      icon: 'doc',     go: () => onNavigate?.('scripts') },
+      { id: 'recordings', label: 'Recordings',    desc: 'Client masters & cue:cast renders',  icon: 'play',    go: () => onNavigate?.('recordings') },
+      { id: 'episodes',   label: 'Episodes',      desc: 'Stitch audio + video episodes',      icon: 'studio',  go: () => onNavigate?.('episodes') },
+      { id: 'assets',     label: 'Assets',        desc: 'Logos, music, backgrounds & fonts',  icon: 'upload',  go: () => setStep('assets') },
+      { id: 'planner',    label: 'Planner',       desc: 'Approved episodes ready to publish', icon: 'history', go: () => onNavigate?.('planner') },
+      { id: 'cast',       label: 'Cast a script', desc: 'Quick-render an avatar video',        icon: 'sparkle', go: () => setStep('client') },
+    ];
+    return (
+      <div className="fade-in" style={{ padding: 'var(--pad)', overflow: 'auto', height: '100%' }}>
+        <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, letterSpacing: '-0.01em', margin: '4px 0 4px' }}>
+          <em style={{ color: 'var(--accent)' }}>Studio</em>
+        </h1>
+        <div className="mono" style={{ marginBottom: 24 }}>Everything for producing an episode &mdash; pick where you want to work.</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--gap)' }}>
+          {cards.map(c => (
+            <button key={c.id} className="card card-pad" onClick={c.go}
+              style={{ textAlign: 'left', cursor: 'pointer', color: 'inherit', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+              <Icon name={c.icon} size={20} style={{ color: 'var(--accent)' }} />
+              <div style={{ fontSize: 18, fontFamily: '"DM Sans"', letterSpacing: '-0.01em' }}>{c.label}</div>
+              <div className="mono" style={{ color: 'var(--text-4)' }}>{c.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'assets') {
+    return (
+      <div className="fade-in" style={{ padding: 'var(--pad)', overflow: 'auto', height: '100%' }}>
+        <button className="btn sm" onClick={() => setStep('home')}><Icon name="arrow-l" size={12} /> Studio</button>
+        <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, letterSpacing: '-0.01em', margin: '18px 0 4px' }}>Assets</h1>
+        <div className="mono" style={{ color: 'var(--text-4)' }}>A shared library of logos, music, backgrounds, and fonts for stitching &mdash; coming soon.</div>
+      </div>
+    );
+  }
+
   if (step === 'client') {
     return (
       <div className="fade-in" style={{ padding: 'var(--pad)', overflow: 'auto', height: '100%' }}>
