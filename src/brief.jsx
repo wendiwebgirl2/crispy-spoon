@@ -24,7 +24,8 @@ const KIND_OPTS = ['podcast', 'social', 'website', 'other'];
 function DistributionCard({ clientId }) {
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState('');
-  const [form, setForm] = useState({ kind: 'podcast', platform: '', url: '', username: '', notes: '' });
+  const [form, setForm] = useState({ kind: 'podcast', platform: '', url: '', username: '', notes: '', secret: '' });
+  const [revealed, setRevealed] = useState({});
   const [busy, setBusy] = useState(false);
 
   const load = () => api.listCredentials(clientId)
@@ -37,9 +38,14 @@ function DistributionCard({ clientId }) {
     setBusy(true); setErr('');
     try {
       await api.addCredential(clientId, form);
-      setForm({ kind: form.kind, platform: '', url: '', username: '', notes: '' });
+      setForm({ kind: form.kind, platform: '', url: '', username: '', notes: '', secret: '' });
       await load();
     } catch (e) { setErr(e.message || 'Could not add channel.'); } finally { setBusy(false); }
+  };
+  const reveal = async (id) => {
+    if (revealed[id]) { setRevealed((r) => ({ ...r, [id]: null })); return; }
+    try { const d = await api.revealCredential(clientId, id); setRevealed((r) => ({ ...r, [id]: d.secret || '(empty)' })); }
+    catch (e) { setErr(e.message || 'Could not reveal password.'); }
   };
   const remove = async (id) => {
     try { await api.deleteCredential(clientId, id); await load(); }
@@ -59,8 +65,12 @@ function DistributionCard({ clientId }) {
             <div style={{ fontSize: 13, fontWeight: 600 }}>{c.platform} <span className="mono" style={{ color: 'var(--text-4)', fontWeight: 400 }}>{c.kind}</span></div>
             {c.url && <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.url}</div>}
             {c.username && <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>{c.username}</div>}
+            {revealed[c.id] && <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12 }}>pw: {revealed[c.id]}</div>}
           </div>
-          <button className="btn sm" onClick={() => remove(c.id)}>Remove</button>
+          <div className="row" style={{ gap: 6 }}>
+            {c.hasSecret && <button className="btn sm" onClick={() => reveal(c.id)}>{revealed[c.id] ? 'Hide' : 'Password'}</button>}
+            <button className="btn sm" onClick={() => remove(c.id)}>Remove</button>
+          </div>
         </div>
       ))}
       <div className="col" style={{ gap: 8, marginTop: 12 }}>
@@ -72,6 +82,7 @@ function DistributionCard({ clientId }) {
         </div>
         <input placeholder="URL" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} style={inp} />
         <input placeholder="Handle / username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} style={inp} />
+        <input type="password" placeholder="Password (stored encrypted)" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} style={inp} autoComplete="new-password" />
         <input placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} style={inp} />
         <button className="btn primary" onClick={add} disabled={busy}>{busy ? 'Adding…' : 'Add channel'}</button>
       </div>

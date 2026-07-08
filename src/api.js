@@ -174,6 +174,7 @@ export const api = {
   listCredentials: (id) => vcReq(`/clients/${id}/credentials`),
   addCredential: (id, payload) => vcReq(`/clients/${id}/credentials`, { method: "POST", body: JSON.stringify(payload) }),
   deleteCredential: (id, credId) => vcReq(`/clients/${id}/credentials/${credId}`, { method: "DELETE" }),
+  revealCredential: (id, credId) => vcReq(`/clients/${id}/credentials/${credId}/reveal`),
   createInvite: (id, payload) => vcReq(`/clients/${id}/invites`, { method: "POST", body: JSON.stringify(payload) }),
   channels: (id) => vcReq(`/clients/${id}/scripts/channels`),
   listScripts: (id) => vcReq(`/clients/${id}/scripts`),
