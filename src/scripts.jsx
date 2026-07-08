@@ -208,7 +208,7 @@ const ScriptsView = () => {
               <div className="row" style={{ gap: 6 }}>
                 <button className="icon-btn" title="Copy" onClick={() => copy(h.body)}><Icon name="doc" size={13} /></button>
                 {h.status !== 'approved' && <button className="icon-btn" title="Approve" onClick={() => approve(h.id)}><Icon name="check" size={13} /></button>}
-                <button className="icon-btn" title="Delete" onClick={() => remove(h.id)}><Icon name="more" size={13} /></button>
+                <button className="icon-btn" title="Delete" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }}><Icon name="close" size={13} /></button>
               </div>
             </div>
           ))}
