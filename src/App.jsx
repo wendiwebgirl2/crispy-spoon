@@ -17,15 +17,10 @@ import { SettingsView } from './settings.jsx'
 
 const NAV = [
   { id: 'clients',       label: 'Clients',        icon: 'avatars' },
-  { id: 'brief',         label: 'Brief',          icon: 'doc' },
-  { id: 'invitations',   label: 'Invitations',    icon: 'send',     countKey: 'invitations' },
-  { id: 'planner',       label: 'Planner',        icon: 'history',  countKey: 'planner' },
-  { id: 'scripts',       label: 'Scripts',        icon: 'doc' },
   { id: 'studio',        label: 'Studio',         icon: 'studio',   countKey: 'rendering' },
-  { id: 'episodes',      label: 'Episodes',       icon: 'play' },
-  { id: 'recordings',    label: 'Recordings',     icon: 'play' },
+  { id: 'planner',       label: 'Planner',        icon: 'history',  countKey: 'planner' },
   { id: 'onboarding',    label: 'Record on-site', icon: 'mic' },
-  { id: 'settings',      label: 'Settings',       icon: 'settings' },
+  { id: 'billing',       label: 'Billing',        icon: 'sliders' },
 ];
 
 const HEADER_TITLES = {
@@ -40,6 +35,7 @@ const HEADER_TITLES = {
   recordings:      { title: 'Recordings',      sub: 'R2 masters + HeyGen renders for the active token' },
   onboarding:      { title: 'On-site record',  sub: 'record an avatar in person, no email needed' },
   settings:        { title: 'Settings',        sub: 'workspace · branding · integrations' },
+  billing:         { title: 'Billing',         sub: 'plans, usage, and invoices' },
 };
 
 function App() {
@@ -135,6 +131,17 @@ function App() {
           </button>
         </div>
 
+        <div className="side-nav" style={{ marginTop: 'auto' }}>
+          <button
+            className={'nav-item' + (view === 'settings' ? ' active' : '')}
+            onClick={() => setView('settings')}
+            title="Settings (admin)"
+          >
+            <Icon name="settings" size={16} className="nav-icon" style={{ color: view === 'settings' ? 'var(--accent)' : 'var(--text-3)' }} />
+            <span>Settings</span>
+          </button>
+        </div>
+
         <div className="side-foot">
           <div className="side-avatar">A</div>
           <div className="side-foot-meta">
@@ -201,6 +208,12 @@ function App() {
             />
           )}
           {view === 'settings' && <SettingsView />}
+          {view === 'billing' && (
+            <div style={{ margin: '48px auto', maxWidth: 520, textAlign: 'center', color: 'var(--text-3)', lineHeight: 1.6 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-2)', marginBottom: 6 }}>Billing</div>
+              Plans, usage, and invoices are coming soon.
+            </div>
+          )}
         </section>
       </main>
     </div>
