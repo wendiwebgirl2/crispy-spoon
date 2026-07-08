@@ -42,7 +42,10 @@ function RecordingsView({ activeClientId }) {
           setErr(e.message || 'Could not load invites.');
         }
       }
-      if (tokens.length === 0) tokens = [currentToken()];
+      // Fall back to the ambient token ONLY when no client is selected.
+      // A selected client with no invites must show an empty list — never
+      // another client's recordings.
+      if (activeClientId == null && tokens.length === 0) tokens = [currentToken()];
 
       const perToken = await Promise.all(
         tokens.map((t) =>
