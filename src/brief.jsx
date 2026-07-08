@@ -19,6 +19,66 @@ const REPO = [
 ];
 const KEYS = [...CONTACT, ...REPO].map(([k]) => k);
 
+const KIND_OPTS = ['podcast', 'social', 'website', 'other'];
+
+function DistributionCard({ clientId }) {
+  const [rows, setRows] = useState([]);
+  const [err, setErr] = useState('');
+  const [form, setForm] = useState({ kind: 'podcast', platform: '', url: '', username: '', notes: '' });
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api.listCredentials(clientId)
+    .then((r) => setRows(Array.isArray(r) ? r : []))
+    .catch((e) => setErr(e.message || 'Could not load channels.'));
+  useEffect(() => { setRows([]); setErr(''); if (clientId) load(); }, [clientId]);
+
+  const add = async () => {
+    if (!form.platform.trim()) { setErr('Platform is required.'); return; }
+    setBusy(true); setErr('');
+    try {
+      await api.addCredential(clientId, form);
+      setForm({ kind: form.kind, platform: '', url: '', username: '', notes: '' });
+      await load();
+    } catch (e) { setErr(e.message || 'Could not add channel.'); } finally { setBusy(false); }
+  };
+  const remove = async (id) => {
+    try { await api.deleteCredential(clientId, id); await load(); }
+    catch (e) { setErr(e.message || 'Could not remove channel.'); }
+  };
+
+  const inp = { background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontFamily: 'var(--f-mono)', fontSize: 13, padding: '8px 10px', boxSizing: 'border-box', width: '100%' };
+
+  return (
+    <div className="card card-pad" style={{ flex: '1 1 320px' }}>
+      <div className="label" style={{ marginBottom: 12 }}>DISTRIBUTION · podcast / socials / websites</div>
+      {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 8 }}>{err}</div>}
+      {rows.length === 0 && <div className="mono" style={{ color: 'var(--text-4)', marginBottom: 10 }}>No channels yet.</div>}
+      {rows.map((c) => (
+        <div key={c.id} className="row" style={{ justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', padding: '6px 0' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{c.platform} <span className="mono" style={{ color: 'var(--text-4)', fontWeight: 400 }}>{c.kind}</span></div>
+            {c.url && <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.url}</div>}
+            {c.username && <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>{c.username}</div>}
+          </div>
+          <button className="btn sm" onClick={() => remove(c.id)}>Remove</button>
+        </div>
+      ))}
+      <div className="col" style={{ gap: 8, marginTop: 12 }}>
+        <div className="row" style={{ gap: 8 }}>
+          <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} style={{ ...inp, width: 130 }}>
+            {KIND_OPTS.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+          <input placeholder="Platform (e.g. Spotify, Instagram)" value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })} style={inp} />
+        </div>
+        <input placeholder="URL" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} style={inp} />
+        <input placeholder="Handle / username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} style={inp} />
+        <input placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} style={inp} />
+        <button className="btn primary" onClick={add} disabled={busy}>{busy ? 'Adding…' : 'Add channel'}</button>
+      </div>
+    </div>
+  );
+}
+
 function Field({ label, value, multiline, onChange }) {
   const base = {
     width: '100%', background: 'var(--surface-2)', color: 'var(--text)',
@@ -96,7 +156,7 @@ function BriefView({ clientId }) {
 
   return (
     <div className="v-pad fade-in">
-      <div className="label">BRIEF · LIVE · CLIENT {clientId}</div>
+      <div className="label">BRIEF · LIVE</div>
       <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 30, lineHeight: 1.1, margin: '6px 0 16px' }}>
         The client <em>brief</em>.
       </h1>
@@ -120,6 +180,7 @@ function BriefView({ clientId }) {
             <Field key={k} label={label} multiline={ml} value={form[k] ?? ''} onChange={(v) => set(k, v)} />
           ))}
         </div>
+        <DistributionCard clientId={clientId} />
       </div>
 
       <div className="row" style={{ gap: 12, alignItems: 'center', marginTop: 18 }}>

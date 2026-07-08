@@ -1,5 +1,6 @@
 import React from 'react'
 import { Icon, CueLogo, Wordmark } from './shared.jsx'
+import { api } from './api.js'
 import { AVATARS, INVITATIONS, GENERATED_VIDEOS } from './data.jsx'
 import { ClientsView } from './clients.jsx'
 import { BriefView } from './brief.jsx'
@@ -44,6 +45,17 @@ const HEADER_TITLES = {
 function App() {
   const [view, setView] = React.useState('clients');
   const [activeClientId, setActiveClientId] = React.useState(null);
+  const [activeClientName, setActiveClientName] = React.useState('');
+  React.useEffect(() => {
+    if (!activeClientId) { setActiveClientName(''); return; }
+    api.listClients()
+      .then((r) => {
+        const list = Array.isArray(r) ? r : (r.clients || []);
+        const c = list.find((x) => x.id === activeClientId);
+        setActiveClientName((c && c.name) || '');
+      })
+      .catch(() => setActiveClientName(''));
+  }, [activeClientId]);
   const [detailClient, setDetailClient] = React.useState(null);
   const [chatAvatarId, setChatAvatarId] = React.useState('av_amelia');
   const [detailAvatarId, setDetailAvatarId] = React.useState(null);
@@ -142,6 +154,11 @@ function App() {
             <div className="hd-title">{hd.title}</div>
             <div className="mono">{hd.sub}</div>
           </div>
+          {activeClientName && (
+            <div className="mono" style={{ marginLeft: 14, fontSize: 12, color: 'var(--ok)', border: '1px solid var(--border)', borderRadius: 999, padding: '4px 12px', whiteSpace: 'nowrap' }}>
+              CLIENT · {activeClientName}
+            </div>
+          )}
           <div className="hd-spacer" />
           <div className="hd-search">
             <Icon name="search" size={14} />
