@@ -9,13 +9,16 @@ const inputStyle = {
   boxSizing: 'border-box', width: '100%',
 };
 
-function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = [], onUpload, onSynth, onUseRecording }) {
+function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = [], avatarVideos = [], onUpload, onSynth, onUseRecording, onUseVideo, onClearVideo }) {
   const [recPick, setRecPick] = useState('');
+  const [vidPick, setVidPick] = useState('');
+  const videoField = name + '_video_path';
+  const isVideo = !!full[videoField];
   return (
     <div className="card card-pad" style={{ marginBottom: 10 }}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontWeight: 600, fontSize: 13 }}>{label}</div>
-        <span className="badge" style={{ color: full[pathField] ? 'var(--ok)' : 'var(--text-4)' }}>{full[pathField] ? 'set' : 'empty'}</span>
+        <span className="badge" style={{ color: (isVideo || full[pathField]) ? 'var(--ok)' : 'var(--text-4)' }}>{isVideo ? 'video' : (full[pathField] ? 'audio' : 'empty')}</span>
       </div>
       <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
         <input type="file" accept="audio/*" onChange={(e) => onUpload(name, e.target.files[0])} style={{ fontSize: 12, maxWidth: 220 }} />
@@ -38,6 +41,17 @@ function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = 
             {recordings.map((r) => <option key={r.id} value={r.id}>take {String(r.id).slice(0, 8)} · {Math.round((r.bytes || 0) / 1024)}KB</option>)}
           </select>
           <button className="btn sm" onClick={() => { if (recPick) onUseRecording(name, recPick); }}>Use recording</button>
+        </div>
+      )}
+      {avatarVideos.length > 0 && (
+        <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+          <span className="mono" style={{ color: 'var(--text-4)' }}>or avatar video:</span>
+          <select value={vidPick} onChange={(e) => setVidPick(e.target.value)} style={{ ...inputStyle, width: 240 }}>
+            <option value="">—</option>
+            {avatarVideos.map((v) => <option key={v.id} value={v.url}>{(v.title || v.script || 'video').slice(0, 50)}</option>)}
+          </select>
+          <button className="btn sm" onClick={() => { if (vidPick) onUseVideo(name, vidPick); }}>Use video</button>
+          {isVideo && <button className="btn sm" onClick={() => onClearVideo(name)}>Clear video</button>}
         </div>
       )}
     </div>
@@ -116,7 +130,6 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const [recordings, setRecordings] = useState([]);
   const [recToken, setRecToken] = useState(null);
   const [twinVids, setTwinVids] = useState([]);
-  const [videoChoice, setVideoChoice] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
   const [bust, setBust] = useState(Date.now());
@@ -175,10 +188,15 @@ function EpisodeEditor({ cid, epId, onChange }) {
     try { await ep.genMusic(cid, epId, { prompt: musicPrompt, mode: musicMode }); await refresh(); }
     catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
-  const stitchVideoEp = async () => {
-    setBusy('stitchvideo'); setErr('');
-    try { await ep.stitchVideo(cid, epId, videoChoice ? { videoUrl: videoChoice } : {}); setBust(Date.now()); await refresh(); onChange && onChange(); }
-    catch (e) { setErr(e.message || 'Video stitch failed.'); } finally { setBusy(null); }
+  const useVideo = async (slot, videoUrl) => {
+    setBusy(slot); setErr('');
+    try { await ep.useVideo(cid, epId, slot, videoUrl); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not attach video.'); } finally { setBusy(null); }
+  };
+  const clearVideo = async (slot) => {
+    setBusy(slot); setErr('');
+    try { await ep.clearVideo(cid, epId, slot); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not clear video.'); } finally { setBusy(null); }
   };
 
   const stitch = async () => {
@@ -228,7 +246,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
         </div>
       </div>
 
-      <SlotCard name="intro" label="Intro (VO)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} />
+      <SlotCard name="intro" label="Intro (VO)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -246,8 +264,8 @@ function EpisodeEditor({ cid, epId, onChange }) {
         </div>
       </div>
 
-      <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} />
-      <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} />
+      <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
+      <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
 
       <button className="btn primary" onClick={stitch} disabled={busy === 'stitch' || !full.body_path} style={{ marginTop: 6 }}>
         <Icon name="sparkle" size={13} /> {busy === 'stitch' ? 'Stitching…' : 'Stitch into finished episode'}
@@ -257,40 +275,16 @@ function EpisodeEditor({ cid, epId, onChange }) {
       {full.output_path && (
         <div style={{ marginTop: 12 }}>
           <span className="badge" style={{ color: 'var(--ok)' }}>✓ produced</span>
+          {full.video_output_path && (
+            <video controls src={ep.videoFileUrl(cid, epId) + '?b=' + bust} style={{ width: '100%', marginTop: 8, borderRadius: 8, background: '#000' }} />
+          )}
           <audio controls src={ep.fileUrl(cid, epId) + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />
           <div className="row" style={{ gap: 8, marginTop: 8 }}>
+            {full.video_output_path && <a className="btn sm" href={ep.videoFileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download video</a>}
             <a className="btn sm" href={ep.fileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download audio</a>
           </div>
         </div>
       )}
-
-      <div className="card card-pad" style={{ marginTop: 14 }}>
-        <div className="label" style={{ marginBottom: 8 }}>VIDEO EPISODE</div>
-        <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12, marginBottom: 8 }}>
-          Stitch this episode as a video — pick one of the client's rendered videos for the body, or use the cover art as a still over the full audio.
-        </div>
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <select value={videoChoice} onChange={(e) => setVideoChoice(e.target.value)} style={{ ...inputStyle, width: 'auto', maxWidth: 320 }}>
-            <option value="">Cover still + episode audio</option>
-            {twinVids.map((v) => (
-              <option key={v.id} value={v.url}>{(v.title || v.script || 'video').slice(0, 60)}</option>
-            ))}
-          </select>
-          <button className="btn primary" onClick={stitchVideoEp} disabled={busy === 'stitchvideo' || (!full.body_path && !videoChoice)}>
-            <Icon name="sparkle" size={13} /> {busy === 'stitchvideo' ? 'Stitching video…' : 'Stitch video episode'}
-          </button>
-        </div>
-        {!full.body_path && !videoChoice && <div className="mono" style={{ color: 'var(--text-4)', marginTop: 6 }}>Set a body recording or select a video first.</div>}
-        {full.video_output_path && (
-          <div style={{ marginTop: 12 }}>
-            <span className="badge" style={{ color: 'var(--ok)' }}>✓ video produced</span>
-            <video controls src={ep.videoFileUrl(cid, epId) + '?b=' + bust} style={{ width: '100%', marginTop: 8, borderRadius: 8, background: '#000' }} />
-            <div className="row" style={{ gap: 8, marginTop: 8 }}>
-              <a className="btn sm" href={ep.videoFileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download video</a>
-            </div>
-          </div>
-        )}
-      </div>
 
       <VideoCard cid={cid} title={full.title} />
     </div>
