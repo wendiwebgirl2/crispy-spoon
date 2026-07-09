@@ -17,7 +17,12 @@ const REPO = [
   ['tone', 'Brand tone', false],
   ['notes', 'Notes', true],
 ];
-const KEYS = [...CONTACT, ...REPO].map(([k]) => k);
+const THEME = [
+  ['theme_primary', 'Primary'],
+  ['theme_secondary', 'Secondary'],
+  ['theme_accent', 'Accent'],
+];
+const KEYS = [...CONTACT, ...REPO, ...THEME].map(([k]) => k);
 
 const KIND_OPTS = ['podcast', 'social', 'website', 'other'];
 
@@ -192,6 +197,20 @@ function BriefView({ clientId }) {
           ))}
         </div>
         <DistributionCard clientId={clientId} />
+        <div className="card card-pad" style={{ flex: '1 1 320px' }}>
+          <div className="label" style={{ marginBottom: 12 }}>THEME · brand colors</div>
+          {THEME.map(([k, label]) => (
+            <div key={k} style={{ marginBottom: 12 }}>
+              <div className="label" style={{ marginBottom: 6 }}>{label}</div>
+              <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(form[k] || '') ? form[k] : '#000000'} onChange={(e) => set(k, e.target.value)}
+                  style={{ width: 44, height: 34, padding: 0, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', cursor: 'pointer' }} />
+                <input value={form[k] ?? ''} onChange={(e) => set(k, e.target.value)} placeholder="#RRGGBB"
+                  style={{ flex: 1, height: 34, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 }} />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="row" style={{ gap: 12, alignItems: 'center', marginTop: 18 }}>
