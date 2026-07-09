@@ -60,6 +60,7 @@ const StudioView = ({ onNavigate }) => {
   const [brief, setBrief] = React.useState(null);
   const [credentials, setCredentials] = React.useState([]);
   const [outputKey, setOutputKey] = React.useState('download');
+  const [caption, setCaption] = React.useState(false);
   const [token, setToken] = React.useState(null);
 
   React.useEffect(() => {
@@ -364,7 +365,7 @@ const StudioView = ({ onNavigate }) => {
     if (!script.trim() || !token) return;
     setGenerating(true);
     try {
-      await generateVideo(script, { token, title: script.slice(0, 60), avatarId });
+      await generateVideo(script, { token, title: script.slice(0, 60), avatarId, caption });
       const v = await listVideos(token).catch(() => ({ videos: [] }));
       setQueue(v.videos || []);
     } catch (e) {
@@ -557,6 +558,14 @@ const StudioView = ({ onNavigate }) => {
                 );
               })()}
 
+              <div className="label" style={{ marginBottom: 10 }}>CAPTIONS</div>
+              <button onClick={() => setCaption((v) => !v)} className="row"
+                style={{ width: '100%', justifyContent: 'space-between', padding: 8, marginBottom: 22, borderRadius: 'var(--r-sm)',
+                  background: caption ? 'var(--surface-2)' : 'transparent', border: '1px solid', borderColor: caption ? 'var(--border-strong)' : 'var(--border)',
+                  cursor: 'pointer', color: 'inherit', textAlign: 'left' }}>
+                <span style={{ fontSize: 13 }}>Burn-in captions</span>
+                {caption ? <Icon name="check" size={14} style={{ color: 'var(--accent)' }} /> : <span className="mono" style={{ color: 'var(--text-4)' }}>off</span>}
+              </button>
               <div className="label" style={{ marginBottom: 10 }}>SCENE</div>
               <div className="col" style={{ gap: 4, marginBottom: 22 }}>
                 {SCENES.map(s => (
