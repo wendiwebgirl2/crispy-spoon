@@ -124,6 +124,134 @@ function Field({ label, value, multiline, onChange }) {
   );
 }
 
+const ASSET_KINDS = [
+  { id: 'logo', label: 'Logo' },
+  { id: 'background', label: 'Background' },
+  { id: 'music', label: 'Music' },
+  { id: 'font', label: 'Font' },
+  { id: 'video', label: 'Video' },
+  { id: 'other', label: 'Other' },
+];
+
+function AssetsSection({ clientId }) {
+  const [assets, setAssets] = useState([]);
+  const [kind, setKind] = useState('logo');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const load = () => api.listAssets(clientId).then((r) => setAssets(Array.isArray(r) ? r : [])).catch(() => setAssets([]));
+  useEffect(() => { if (clientId != null) load(); }, [clientId]);
+
+  const onFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy(true); setErr('');
+    try { await api.uploadAsset(clientId, kind, file); await load(); }
+    catch (ex) { setErr(ex.message || 'Upload failed.'); }
+    finally { setBusy(false); }
+  };
+  const remove = async (id) => {
+    if (!window.confirm('Delete this asset? This cannot be undone.')) return;
+    try { await api.deleteAsset(clientId, id); await load(); } catch (ex) { setErr(ex.message); }
+  };
+  const isImage = (a) => (a.mime || '').startsWith('image/') || ['logo', 'background'].includes(a.kind);
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div className="label" style={{ marginBottom: 12 }}>ASSETS · logo, backgrounds, music, fonts</div>
+      <div className="card card-pad">
+        <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+          <select value={kind} onChange={(e) => setKind(e.target.value)} style={{ height: 36, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 }}>
+            {ASSET_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+          </select>
+          <label className="btn sm" style={{ cursor: busy ? 'not-allowed' : 'pointer' }}>
+            <Icon name="upload" size={13} /> {busy ? 'Uploading…' : 'Upload'}
+            <input type="file" onChange={onFile} disabled={busy} style={{ display: 'none' }} />
+          </label>
+          {err && <span className="mono" style={{ color: 'var(--accent)' }}>{err}</span>}
+        </div>
+        {assets.length === 0 ? (
+          <div className="mono" style={{ color: 'var(--text-4)' }}>No assets yet.</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 12 }}>
+            {assets.map((a) => (
+              <div key={a.id} className="card" style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ height: 80, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', display: 'grid', placeItems: 'center' }}>
+                  {isImage(a)
+                    ? <img src={api.assetFileUrl(clientId, a.id)} alt={a.filename} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <Icon name={a.kind === 'music' ? 'mic' : a.kind === 'video' ? 'play' : 'doc'} size={20} style={{ color: 'var(--text-3)' }} />}
+                </div>
+                <div className="mono" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={a.filename}>{a.filename}</div>
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="badge">{a.kind}</span>
+                  <button className="icon-btn" title="Delete" onClick={() => remove(a.id)}><Icon name="close" size={12} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AvatarsSection({ clientId }) {
+  const [avatars, setAvatars] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (clientId == null) { setLoading(false); return; }
+    let live = true; setLoading(true);
+    (async () => {
+      try {
+        const invRes = await api.listClientInvites(clientId).catch(() => []);
+        const rows = Array.isArray(invRes) ? invRes : (invRes && invRes.invites ? invRes.invites : []);
+        const tokens = rows.map((r) => r.token).filter(Boolean);
+        const nameByToken = {};
+        for (const iv of rows) if (iv.token) nameByToken[iv.token] = iv.label || iv.client_email || null;
+        const perToken = await Promise.all(tokens.map((t) => api.listAvatars(t).then((r) => r.avatars || []).catch(() => [])));
+        const seen = new Set(); const out = [];
+        for (const a of perToken.flat()) {
+          if (!a || !a.heygen_avatar_id) continue;
+          if (a.id != null && seen.has(a.id)) continue;
+          if (a.id != null) seen.add(a.id);
+          out.push({ ...a, _name: (a.invite_token && nameByToken[a.invite_token]) || a.name || 'Avatar' });
+        }
+        if (live) setAvatars(out);
+      } finally { if (live) setLoading(false); }
+    })();
+    return () => { live = false; };
+  }, [clientId]);
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div className="label" style={{ marginBottom: 12 }}>AVATARS · recorded twins</div>
+      <div className="card card-pad">
+        {loading ? (
+          <div className="mono" style={{ color: 'var(--text-4)' }}>Loading avatars…</div>
+        ) : avatars.length === 0 ? (
+          <div className="mono" style={{ color: 'var(--text-4)' }}>No avatars recorded for this client yet.</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
+            {avatars.map((a) => (
+              <div key={a.id} className="card" style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ height: 96, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', display: 'grid', placeItems: 'center' }}>
+                  {a.thumbnail_url
+                    ? <img src={a.thumbnail_url} alt={a._name} onError={(e) => { e.currentTarget.style.display = 'none'; }} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <Icon name="avatars" size={22} style={{ color: 'var(--text-3)' }} />}
+                </div>
+                <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={a._name}>{a._name}</div>
+                <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{a.created_at ? String(a.created_at).slice(0, 10) : 'ready'}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function BriefView({ clientId }) {
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
@@ -183,6 +311,7 @@ function BriefView({ clientId }) {
         </div>
       )}
 
+      <div className="label" style={{ marginBottom: 12 }}>INFORMATION</div>
       <div className="row" style={{ gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div className="card card-pad" style={{ flex: '1 1 320px' }}>
           <div className="label" style={{ marginBottom: 12 }}>CONTACT · injected verbatim into scripts</div>
@@ -222,6 +351,9 @@ function BriefView({ clientId }) {
           <span className="mono" style={{ color: 'var(--ok)' }}>✓ saved</span>
         )}
       </div>
+
+      <AssetsSection clientId={clientId} />
+      <AvatarsSection clientId={clientId} />
     </div>
   );
 }

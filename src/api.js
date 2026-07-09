@@ -174,6 +174,17 @@ export const api = {
   listCredentials: (id) => vcReq(`/clients/${id}/credentials`),
   addCredential: (id, payload) => vcReq(`/clients/${id}/credentials`, { method: "POST", body: JSON.stringify(payload) }),
   deleteCredential: (id, credId) => vcReq(`/clients/${id}/credentials/${credId}`, { method: "DELETE" }),
+  listAssets: (id) => vcReq(`/clients/${id}/assets`),
+  deleteAsset: (id, assetId) => vcReq(`/clients/${id}/assets/${assetId}`, { method: "DELETE" }),
+  assetFileUrl: (id, assetId) => `${VC_BASE}/clients/${id}/assets/${assetId}/file`,
+  uploadAsset: async (id, kind, file) => {
+    const fd = new FormData();
+    fd.append("kind", kind);
+    fd.append("file", file);
+    const res = await fetch(`${VC_BASE}/clients/${id}/assets`, { method: "POST", credentials: "same-origin", body: fd });
+    if (!res.ok) { let e; try { e = (await res.json()).error; } catch { /* ignore */ } throw new Error(e || `Upload failed (${res.status})`); }
+    return res.json();
+  },
   revealCredential: (id, credId) => vcReq(`/clients/${id}/credentials/${credId}/reveal`),
   createInvite: (id, payload) => vcReq(`/clients/${id}/invites`, { method: "POST", body: JSON.stringify(payload) }),
   channels: (id) => vcReq(`/clients/${id}/scripts/channels`),
