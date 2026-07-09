@@ -58,6 +58,8 @@ const StudioView = ({ onNavigate }) => {
   const [clients, setClients] = React.useState([]);
   const [avatars, setAvatars] = React.useState([]);   // for the selected client
   const [brief, setBrief] = React.useState(null);
+  const [credentials, setCredentials] = React.useState([]);
+  const [outputKey, setOutputKey] = React.useState('download');
   const [token, setToken] = React.useState(null);
 
   React.useEffect(() => {
@@ -117,6 +119,7 @@ const StudioView = ({ onNavigate }) => {
       setAvatars(list);
     } catch { /* no token / no avatars yet */ }
     api.getBrief(id).then(setBrief).catch(() => setBrief(null));
+    api.listCredentials(id).then((r) => setCredentials(Array.isArray(r) ? r : (r && r.credentials ? r.credentials : []))).catch(() => setCredentials([]));
   };
 
   // Live-refresh recent renders while any video is still rendering.
@@ -383,27 +386,23 @@ const StudioView = ({ onNavigate }) => {
     </div>
   );
 
-  // Output options come from the client's brief: every connected channel (plus
-  // its format/aspect-ratio types) and always a direct download.
-  const outputOptions = [];
-  for (const k of CHANNEL_ORDER) {
-    const soc = brief && brief.socials ? brief.socials[k] : null;
-    if (soc && soc.handle) {
-      for (const t of DESTINATIONS[k].types) {
-        outputOptions.push({ key: `${k}:${t.id}`, dest: k, type: t.id, ar: t.ar, label: `${DESTINATIONS[k].label} · ${t.label}` });
-      }
-    }
-  }
-  for (const t of DESTINATIONS.download.types) {
-    outputOptions.push({ key: `download:${t.id}`, dest: 'download', type: t.id, ar: t.ar, label: DESTINATIONS.download.label });
-  }
+  // Output options come from the client's distribution channels (the brief's
+  // DISTRIBUTION card / credentials: podcast, socials, websites, other), plus a
+  // direct download that's always available.
+  const arForKind = (kind) => (kind === 'podcast' ? '1:1' : kind === 'social' ? '9:16' : '16:9');
+  const outputOptions = (credentials || []).map((c) => ({
+    key: `cred:${c.id}`,
+    label: `${c.platform || c.kind || 'Channel'}${c.kind ? ' · ' + c.kind : ''}`,
+    ar: arForKind(c.kind),
+    assembly: c.kind === 'podcast',
+  }));
+  outputOptions.push({ key: 'download', label: 'Direct / download', ar: '16:9', assembly: false });
   const applyOutput = (key) => {
     const opt = outputOptions.find((o) => o.key === key);
     if (!opt) return;
-    setDestination(opt.dest);
-    setContentType(opt.type);
+    setOutputKey(key);
     setAspectRatio(opt.ar);
-    setRenderMode(opt.dest === 'podcast' || opt.type === 'episode' ? 'assembly' : 'video');
+    setRenderMode(opt.assembly ? 'assembly' : 'video');
   };
 
   return (
@@ -415,7 +414,7 @@ const StudioView = ({ onNavigate }) => {
             style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, cursor: 'pointer' }}>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <select value={`${destination}:${contentType}`} onChange={(e) => applyOutput(e.target.value)}
+          <select value={outputKey} onChange={(e) => applyOutput(e.target.value)}
             title="Output — from the client's brief"
             style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, cursor: 'pointer' }}>
             {outputOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
