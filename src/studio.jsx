@@ -41,8 +41,8 @@ const StudioView = ({ onNavigate }) => {
   // —— decision flow ——
   const [step, setStep] = React.useState('home');   // home | assets | client | destination | type | render
   const [clientId, setClientId] = React.useState(null);
-  const [destination, setDestination] = React.useState(null);
-  const [contentType, setContentType] = React.useState(null);
+  const [destination, setDestination] = React.useState('download');
+  const [contentType, setContentType] = React.useState('file');
   const [renderMode, setRenderMode] = React.useState('video');   // video | assembly
 
   // —— render step (video) ——
@@ -134,6 +134,21 @@ const StudioView = ({ onNavigate }) => {
   const clientAvatars = avatars;
   const primaryAvatar = clientAvatars[0] || null;
 
+  // Land-directly-on-cast: pick/switch client inline (no destination/type walk)
+  // and auto-select the first avatar so the cast UI is immediately usable.
+  const selectClientInline = (id) => {
+    setClientId(id);
+    setAvatarId(null);
+    loadClient(id);
+  };
+  React.useEffect(() => {
+    if (!avatarId && avatars.length > 0) {
+      const first = avatars[0];
+      setAvatarId(first.id);
+      if (first._token) setToken(first._token);
+    }
+  }, [avatars]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const pickClient = (id) => {
     setClientId(id);
     setDestination(null);
@@ -175,7 +190,7 @@ const StudioView = ({ onNavigate }) => {
       { id: 'episodes',   label: 'Episodes',      desc: 'Stitch audio + video episodes',      icon: 'studio',  go: () => onNavigate?.('episodes') },
       { id: 'assets',     label: 'Assets',        desc: 'Logos, music, backgrounds & fonts',  icon: 'upload',  go: () => setStep('assets') },
       { id: 'planner',    label: 'Planner',       desc: 'Approved episodes ready to publish', icon: 'history', go: () => onNavigate?.('planner') },
-      { id: 'cast',       label: 'Cast a script', desc: 'Quick-render an avatar video',        icon: 'sparkle', go: () => setStep('client') },
+      { id: 'cast',       label: 'Cast a script', desc: 'Quick-render an avatar video',        icon: 'sparkle', go: () => setStep('render') },
     ];
     return (
       <div className="fade-in" style={{ padding: 'var(--pad)', overflow: 'auto', height: '100%' }}>
@@ -308,6 +323,22 @@ const StudioView = ({ onNavigate }) => {
   }
 
   /* ──────────────── RENDER STEP ──────────────── */
+  if (!clientId) {
+    return (
+      <div className="fade-in" style={{ padding: 'var(--pad)', overflow: 'auto', height: '100%' }}>
+        <button className="btn sm" onClick={() => setStep('home')}><Icon name="arrow-l" size={12} /> Studio</button>
+        <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, letterSpacing: '-0.01em', margin: '18px 0 8px' }}>
+          Cast a <em style={{ color: 'var(--accent)' }}>script</em>
+        </h1>
+        <div className="mono" style={{ marginBottom: 16 }}>Choose a client to cast for.</div>
+        <select value="" onChange={(e) => { const c = clients.find(x => String(x.id) === e.target.value); if (c) selectClientInline(c.id); }}
+          style={{ width: '100%', maxWidth: 360, padding: '10px 12px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 14, cursor: 'pointer' }}>
+          <option value="" disabled>Select a client…</option>
+          {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+    );
+  }
   const avatar = avatarId ? avatars.find(a => a.id === avatarId) : null;
   const typeLabel = (DESTINATIONS[destination].types.find(t => t.id === contentType) || {}).label || '';
 
@@ -357,7 +388,10 @@ const StudioView = ({ onNavigate }) => {
       {/* top bar: breadcrumb + mode toggle */}
       <div className="row" style={{ justifyContent: 'space-between', padding: '10px var(--pad)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <Crumb label={client.name} onClick={() => setStep('client')} />
+          <select value={clientId || ''} onChange={(e) => { const c = clients.find(x => String(x.id) === e.target.value); if (c) selectClientInline(c.id); }}
+            style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, cursor: 'pointer' }}>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
           <span className="mono" style={{ color: 'var(--text-4)' }}>▸</span>
           <Crumb label={DESTINATIONS[destination].label} onClick={() => setStep('destination')} />
           <span className="mono" style={{ color: 'var(--text-4)' }}>▸</span>
