@@ -383,6 +383,29 @@ const StudioView = ({ onNavigate }) => {
     </div>
   );
 
+  // Output options come from the client's brief: every connected channel (plus
+  // its format/aspect-ratio types) and always a direct download.
+  const outputOptions = [];
+  for (const k of CHANNEL_ORDER) {
+    const soc = brief && brief.socials ? brief.socials[k] : null;
+    if (soc && soc.handle) {
+      for (const t of DESTINATIONS[k].types) {
+        outputOptions.push({ key: `${k}:${t.id}`, dest: k, type: t.id, ar: t.ar, label: `${DESTINATIONS[k].label} · ${t.label}` });
+      }
+    }
+  }
+  for (const t of DESTINATIONS.download.types) {
+    outputOptions.push({ key: `download:${t.id}`, dest: 'download', type: t.id, ar: t.ar, label: DESTINATIONS.download.label });
+  }
+  const applyOutput = (key) => {
+    const opt = outputOptions.find((o) => o.key === key);
+    if (!opt) return;
+    setDestination(opt.dest);
+    setContentType(opt.type);
+    setAspectRatio(opt.ar);
+    setRenderMode(opt.dest === 'podcast' || opt.type === 'episode' ? 'assembly' : 'video');
+  };
+
   return (
     <div className="fade-in" style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {/* top bar: breadcrumb + mode toggle */}
@@ -392,10 +415,11 @@ const StudioView = ({ onNavigate }) => {
             style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, cursor: 'pointer' }}>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <span className="mono" style={{ color: 'var(--text-4)' }}>▸</span>
-          <Crumb label={DESTINATIONS[destination].label} onClick={() => setStep('destination')} />
-          <span className="mono" style={{ color: 'var(--text-4)' }}>▸</span>
-          <Crumb label={typeLabel} onClick={() => setStep('type')} />
+          <select value={`${destination}:${contentType}`} onChange={(e) => applyOutput(e.target.value)}
+            title="Output — from the client's brief"
+            style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, cursor: 'pointer' }}>
+            {outputOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
           <button className="btn sm" onClick={startOver}><Icon name="more" size={12} /> Start over</button>
         </div>
         <ModeToggle />
