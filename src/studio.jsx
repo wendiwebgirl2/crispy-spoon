@@ -328,7 +328,7 @@ const StudioView = ({ onNavigate }) => {
     if (!script.trim() || !token) return;
     setGenerating(true);
     try {
-      await generateVideo(script, { token, title: script.slice(0, 60) });
+      await generateVideo(script, { token, title: script.slice(0, 60), avatarId });
       const v = await listVideos(token).catch(() => ({ videos: [] }));
       setQueue(v.videos || []);
     } catch (e) {
@@ -453,7 +453,7 @@ const StudioView = ({ onNavigate }) => {
               </div>
 
               <div className="col" style={{ gap: 10 }}>
-                {queue.map(v => <VideoRow key={v.id} video={v} />)}
+                {queue.map(v => <VideoRow key={v.id} video={v} avatars={avatars} />)}
               </div>
             </div>
 
@@ -478,7 +478,7 @@ const StudioView = ({ onNavigate }) => {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{av._invite || av.contact}</div>
-                        <div className="mono">{isReady ? 'ready' : av.status}</div>
+                        <div className="mono">{[av.created_at ? String(av.created_at).slice(0, 10) : (av._token ? '#' + String(av._token).slice(0, 6) : ''), isReady ? 'ready' : av.status].filter(Boolean).join(' · ')}</div>
                       </div>
                     </button>
                   );
@@ -824,8 +824,9 @@ const Crumb = ({ label, onClick }) => (
   </button>
 );
 
-const VideoRow = ({ video }) => {
-  const avatar = AVATARS.find(a => a.id === video.avatarId);
+const VideoRow = ({ video, avatars = [] }) => {
+  const avatar = (avatars || []).find(a => a.id === video.avatarId)
+    || { id: video.avatarId || 'na', contact: video.title || 'Avatar' };
   return (
     <div className="row" style={{
       padding: 12,
