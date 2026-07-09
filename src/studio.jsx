@@ -76,37 +76,45 @@ const StudioView = ({ onNavigate }) => {
   const loadClient = async (id) => {
     setAvatars([]); setBrief(null); setToken(null); setQueue([]);
     try {
-      // Map each invitation token to a friendly name so an avatar can be labelled
-      // by the invitation it was actually recorded under.
+      // Collect every invitation token for this client. Tokens can resolve to
+      // different (mirrored) backend client records, so avatars recorded under
+      // one invite may live under a different record than another. Fetch avatars
+      // for each token and merge, otherwise some of the client's avatars go
+      // missing from the list.
       const inviteName = {};
-      let firstToken = null;
+      const tokens = [];
       try {
         const res = await api.listClientInvites(id);
         const rows = Array.isArray(res) ? res : (res && res.invites ? res.invites : []);
         for (const iv of rows) {
           if (!iv || !iv.token) continue;
-          if (!firstToken) firstToken = iv.token;
+          tokens.push(iv.token);
           inviteName[iv.token] = iv.label || iv.client_email || null;
         }
       } catch { /* fall back to the ambient token below */ }
 
-      const tok = firstToken || await clientToken(id);
-      setToken(tok);
-
-      if (tok) {
-        // One call returns every avatar for this client (the API scopes by client);
-        // each avatar carries its own invitation token. Show only real, castable
-        // twins and name each by its own invitation.
-        const res = await api.listAvatars(tok).catch(() => ({ avatars: [] }));
-        const list = (res.avatars || [])
-          .filter((a) => a.heygen_avatar_id)
-          .map((a) => ({
-            ...normalizeAvatar(a),
-            _token: a.invite_token || tok,
-            _invite: (a.invite_token && inviteName[a.invite_token]) || a.name || null,
-          }));
-        setAvatars(list);
+      if (tokens.length === 0) {
+        const tok = await clientToken(id);
+        if (tok) tokens.push(tok);
       }
+      setToken(tokens[0] || null);
+
+      const perToken = await Promise.all(
+        tokens.map((t) => api.listAvatars(t).then((r) => r.avatars || []).catch(() => []))
+      );
+      const seen = new Set();
+      const list = [];
+      for (const a of perToken.flat()) {
+        if (!a || !a.heygen_avatar_id) continue;          // real, castable twins only
+        if (a.id != null && seen.has(a.id)) continue;     // dedupe across tokens
+        if (a.id != null) seen.add(a.id);
+        list.push({
+          ...normalizeAvatar(a),
+          _token: a.invite_token || tokens[0] || null,
+          _invite: (a.invite_token && inviteName[a.invite_token]) || a.name || null,
+        });
+      }
+      setAvatars(list);
     } catch { /* no token / no avatars yet */ }
     api.getBrief(id).then(setBrief).catch(() => setBrief(null));
   };
