@@ -13,7 +13,7 @@ const CHANNEL_FALLBACK = [
   { key: 'x',         label: 'X / Tweet' },
 ];
 
-const ScriptsView = () => {
+const ScriptsView = ({ onCastScript } = {}) => {
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(null);
   const [brief, setBrief] = useState(null);
@@ -220,6 +220,7 @@ const ScriptsView = () => {
                 <button className="icon-btn" title="Copy" onClick={() => copy(h.body)}><Icon name="doc" size={13} /></button>
                 {h.status !== 'approved' && <button className="icon-btn" title="Approve" onClick={() => approve(h.id)}><Icon name="check" size={13} /></button>}
                 <button className="icon-btn" title="Send for approval" onClick={() => sendApproval(h.id)}><Icon name="send" size={13} /></button>
+                {h.status === 'approved' && onCastScript && <button className="icon-btn" title="Cast this script" onClick={() => onCastScript(clientId, h.body)}><Icon name="sparkle" size={13} /></button>}
                 <button className="icon-btn" title="Delete" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }}><Icon name="close" size={13} /></button>
               </div>
             </div>

@@ -37,7 +37,7 @@ const STEPS = [
   { id: 'type',        n: 3, label: 'Type' },
 ];
 
-const StudioView = ({ onNavigate }) => {
+const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   // —— decision flow ——
   const [step, setStep] = React.useState('home');   // home | assets | client | destination | type | render
   const [clientId, setClientId] = React.useState(null);
@@ -145,6 +145,17 @@ const StudioView = ({ onNavigate }) => {
     setAvatarId(null);
     loadClient(id);
   };
+
+  // Preload a specific script into the cast window (from "Cast this script").
+  React.useEffect(() => {
+    if (castRequest && castRequest.body != null) {
+      setStep('render');
+      if (castRequest.clientId != null) selectClientInline(castRequest.clientId);
+      setScript(castRequest.body);
+      if (onCastConsumed) onCastConsumed();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [castRequest]);
   React.useEffect(() => {
     if (!avatarId && avatars.length > 0) {
       const first = avatars[0];

@@ -40,6 +40,7 @@ const HEADER_TITLES = {
 
 function App() {
   const [view, setView] = React.useState('clients');
+  const [castRequest, setCastRequest] = React.useState(null);
   const [activeClientId, setActiveClientId] = React.useState(null);
   const [activeClientName, setActiveClientName] = React.useState('');
   React.useEffect(() => {
@@ -197,8 +198,8 @@ function App() {
           )}
           {view === 'invitations' && <InvitationsView />}
           {view === 'planner' && <PlannerView activeClientId={activeClientId} />}
-          {view === 'scripts' && <ScriptsView />}
-          {view === 'studio' && <StudioView onNavigate={setView} />}
+          {view === 'scripts' && <ScriptsView onCastScript={(clientId, body) => { setCastRequest({ clientId, body }); setView('studio'); }} />}
+          {view === 'studio' && <StudioView onNavigate={setView} castRequest={castRequest} onCastConsumed={() => setCastRequest(null)} />}
           {view === 'episodes' && <EpisodesView activeClientId={activeClientId} />}
           {view === 'recordings' && <RecordingsView activeClientId={activeClientId} />}
           {view === 'onboarding' && (
