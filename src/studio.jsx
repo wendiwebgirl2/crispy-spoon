@@ -476,6 +476,21 @@ const StudioView = ({ onNavigate }) => {
                   ))}
                 </select>
               )}
+              {avatarId && (() => {
+                const sel = readyAvatars.find((a) => a.id === avatarId);
+                if (!sel) return null;
+                return (
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 22 }}>
+                    <div style={{ width: 48, height: 48, borderRadius: 'var(--r-sm)', overflow: 'hidden', flexShrink: 0 }}>
+                      <AvatarTile avatar={sel} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel._invite || sel.contact}</div>
+                      <div className="mono">{sel.created_at ? String(sel.created_at).slice(0, 10) : 'ready'}</div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="label" style={{ marginBottom: 10 }}>SCENE</div>
               <div className="col" style={{ gap: 4, marginBottom: 22 }}>

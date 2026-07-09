@@ -154,7 +154,7 @@ const paletteForId = (id) => {
 
 const AvatarTile = ({ avatar, size = 'md', playing }) => {
   // 3-letter monogram: first letter of first name + first two letters of last name
-  const parts = avatar.contact.split(' ');
+  const parts = ((avatar && avatar.contact) || 'Avatar').split(' ');
   const initials = (parts[0]?.[0] || '') + (parts[parts.length - 1] || '').slice(0, 2);
   const p = paletteForId(avatar.id);
   return (
@@ -171,6 +171,14 @@ const AvatarTile = ({ avatar, size = 'md', playing }) => {
         {/* small accent shoulder line */}
         <path d="M60 160 L140 160" stroke={p.tag} strokeWidth="3" opacity="0.5" />
       </svg>
+      {(avatar && (avatar.thumbnail_url || avatar.image_url)) && (
+        <img
+          src={avatar.thumbnail_url || avatar.image_url}
+          alt={(avatar && avatar.contact) || 'Avatar'}
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      )}
       {/* initials chip */}
       <span style={{
         position: 'absolute',
