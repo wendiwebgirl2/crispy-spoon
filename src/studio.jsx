@@ -76,12 +76,43 @@ const StudioView = ({ onNavigate }) => {
   const loadClient = async (id) => {
     setAvatars([]); setBrief(null); setToken(null); setQueue([]);
     try {
-      const tok = await clientToken(id);
-      setToken(tok);
-      if (tok) {
-        const res = await api.listAvatars(tok).catch(() => ({ avatars: [] }));
-        setAvatars((res.avatars || []).map(normalizeAvatar));
+      // A client can hold several invitations — one per recording session — and
+      // each invite token carries its own avatar. Gather every invite, fetch
+      // avatars across all of them, and tag each avatar with its invitation so
+      // the cast picker lists them all by name.
+      let invites = [];
+      try {
+        const res = await api.listClientInvites(id);
+        invites = Array.isArray(res) ? res : (res && res.invites ? res.invites : []);
+      } catch { /* fall back to the ambient token below */ }
+      invites = invites.filter((iv) => iv && iv.token);
+
+      if (invites.length === 0) {
+        const tok = await clientToken(id);
+        if (tok) invites = [{ token: tok, label: null, client_name: null }];
       }
+
+      setToken(invites[0] ? invites[0].token : null);
+
+      const perToken = await Promise.all(
+        invites.map((iv) =>
+          api.listAvatars(iv.token)
+            .then((r) => (r.avatars || []).map((a) => ({
+              ...normalizeAvatar(a),
+              _token: iv.token,
+              _invite: iv.label || iv.client_name || null,
+            })))
+            .catch(() => [])
+        )
+      );
+      const seen = new Set();
+      const merged = [];
+      for (const a of perToken.flat()) {
+        if (a.id != null && seen.has(a.id)) continue;
+        if (a.id != null) seen.add(a.id);
+        merged.push(a);
+      }
+      setAvatars(merged);
     } catch { /* no token / no avatars yet */ }
     api.getBrief(id).then(setBrief).catch(() => setBrief(null));
   };
@@ -122,6 +153,7 @@ const StudioView = ({ onNavigate }) => {
     const a = readyHere[0] || primaryAvatar;
     if (a) {
       setAvatarId(a.id);
+      if (a._token) setToken(a._token);
       setLanguage((a.languages && a.languages[0]) || 'EN');
     }
     setStep('render');
@@ -432,7 +464,7 @@ const StudioView = ({ onNavigate }) => {
                 {readyAvatars.map(av => {
                   const isReady = av.status === 'ready';
                   return (
-                    <button key={av.id} onClick={() => isReady && setAvatarId(av.id)} disabled={!isReady}
+                    <button key={av.id} onClick={() => { if (isReady) { setAvatarId(av.id); if (av._token) setToken(av._token); } }} disabled={!isReady}
                       className="row"
                       style={{
                         padding: 8, borderRadius: 'var(--r-sm)',
@@ -445,8 +477,8 @@ const StudioView = ({ onNavigate }) => {
                         <AvatarTile avatar={av} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{av.contact}</div>
-                        <div className="mono">{isReady ? (client ? client.name : '') : av.status}</div>
+                        <div style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{av._invite || av.contact}</div>
+                        <div className="mono">{isReady ? 'ready' : av.status}</div>
                       </div>
                     </button>
                   );
