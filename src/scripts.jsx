@@ -83,6 +83,16 @@ const ScriptsView = () => {
 
   const approve = async (sid) => { try { await api.updateScript(clientId, sid, { status: 'approved' }); await refreshHistory(); } catch (e) { setErr(e.message); } };
   const remove  = async (sid) => { try { await api.deleteScript(clientId, sid); await refreshHistory(); } catch (e) { setErr(e.message); } };
+  const sendApproval = async (sid) => {
+    setErr('');
+    try {
+      const r = await api.sendScriptApproval(clientId, sid);
+      if (!(r && r.email && r.email.sent)) {
+        setErr('Marked pending — email not sent: ' + ((r && r.email && r.email.error) || 'unknown') + (r && r.approval_link ? ' (link: ' + r.approval_link + ')' : ''));
+      }
+      await refreshHistory();
+    } catch (e) { setErr(e.message); }
+  };
   const copy    = (text) => { try { navigator.clipboard.writeText(text); } catch { /* noop */ } };
 
   const labelFor = (k) => (channels.find(c => c.key === k) || {}).label || k;
@@ -199,6 +209,7 @@ const ScriptsView = () => {
                 <div className="row" style={{ gap: 8 }}>
                   <span className="badge">{labelFor(h.channel)}</span>
                   {h.status && h.status !== 'draft' && <span className="mono" style={{ color: h.status === 'approved' ? 'var(--ok)' : 'var(--text-4)' }}>{h.status}</span>}
+                  {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: h.approval_status.startsWith('approved') ? 'var(--ok)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{h.approval_status.replace(/_/g, ' ')}</span>}
                   {h.model === 'manual' && <span className="mono">manual</span>}
                 </div>
                 <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
@@ -208,6 +219,7 @@ const ScriptsView = () => {
               <div className="row" style={{ gap: 6 }}>
                 <button className="icon-btn" title="Copy" onClick={() => copy(h.body)}><Icon name="doc" size={13} /></button>
                 {h.status !== 'approved' && <button className="icon-btn" title="Approve" onClick={() => approve(h.id)}><Icon name="check" size={13} /></button>}
+                <button className="icon-btn" title="Send for approval" onClick={() => sendApproval(h.id)}><Icon name="send" size={13} /></button>
                 <button className="icon-btn" title="Delete" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }}><Icon name="close" size={13} /></button>
               </div>
             </div>

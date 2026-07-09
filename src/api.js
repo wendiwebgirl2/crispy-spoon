@@ -193,4 +193,5 @@ export const api = {
   manual: (id, payload) => vcReq(`/clients/${id}/scripts/manual`, { method: "POST", body: JSON.stringify(payload) }),
   updateScript: (id, sid, payload) => vcReq(`/clients/${id}/scripts/${sid}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteScript: (id, sid) => vcReq(`/clients/${id}/scripts/${sid}`, { method: "DELETE" }),
+  sendScriptApproval: (id, sid, email) => vcReq(`/clients/${id}/scripts/${sid}/send-approval`, { method: "POST", body: JSON.stringify(email ? { email } : {}) }),
 };
