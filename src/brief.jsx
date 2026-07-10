@@ -196,9 +196,52 @@ function AssetsSection({ clientId }) {
   );
 }
 
+function LookPicker({ avatar, onSet }) {
+  const [looks, setLooks] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      if (!avatar.heygen_group_id) { setErr('No HeyGen group on this avatar.'); setLoading(false); return; }
+      if (!avatar._token) { setErr('No token to look this up.'); setLoading(false); return; }
+      try {
+        const r = await api.listAvatarLooks(avatar._token, avatar.heygen_group_id);
+        if (live) setLooks((r && r.looks) || []);
+      } catch (e) { if (live) setErr(e.message || 'Could not load looks.'); }
+      finally { if (live) setLoading(false); }
+    })();
+    return () => { live = false; };
+  }, [avatar.id]);
+  const pick = async (lookId) => {
+    setErr('');
+    try { await api.setAvatarLook(avatar._token, avatar.id, lookId); if (onSet) onSet(); }
+    catch (e) { setErr(e.message); }
+  };
+  return (
+    <div style={{ marginTop: 6 }}>
+      {loading ? <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Loading looks…</div>
+       : err ? <div className="mono" style={{ color: 'var(--accent)', fontSize: 11 }}>{err}</div>
+       : (looks && looks.length) ? (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {looks.map((l) => (
+            <button key={l.id} onClick={() => pick(l.id)} title={l.name || 'Use this look'}
+              style={{ padding: 0, width: 44, height: 44, borderRadius: 5, overflow: 'hidden', cursor: 'pointer', background: 'var(--surface-2)',
+                border: avatar.heygen_avatar_id === l.id ? '2px solid var(--accent)' : '1px solid var(--border)' }}>
+              {l.image_url ? <img src={l.image_url} alt={l.name || 'look'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="avatars" size={14} />}
+            </button>
+          ))}
+        </div>
+      ) : <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>No looks found in HeyGen.</div>}
+    </div>
+  );
+}
+
 function AvatarsSection({ clientId }) {
   const [avatars, setAvatars] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [openLooks, setOpenLooks] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (clientId == null) { setLoading(false); return; }
@@ -216,13 +259,13 @@ function AvatarsSection({ clientId }) {
           if (!a || !a.heygen_avatar_id) continue;
           if (a.id != null && seen.has(a.id)) continue;
           if (a.id != null) seen.add(a.id);
-          out.push({ ...a, _name: (a.invite_token && nameByToken[a.invite_token]) || a.name || 'Avatar' });
+          out.push({ ...a, _name: (a.invite_token && nameByToken[a.invite_token]) || a.name || 'Avatar', _token: a.invite_token || tokens[0] || null });
         }
         if (live) setAvatars(out);
       } finally { if (live) setLoading(false); }
     })();
     return () => { live = false; };
-  }, [clientId]);
+  }, [clientId, refreshKey]);
 
   return (
     <div style={{ marginTop: 28 }}>
@@ -243,6 +286,10 @@ function AvatarsSection({ clientId }) {
                 </div>
                 <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={a._name}>{a._name}</div>
                 <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{a.created_at ? String(a.created_at).slice(0, 10) : 'ready'}</div>
+                <button className="btn sm" onClick={() => setOpenLooks(openLooks === a.id ? null : a.id)} style={{ marginTop: 2 }}>
+                  <Icon name="sliders" size={12} /> {openLooks === a.id ? 'Hide looks' : 'Looks'}
+                </button>
+                {openLooks === a.id && <LookPicker avatar={a} onSet={() => { setOpenLooks(null); setRefreshKey((k) => k + 1); }} />}
               </div>
             ))}
           </div>
