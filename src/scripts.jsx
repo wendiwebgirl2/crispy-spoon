@@ -83,7 +83,15 @@ const ScriptsView = ({ onCastScript } = {}) => {
     finally { setBusy(false); }
   };
 
-  const approve = async (sid) => { try { await api.updateScript(clientId, sid, { status: 'approved' }); await refreshHistory(); } catch (e) { setErr(e.message); } };
+  const setApproval = async (sid, approval_status, status) => {
+    try {
+      const payload = { approval_status };
+      if (status) payload.status = status;
+      await api.updateScript(clientId, sid, payload);
+      await refreshHistory();
+    } catch (e) { setErr(e.message); }
+  };
+  const APPROVAL_LABEL = { pending: 'pending approval', changes_requested: 'changes added', changes_completed: 'changes completed', approved: 'approved', approved_with_changes: 'approved w/ changes', in_production: 'in production' };
   const remove  = async (sid) => { try { await api.deleteScript(clientId, sid); await refreshHistory(); } catch (e) { setErr(e.message); } };
   const sendApproval = async (sid) => {
     setErr('');
@@ -98,8 +106,14 @@ const ScriptsView = ({ onCastScript } = {}) => {
   const copy    = (text) => { try { navigator.clipboard.writeText(text); } catch { /* noop */ } };
   const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setErr(''); };
   const saveEdit = async () => {
-    try { await api.updateScript(clientId, editing.id, { body: editBody }); setEditing(null); await refreshHistory(); }
-    catch (e) { setErr(e.message); }
+    try {
+      const payload = { body: editBody };
+      if (editing && (editing.approval_status === 'changes_requested' || editing.approval_status === 'approved_with_changes')) {
+        payload.approval_status = 'changes_completed';
+      }
+      await api.updateScript(clientId, editing.id, payload);
+      setEditing(null); await refreshHistory();
+    } catch (e) { setErr(e.message); }
   };
 
   const labelFor = (k) => (channels.find(c => c.key === k) || {}).label || k;
@@ -216,17 +230,23 @@ const ScriptsView = ({ onCastScript } = {}) => {
                 <div className="row" style={{ gap: 8 }}>
                   <span className="badge">{labelFor(h.channel)}</span>
                   {h.status && h.status !== 'draft' && <span className="mono" style={{ color: h.status === 'approved' ? 'var(--ok)' : 'var(--text-4)' }}>{h.status}</span>}
-                  {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: h.approval_status.startsWith('approved') ? 'var(--ok)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{h.approval_status.replace(/_/g, ' ')}</span>}
+                  {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: (h.approval_status.startsWith('approved') || h.approval_status === 'in_production') ? 'var(--ok)' : h.approval_status === 'changes_completed' ? 'var(--text-2)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{(APPROVAL_LABEL[h.approval_status] || h.approval_status.replace(/_/g, ' '))}{h.approval_status === 'changes_completed' && h.approval_updated_at ? ' · ' + String(h.approval_updated_at).slice(0, 10) : ''}</span>}
                   {h.model === 'manual' && <span className="mono">manual</span>}
                 </div>
                 <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                   {h.topic ? <strong>{h.topic} · </strong> : null}{h.body}
                 </div>
+                {(h.approval_status === 'changes_requested' || h.approval_status === 'approved_with_changes') && h.approval_comment && (
+                  <div className="mono" style={{ marginTop: 6, padding: '6px 8px', borderRadius: 6, background: 'var(--surface-2)', color: 'var(--text-2)', fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                    <span style={{ color: 'var(--accent)' }}>Client notes:</span> {h.approval_comment}
+                  </div>
+                )}
               </div>
               <div className="row" style={{ gap: 6 }}>
                 <button className="icon-btn" title="Copy" onClick={() => copy(h.body)}><Icon name="doc" size={13} /></button>
                 <button className="icon-btn" title="Edit / review" onClick={() => openEdit(h)}><Icon name="sliders" size={13} /></button>
-                {h.status !== 'approved' && <button className="icon-btn" title="Approve" onClick={() => approve(h.id)}><Icon name="check" size={13} /></button>}
+                {h.approval_status !== 'approved' && h.approval_status !== 'in_production' && <button className="icon-btn" title="Mark approved" onClick={() => setApproval(h.id, 'approved', 'approved')}><Icon name="check" size={13} /></button>}
+                {(h.approval_status === 'approved' || h.approval_status === 'approved_with_changes') && <button className="icon-btn" title="Mark in production" onClick={() => setApproval(h.id, 'in_production', 'approved')}><Icon name="play" size={13} /></button>}
                 <button className="icon-btn" title="Send for approval" onClick={() => sendApproval(h.id)}><Icon name="send" size={13} /></button>
                 {h.status === 'approved' && onCastScript && <button className="icon-btn" title="Cast this script" onClick={() => onCastScript(clientId, h.body)}><Icon name="sparkle" size={13} /></button>}
                 <button className="icon-btn" title="Delete" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }}><Icon name="close" size={13} /></button>
