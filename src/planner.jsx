@@ -63,7 +63,7 @@ function Timeline({ items, channels, weekOffset }) {
   );
 }
 
-const PlannerView = ({ activeClientId }) => {
+const PlannerView = ({ activeClientId, onCastScript }) => {
   const cid = activeClientId;
   const [items, setItems] = useState([]);
   const [channels, setChannels] = useState([]);
@@ -105,6 +105,12 @@ const PlannerView = ({ activeClientId }) => {
     try { await sched.add(cid, body); setTitle(''); setChannelName(''); setDate(''); setScriptId(''); load(); }
     catch (e) { setErr(e.message); }
   };
+  const scheduleFromApproved = (s) => {
+    setScriptId(String(s.id));
+    if (s.channel && channels.find((c) => c.key === s.channel)) setChannel(s.channel);
+    setTitle(s.topic || '');
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const advance = async (id, status) => { try { await sched.advance(cid, id, status); load(); } catch (e) { setErr(e.message); } };
   const del = async (id) => { if (!window.confirm('Remove from planner?')) return; try { await sched.del(cid, id); load(); } catch (e) { setErr(e.message); } };
 
@@ -123,6 +129,26 @@ const PlannerView = ({ activeClientId }) => {
 
   return (
     <div className="v-pad fade-in">
+      {approved.length > 0 && (
+        <div className="card card-pad" style={{ marginBottom: 14 }}>
+          <div className="label" style={{ marginBottom: 10 }}>READY TO DISTRIBUTE <span style={{ color: 'var(--text-4)' }}>({approved.length})</span></div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+            {approved.map((s) => (
+              <div key={s.id} className="card" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+                  <span className="badge">{s.channel}</span>
+                  <span className="mono" style={{ color: 'var(--ok)', fontSize: 11 }}>approved</span>
+                </div>
+                <div style={{ fontSize: 13, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.topic || (s.body || '').slice(0, 80) || 'Untitled script'}</div>
+                <div className="row" style={{ gap: 6, marginTop: 'auto' }}>
+                  <button className="btn sm" onClick={() => scheduleFromApproved(s)}><Icon name="plus" size={12} /> Schedule</button>
+                  {onCastScript && <button className="btn sm" onClick={() => onCastScript(cid, s.body)}><Icon name="sparkle" size={12} /> Cast</button>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="card card-pad" style={{ marginBottom: 14 }}>
         <div className="label" style={{ marginBottom: 10 }}>PLAN A POST</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
