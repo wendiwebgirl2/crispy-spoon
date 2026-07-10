@@ -26,6 +26,8 @@ const ScriptsView = ({ onCastScript } = {}) => {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null);
+  const [editBody, setEditBody] = useState('');
 
   // manual entry
   const [manualOpen, setManualOpen] = useState(false);
@@ -94,6 +96,11 @@ const ScriptsView = ({ onCastScript } = {}) => {
     } catch (e) { setErr(e.message); }
   };
   const copy    = (text) => { try { navigator.clipboard.writeText(text); } catch { /* noop */ } };
+  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setErr(''); };
+  const saveEdit = async () => {
+    try { await api.updateScript(clientId, editing.id, { body: editBody }); setEditing(null); await refreshHistory(); }
+    catch (e) { setErr(e.message); }
+  };
 
   const labelFor = (k) => (channels.find(c => c.key === k) || {}).label || k;
 
@@ -218,6 +225,7 @@ const ScriptsView = ({ onCastScript } = {}) => {
               </div>
               <div className="row" style={{ gap: 6 }}>
                 <button className="icon-btn" title="Copy" onClick={() => copy(h.body)}><Icon name="doc" size={13} /></button>
+                <button className="icon-btn" title="Edit / review" onClick={() => openEdit(h)}><Icon name="sliders" size={13} /></button>
                 {h.status !== 'approved' && <button className="icon-btn" title="Approve" onClick={() => approve(h.id)}><Icon name="check" size={13} /></button>}
                 <button className="icon-btn" title="Send for approval" onClick={() => sendApproval(h.id)}><Icon name="send" size={13} /></button>
                 {h.status === 'approved' && onCastScript && <button className="icon-btn" title="Cast this script" onClick={() => onCastScript(clientId, h.body)}><Icon name="sparkle" size={13} /></button>}
@@ -253,6 +261,22 @@ const ScriptsView = ({ onCastScript } = {}) => {
           <Field label="Tone"        value={brief?.tone} />
         </div>
       </div>
+      {editing && (
+        <div onClick={() => setEditing(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
+          <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(760px, 96vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="label">EDIT SCRIPT{editing.topic ? ' · ' + editing.topic : ''}</div>
+              <button className="icon-btn" title="Close" onClick={() => setEditing(null)}><Icon name="close" size={14} /></button>
+            </div>
+            <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)}
+              style={{ flex: 1, minHeight: 340, resize: 'vertical', padding: 14, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 15, lineHeight: 1.6 }} />
+            <div className="row" style={{ justifyContent: 'flex-end', gap: 10 }}>
+              <button className="btn sm" onClick={() => setEditing(null)}>Cancel</button>
+              <button className="btn primary sm" onClick={saveEdit}><Icon name="check" size={13} /> Save</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
