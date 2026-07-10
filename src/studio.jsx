@@ -61,6 +61,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   const [credentials, setCredentials] = React.useState([]);
   const [outputKey, setOutputKey] = React.useState('download');
   const [caption, setCaption] = React.useState(false);
+  const [backgroundColor, setBackgroundColor] = React.useState(null);
   const [token, setToken] = React.useState(null);
 
   React.useEffect(() => {
@@ -376,7 +377,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     if (!script.trim() || !token) return;
     setGenerating(true);
     try {
-      await generateVideo(script, { token, title: script.slice(0, 60), avatarId, caption });
+      await generateVideo(script, { token, title: script.slice(0, 60), avatarId, caption, background: backgroundColor ? { type: 'color', value: backgroundColor } : null });
       const v = await listVideos(token).catch(() => ({ videos: [] }));
       setQueue(v.videos || []);
     } catch (e) {
@@ -569,6 +570,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                 );
               })()}
 
+              <a href="https://app.heygen.com/avatars" target="_blank" rel="noopener noreferrer" className="btn sm"
+                style={{ marginBottom: 22, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="globe" size={13} /> Edit avatar in HeyGen
+              </a>
               <div className="label" style={{ marginBottom: 10 }}>CAPTIONS</div>
               <button onClick={() => setCaption((v) => !v)} className="row"
                 style={{ width: '100%', justifyContent: 'space-between', padding: 8, marginBottom: 22, borderRadius: 'var(--r-sm)',
@@ -595,6 +600,15 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                     {scene === s.id && <Icon name="check" size={14} style={{ color: 'var(--accent)' }} />}
                   </button>
                 ))}
+              </div>
+
+              <div className="label" style={{ marginBottom: 10 }}>BACKGROUND</div>
+              <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 22 }}>
+                <input type="color" value={backgroundColor || '#1a1a1a'} onChange={(e) => setBackgroundColor(e.target.value)}
+                  style={{ width: 40, height: 32, padding: 0, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', cursor: 'pointer' }} />
+                {backgroundColor
+                  ? <button className="btn sm" onClick={() => setBackgroundColor(null)}>Clear</button>
+                  : <span className="mono" style={{ color: 'var(--text-4)' }}>none — avatar's own</span>}
               </div>
 
               <div className="label" style={{ marginBottom: 10 }}>ASPECT RATIO</div>
