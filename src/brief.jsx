@@ -6,6 +6,7 @@ import { Icon } from './shared.jsx'
 // mobile/website) are the source of truth the Scripts tab injects verbatim;
 // the repository fields (positioning/audience/tone/notes) steer the copy.
 const CONTACT = [
+  ['email', 'Email', false],
   ['phone', 'Phone', false],
   ['mobile', 'Mobile', false],
   ['website', 'Website', false],
