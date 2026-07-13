@@ -136,6 +136,21 @@ const ScriptsView = ({ onCastScript } = {}) => {
 
   const labelFor = (k) => (channels.find(c => c.key === k) || {}).label || k;
 
+  // Group history by batch (same topic + generation moment) instead of one
+  // endless flat list. Manual entries get their own single-item group.
+  const groupedHistory = React.useMemo(() => {
+    const groups = new Map();
+    for (const h of history) {
+      const key = h.batch_id || `solo-${h.id}`;
+      if (!groups.has(key)) groups.set(key, { key, topic: h.topic, date: h.created_at, items: [] });
+      const g = groups.get(key);
+      g.items.push(h);
+      if (h.created_at && (!g.date || h.created_at > g.date)) g.date = h.created_at;
+      if (!g.topic && h.topic) g.topic = h.topic;
+    }
+    return [...groups.values()].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [history]);
+
   if (loading) {
     return <div className="v-pad fade-in"><div className="mono">Loading clients from the API…</div></div>;
   }
@@ -241,8 +256,15 @@ const ScriptsView = ({ onCastScript } = {}) => {
           <div className="label">HISTORY</div>
           <span className="mono">{history.length} on file</span>
         </div>
-        <div className="col" style={{ gap: 8 }}>
-          {history.map(h => (
+        <div className="col" style={{ gap: 20 }}>
+          {groupedHistory.map(g => (
+            <div key={g.key}>
+              <div className="row" style={{ gap: 8, marginBottom: 8, alignItems: 'baseline' }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{g.topic || 'Untitled topic'}</span>
+                <span className="mono" style={{ color: 'var(--text-4)' }}>{g.date ? String(g.date).slice(0, 10) : ''} · {g.items.length} {g.items.length === 1 ? 'script' : 'scripts'}</span>
+              </div>
+              <div className="col" style={{ gap: 8 }}>
+                {g.items.map(h => (
             <div key={h.id} className="row" style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface)', gap: 12, alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="row" style={{ gap: 8 }}>
@@ -268,6 +290,9 @@ const ScriptsView = ({ onCastScript } = {}) => {
                 <button className="icon-btn" title="Send for approval" onClick={() => sendApproval(h.id)}><Icon name="send" size={13} /></button>
                 {h.status === 'approved' && onCastScript && <button className="icon-btn" title="Cast this script" onClick={() => onCastScript(clientId, h.body)}><Icon name="sparkle" size={13} /></button>}
                 <button className="icon-btn" title="Delete" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }}><Icon name="close" size={13} /></button>
+              </div>
+            </div>
+                ))}
               </div>
             </div>
           ))}
