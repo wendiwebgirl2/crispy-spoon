@@ -164,7 +164,7 @@ export const api = {
   listClients: () => vcReq("/clients"),
   listAvatars: (token) => apiGet("/api/avatars/" + encodeURIComponent(token)),
   listAvatarLooks: (token, groupId) => apiGet("/api/avatars/" + encodeURIComponent(token) + "/looks?group_id=" + encodeURIComponent(groupId)),
-  setAvatarLook: (token, avatarId, heygenAvatarId) => apiPostJson("/api/avatars/" + encodeURIComponent(token) + "/set-look", { avatar_id: avatarId, heygen_avatar_id: heygenAvatarId }),
+  setAvatarLook: (token, avatarId, heygenAvatarId, imageUrl) => apiPostJson("/api/avatars/" + encodeURIComponent(token) + "/set-look", { avatar_id: avatarId, heygen_avatar_id: heygenAvatarId, image_url: imageUrl || null }),
   getClient: (id) => vcReq(`/clients/${id}`),
   createClient: (payload) => vcReq("/clients", { method: "POST", body: JSON.stringify(payload) }),
   renameClient: (id, payload) => vcReq(`/clients/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),

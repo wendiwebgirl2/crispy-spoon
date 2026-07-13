@@ -216,7 +216,8 @@ function LookPicker({ avatar, onSet }) {
   }, [avatar.id]);
   const pick = async (lookId) => {
     setErr('');
-    try { await api.setAvatarLook(avatar._token, avatar.id, lookId); if (onSet) onSet(); }
+    const look = (looks || []).find((l) => l.id === lookId);
+    try { await api.setAvatarLook(avatar._token, avatar.id, lookId, look && look.image_url); if (onSet) onSet(); }
     catch (e) { setErr(e.message); }
   };
   return (
