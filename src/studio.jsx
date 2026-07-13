@@ -63,6 +63,8 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   const [outputKey, setOutputKey] = React.useState('download');
   const [caption, setCaption] = React.useState(false);
   const [backgroundColor, setBackgroundColor] = React.useState(null);
+  const [backgroundAssetId, setBackgroundAssetId] = React.useState(null);
+  const [bgAssets, setBgAssets] = React.useState([]);
   const [token, setToken] = React.useState(null);
 
   React.useEffect(() => {
@@ -123,6 +125,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     } catch { /* no token / no avatars yet */ }
     api.getBrief(id).then(setBrief).catch(() => setBrief(null));
     api.listCredentials(id).then((r) => setCredentials(Array.isArray(r) ? r : (r && r.credentials ? r.credentials : []))).catch(() => setCredentials([]));
+    api.listAssets(id).then((r) => setBgAssets((Array.isArray(r) ? r : []).filter((a) => a.kind === 'background'))).catch(() => setBgAssets([]));
   };
 
   // Live-refresh recent renders while any video is still rendering.
@@ -378,7 +381,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     if (!script.trim() || !token) return;
     setGenerating(true);
     try {
-      await generateVideo(script, { token, title: script.slice(0, 60), avatarId, caption, background: backgroundColor ? { type: 'color', value: backgroundColor } : null, aspectRatio });
+      await generateVideo(script, { token, title: script.slice(0, 60), avatarId, caption, background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null, aspectRatio, backgroundAssetId });
       const v = await listVideos(token).catch(() => ({ videos: [] }));
       setQueue(v.videos || []);
     } catch (e) {
@@ -614,13 +617,25 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
               </div>
 
               <div className="label" style={{ marginBottom: 10 }}>BACKGROUND</div>
-              <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 22 }}>
-                <input type="color" value={backgroundColor || '#1a1a1a'} onChange={(e) => setBackgroundColor(e.target.value)}
+              <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 10 }}>
+                <input type="color" value={backgroundColor || '#1a1a1a'} onChange={(e) => { setBackgroundColor(e.target.value); setBackgroundAssetId(null); }}
                   style={{ width: 40, height: 32, padding: 0, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', cursor: 'pointer' }} />
-                {backgroundColor
-                  ? <button className="btn sm" onClick={() => setBackgroundColor(null)}>Clear</button>
+                {(backgroundColor || backgroundAssetId)
+                  ? <button className="btn sm" onClick={() => { setBackgroundColor(null); setBackgroundAssetId(null); }}>Clear</button>
                   : <span className="mono" style={{ color: 'var(--text-4)' }}>none — avatar's own</span>}
               </div>
+              {bgAssets.length > 0 && (
+                <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 22 }}>
+                  {bgAssets.map((a) => (
+                    <button key={a.id} title={a.filename} onClick={() => { setBackgroundAssetId(a.id); setBackgroundColor(null); }}
+                      style={{ padding: 0, width: 44, height: 44, borderRadius: 5, overflow: 'hidden', cursor: 'pointer', background: 'var(--surface-2)',
+                        border: backgroundAssetId === a.id ? '2px solid var(--accent)' : '1px solid var(--border)' }}>
+                      <img src={api.assetFileUrl(clientId, a.id)} alt={a.filename} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </button>
+                  ))}
+                </div>
+              )}
+              {bgAssets.length === 0 && <div style={{ marginBottom: 22 }} />}
 
               <div className="label" style={{ marginBottom: 10 }}>ASPECT RATIO</div>
               <div className="row" style={{ gap: 4, marginBottom: 22 }}>
