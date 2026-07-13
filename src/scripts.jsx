@@ -28,6 +28,8 @@ const ScriptsView = ({ onCastScript } = {}) => {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [editBody, setEditBody] = useState('');
+  const [revisePrompt, setRevisePrompt] = useState('');
+  const [revising, setRevising] = useState(false);
 
   // manual entry
   const [manualOpen, setManualOpen] = useState(false);
@@ -104,7 +106,7 @@ const ScriptsView = ({ onCastScript } = {}) => {
     } catch (e) { setErr(e.message); }
   };
   const copy    = (text) => { try { navigator.clipboard.writeText(text); } catch { /* noop */ } };
-  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setErr(''); };
+  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setRevisePrompt(''); setErr(''); };
   const saveEdit = async () => {
     try {
       const payload = { body: editBody };
@@ -114,6 +116,22 @@ const ScriptsView = ({ onCastScript } = {}) => {
       await api.updateScript(clientId, editing.id, payload);
       setEditing(null); await refreshHistory();
     } catch (e) { setErr(e.message); }
+  };
+  const reviseWithClaude = async () => {
+    if (!revisePrompt.trim() || !editing) return;
+    setRevising(true); setErr('');
+    try {
+      const out = await api.reviseScript(clientId, editing.id, revisePrompt.trim());
+      setEditBody(out.body || editBody);
+      setRevisePrompt('');
+    } catch (e) { setErr(e.message); }
+    finally { setRevising(false); }
+  };
+  const wordCount = (t) => (String(t || '').trim().match(/\S+/g) || []).length;
+  const readTime = (t) => {
+    const words = wordCount(t);
+    const mins = words / 140;
+    return mins < 1 ? `${Math.max(1, Math.round(mins * 60))} sec` : `${mins.toFixed(1)} min`;
   };
 
   const labelFor = (k) => (channels.find(c => c.key === k) || {}).label || k;
@@ -290,6 +308,19 @@ const ScriptsView = ({ onCastScript } = {}) => {
             </div>
             <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)}
               style={{ flex: 1, minHeight: 340, resize: 'vertical', padding: 14, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 15, lineHeight: 1.6 }} />
+            <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>
+              {wordCount(editBody)} words · ~{readTime(editBody)} read
+            </div>
+            <div className="row" style={{ gap: 8 }}>
+              <input className="textarea" value={revisePrompt} onChange={(e) => setRevisePrompt(e.target.value)}
+                placeholder="Tell Claude how to revise this (e.g. “make it shorter and punchier”)…"
+                onKeyDown={(e) => { if (e.key === 'Enter' && !revising) reviseWithClaude(); }}
+                style={{ minHeight: 0, height: 40, fontSize: 14, flex: 1 }} />
+              <button className="btn sm" onClick={reviseWithClaude} disabled={revising || !revisePrompt.trim()}
+                style={{ opacity: (revising || !revisePrompt.trim()) ? 0.5 : 1, whiteSpace: 'nowrap' }}>
+                <Icon name="sparkle" size={13} /> {revising ? 'Revising…' : 'Edit with Claude'}
+              </button>
+            </div>
             <div className="row" style={{ justifyContent: 'flex-end', gap: 10 }}>
               <button className="btn sm" onClick={() => setEditing(null)}>Cancel</button>
               <button className="btn primary sm" onClick={saveEdit}><Icon name="check" size={13} /> Save</button>
