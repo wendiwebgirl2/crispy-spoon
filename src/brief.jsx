@@ -406,4 +406,4 @@ function BriefView({ clientId }) {
   );
 }
 
-export { BriefView }
+export { BriefView, LookPicker }

@@ -83,8 +83,8 @@ export function listVideos(token = currentToken()) {
 }
 
 // Kick off a new HeyGen render from a script.
-export function generateVideo(script, { token = currentToken(), title, avatarId, caption, background } = {}) {
-  return apiPostJson("/api/videos/generate", { token, script, title, avatar_id: avatarId, caption: !!caption, background: background || null });
+export function generateVideo(script, { token = currentToken(), title, avatarId, caption, background, aspectRatio } = {}) {
+  return apiPostJson("/api/videos/generate", { token, script, title, avatar_id: avatarId, caption: !!caption, background: background || null, aspect_ratio: aspectRatio || null });
 }
 
 // ---- Domain calls: consent + recordings (Onboarding) ------------------------

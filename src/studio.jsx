@@ -8,6 +8,7 @@ import { api, generateVideo, listVideos } from './api.js'
 import { clientToken } from './dashboard-api.js'
 import { AvatarTile, Icon, StatusBadge } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
+import { LookPicker } from './brief.jsx'
 
 const SCENES = [
   { id: 'plain',     label: 'Plain', desc: 'No background.' },
@@ -377,7 +378,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     if (!script.trim() || !token) return;
     setGenerating(true);
     try {
-      await generateVideo(script, { token, title: script.slice(0, 60), avatarId, caption, background: backgroundColor ? { type: 'color', value: backgroundColor } : null });
+      await generateVideo(script, { token, title: script.slice(0, 60), avatarId, caption, background: backgroundColor ? { type: 'color', value: backgroundColor } : null, aspectRatio });
       const v = await listVideos(token).catch(() => ({ videos: [] }));
       setQueue(v.videos || []);
     } catch (e) {
@@ -558,7 +559,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                 const sel = readyAvatars.find((a) => a.id === avatarId);
                 if (!sel) return null;
                 return (
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 22 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
                     <div style={{ width: 48, height: 48, borderRadius: 'var(--r-sm)', overflow: 'hidden', flexShrink: 0 }}>
                       <AvatarTile avatar={sel} />
                     </div>
@@ -566,6 +567,16 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                       <div style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel._invite || sel.contact}</div>
                       <div className="mono">{sel.created_at ? String(sel.created_at).slice(0, 10) : 'ready'}</div>
                     </div>
+                  </div>
+                );
+              })()}
+              {avatarId && (() => {
+                const sel = readyAvatars.find((a) => a.id === avatarId);
+                if (!sel || !sel.heygen_group_id) return null;
+                return (
+                  <div style={{ marginBottom: 22 }}>
+                    <div className="label" style={{ marginBottom: 8 }}>LOOK</div>
+                    <LookPicker avatar={sel} onSet={() => loadClient(clientId)} />
                   </div>
                 );
               })()}
@@ -933,49 +944,55 @@ const Crumb = ({ label, onClick }) => (
 const VideoRow = ({ video, avatars = [] }) => {
   const avatar = (avatars || []).find(a => a.id === video.avatarId)
     || { id: video.avatarId || 'na', contact: video.title || 'Avatar' };
+  const ready = video.status === 'ready' && video.url;
   return (
-    <div className="row" style={{
-      padding: 12,
+    <div style={{
       border: '1px solid var(--border)',
       borderRadius: 'var(--r-md)',
       background: 'var(--surface)',
-      gap: 14
+      overflow: 'hidden'
     }}>
-      <div style={{ width: 80, aspectRatio: '16/9', borderRadius: 'var(--r-sm)', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-        <AvatarTile avatar={avatar} />
-        {video.status === 'ready' && (
-          <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'rgba(0,0,0,0.2)' }}>
-            <Icon name="play" size={18} style={{ color: '#fff' }} />
+      <div className="row" style={{ padding: 12, gap: 14 }}>
+        {!ready && (
+          <div style={{ width: 80, aspectRatio: '16/9', borderRadius: 'var(--r-sm)', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
+            <AvatarTile avatar={avatar} />
           </div>
         )}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {video.title}
-        </div>
-        <div className="row" style={{ marginTop: 4 }}>
-          <span className="mono">{avatar.contact.split(' ')[0]}</span>
-          <span className="mono">·</span>
-          <span className="mono">{video.duration}</span>
-          <span className="mono">·</span>
-          <span className="mono">{video.createdAt}</span>
-        </div>
-        {video.status === 'rendering' && (
-          <div style={{ marginTop: 8, height: 3, background: 'var(--surface-2)', borderRadius: 2, overflow: 'hidden' }}>
-            <div style={{ width: `${video.progress || 0}%`, height: '100%', background: 'var(--accent)', transition: 'width 200ms linear' }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {video.title}
           </div>
-        )}
+          <div className="row" style={{ marginTop: 4 }}>
+            <span className="mono">{(avatar.contact || '').split(' ')[0]}</span>
+            {video.duration && <><span className="mono">·</span><span className="mono">{video.duration}</span></>}
+            <span className="mono">·</span>
+            <span className="mono">{video.createdAt || (video.created_at ? String(video.created_at).slice(0, 10) : '')}</span>
+          </div>
+          {video.status === 'rendering' && (
+            <div style={{ marginTop: 8, height: 3, background: 'var(--surface-2)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ width: `${video.progress || 0}%`, height: '100%', background: 'var(--accent)', transition: 'width 200ms linear' }} />
+            </div>
+          )}
+          {video.status === 'failed' && (
+            <div className="mono" style={{ color: 'var(--accent)', marginTop: 6 }}>{video.failure_reason || 'render failed'}</div>
+          )}
+        </div>
+        <div className="row" style={{ gap: 6 }}>
+          {ready && (
+            <>
+              <a className="icon-btn" title="Download" href={video.url} download target="_blank" rel="noopener noreferrer"><Icon name="download" size={14} /></a>
+              <button className="icon-btn" title="More"><Icon name="more" size={14} /></button>
+            </>
+          )}
+        </div>
       </div>
-      <div className="row" style={{ gap: 6 }}>
-        {video.status === 'ready' && (
-          <>
-            <button className="icon-btn" title="Download"><Icon name="download" size={14} /></button>
-            <button className="icon-btn" title="More"><Icon name="more" size={14} /></button>
-          </>
-        )}
-        {video.status === 'rendering' && <StatusBadge status="training" progress={video.progress} />}
-        {video.status === 'queued' && <StatusBadge status="queued" />}
-      </div>
+      {ready && (
+        <video
+          controls
+          src={video.url}
+          style={{ display: 'block', width: '100%', maxHeight: 480, background: '#0a0a0a', objectFit: 'contain' }}
+        />
+      )}
     </div>
   );
 };
