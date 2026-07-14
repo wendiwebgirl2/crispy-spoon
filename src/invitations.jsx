@@ -72,6 +72,12 @@ const InvitationsList = ({ onCompose }) => {
     catch { setErr('Could not copy to clipboard.'); }
   };
 
+  const remove = async (inv) => {
+    if (!window.confirm(`Delete this invitation for ${inv.client_name}${inv.label ? ` — "${inv.label}"` : ''}? This can't be undone.`)) return;
+    try { await api.deleteInvite(inv.client_id, inv.id); setInvites((cur) => cur.filter((i) => i.id !== inv.id)); }
+    catch (e) { setErr(e.message || 'Could not delete invitation.'); }
+  };
+
   const counts = {
     all: invites.length,
     pending: invites.filter((i) => i.status === 'pending').length,
@@ -136,6 +142,9 @@ const InvitationsList = ({ onCompose }) => {
               </span>
               <button className="btn sm" onClick={() => copyLink(inv.token)}>
                 <Icon name="send" size={13} /> {copied === inv.token ? 'Copied' : 'Copy link'}
+              </button>
+              <button className="icon-btn" title="Delete invitation" onClick={() => remove(inv)}>
+                <Icon name="close" size={13} />
               </button>
             </div>
           ))}
