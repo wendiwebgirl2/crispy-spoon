@@ -116,6 +116,12 @@ function InvitesSection({ clientId }) {
     catch { setErr('Could not copy to clipboard.'); }
   };
 
+  const remove = async (inv) => {
+    if (!window.confirm(`Delete this invite${inv.label ? ` — "${inv.label}"` : ''}? This can't be undone.`)) return;
+    try { await api.deleteInvite(clientId, inv.id); await load(); }
+    catch (e) { setErr(e.message || 'Could not delete invite.'); }
+  };
+
   const inputStyle = {
     background: 'var(--surface-2)', color: 'var(--text)',
     border: '1px solid var(--border)', borderRadius: 'var(--r-sm)',
@@ -169,6 +175,9 @@ function InvitesSection({ clientId }) {
               <button className="btn sm" onClick={() => copyLink(inv.token)}>
                 <Icon name="send" size={13} />
                 {copied === inv.token ? 'Copied' : 'Copy link'}
+              </button>
+              <button className="btn sm" onClick={() => remove(inv)} style={{ color: 'var(--accent)' }}>
+                <Icon name="close" size={13} /> Delete
               </button>
             </div>
           ))}
