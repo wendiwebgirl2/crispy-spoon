@@ -143,8 +143,8 @@ const InvitationsList = ({ onCompose }) => {
               <button className="btn sm" onClick={() => copyLink(inv.token)}>
                 <Icon name="send" size={13} /> {copied === inv.token ? 'Copied' : 'Copy link'}
               </button>
-              <button className="icon-btn" title="Delete invitation" onClick={() => remove(inv)}>
-                <Icon name="close" size={13} />
+              <button className="btn sm" title="Delete invitation" onClick={() => remove(inv)} style={{ color: 'var(--accent)' }}>
+                <Icon name="close" size={13} /> Delete
               </button>
             </div>
           ))}
