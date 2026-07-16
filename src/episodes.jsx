@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Icon } from './shared.jsx'
 import { ep, video, rec, clientToken } from './dashboard-api.js'
+import { api } from './api.js'
 
 const inputStyle = {
   background: 'var(--surface-2)', color: 'var(--text)',
@@ -52,6 +53,56 @@ function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = 
           </select>
           <button className="btn sm" onClick={() => { if (vidPick) onUseVideo(name, vidPick); }}>Use video</button>
           {isVideo && <button className="btn sm" onClick={() => onClearVideo(name)}>Clear video</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function YourAvatars({ cid }) {
+  const [avatars, setAvatars] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (cid == null) { setLoading(false); return; }
+    let live = true; setLoading(true);
+    (async () => {
+      try {
+        const invRes = await api.listClientInvites(cid).catch(() => []);
+        const rows = Array.isArray(invRes) ? invRes : (invRes && invRes.invites ? invRes.invites : []);
+        const tokens = rows.map((r) => r.token).filter(Boolean);
+        const nameByToken = {};
+        for (const iv of rows) if (iv.token) nameByToken[iv.token] = iv.label || iv.client_email || null;
+        const perToken = await Promise.all(tokens.map((t) => api.listAvatars(t).then((r) => r.avatars || []).catch(() => [])));
+        const seen = new Set(); const out = [];
+        for (const a of perToken.flat()) {
+          if (!a || !a.heygen_avatar_id) continue;
+          if (a.id != null && seen.has(a.id)) continue;
+          if (a.id != null) seen.add(a.id);
+          out.push({ ...a, _name: (a.invite_token && nameByToken[a.invite_token]) || a.name || 'Avatar' });
+        }
+        if (live) setAvatars(out);
+      } finally { if (live) setLoading(false); }
+    })();
+    return () => { live = false; };
+  }, [cid]);
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div className="label" style={{ marginBottom: 12 }}>Your Avatars</div>
+      {loading ? (
+        <div className="mono" style={{ color: 'var(--text-4)' }}>Loading avatars…</div>
+      ) : avatars.length === 0 ? (
+        <div className="mono" style={{ color: 'var(--text-4)' }}>No avatars recorded for this client yet.</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          {avatars.map((a) => (
+            <div key={a.id} className="card card-pad" style={{ textAlign: 'center' }}>
+              <div style={{ width: '100%', aspectRatio: '1 / 1', borderRadius: 'var(--r-sm)', overflow: 'hidden', background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {a.thumbnail_url ? <img src={a.thumbnail_url} alt={a._name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="avatars" size={20} style={{ color: 'var(--text-4)' }} />}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a._name}</div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -136,6 +187,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const [coverPrompt, setCoverPrompt] = useState('');
   const [coverProvider, setCoverProvider] = useState('openai');
   const [coverOverlay, setCoverOverlay] = useState('');
+  const [coverAspect, setCoverAspect] = useState('1:1');
   const [introMusicPrompt, setIntroMusicPrompt] = useState('');
   const [musicPrompt, setMusicPrompt] = useState('');
   const [musicMode, setMusicMode] = useState('segment');
@@ -175,7 +227,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
   };
   const genCover = async () => {
     setBusy('cover'); setErr('');
-    try { await ep.genCover(cid, epId, { prompt: coverPrompt, provider: coverProvider, overlayText: coverOverlay }); setBust(Date.now()); await refresh(); }
+    try { await ep.genCover(cid, epId, { prompt: coverPrompt, provider: coverProvider, overlayText: coverOverlay, aspect: coverAspect }); setBust(Date.now()); await refresh(); }
     catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
   const genIntroMusic = async () => {
@@ -218,7 +270,16 @@ function EpisodeEditor({ cid, epId, onChange }) {
           <div style={{ fontWeight: 600, fontSize: 13 }}>Cover art</div>
           <span className="badge" style={{ color: full.cover_path ? 'var(--ok)' : 'var(--text-4)' }}>{full.cover_path ? 'set' : 'none'}</span>
         </div>
-        {full.cover_path && <img src={ep.coverUrl(cid, epId) + '?b=' + bust} alt="cover" style={{ width: 150, height: 150, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', marginTop: 10 }} />}
+        {full.cover_path && (() => {
+          const dims = { '1:1': [150, 150], '9:16': [120, 213], '16:9': [213, 120] }[coverAspect] || [150, 150];
+          return <img src={ep.coverUrl(cid, epId) + '?b=' + bust} alt="cover" style={{ width: dims[0], height: dims[1], objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', marginTop: 10 }} />;
+        })()}
+        <div className="row" style={{ gap: 6, marginTop: 10, alignItems: 'center' }}>
+          <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Aspect</span>
+          {['1:1', '9:16', '16:9'].map((a) => (
+            <button key={a} className={'btn sm' + (coverAspect === a ? ' primary' : '')} onClick={() => setCoverAspect(a)}>{a}</button>
+          ))}
+        </div>
         <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
           <input value={coverPrompt} onChange={(e) => setCoverPrompt(e.target.value)} placeholder="Describe the cover (AI)" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
           <select value={coverProvider} onChange={(e) => setCoverProvider(e.target.value)} style={{ ...inputStyle, width: 150 }}>
@@ -287,6 +348,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
       )}
 
       <VideoCard cid={cid} title={full.title} />
+      <YourAvatars cid={cid} />
     </div>
   );
 }
@@ -379,10 +441,12 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
         <div className="col" style={{ gap: 8, marginBottom: 16 }}>
           {list.map((e) => (
             <div key={e.id} className="card card-pad row" style={{ gap: 12, alignItems: 'center' }}>
-              <Icon name="play" size={16} style={{ color: 'var(--text-3)' }} />
+              <div style={{ width: 40, height: 40, borderRadius: 'var(--r-sm)', flex: '0 0 auto', background: 'var(--surface-2)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {e.hasCover ? <img src={ep.coverUrl(cid, e.id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="play" size={16} style={{ color: 'var(--text-3)' }} />}
+              </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{e.title}</div>
-                <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>{String(e.created_at || '').slice(0, 10)}{e.hasOutput ? ' · produced' : ''}</div>
+                <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>{String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}</div>
               </div>
               <span className="badge" style={{ color: e.status === 'done' ? 'var(--ok)' : 'var(--text-2)' }}>{e.status || 'draft'}</span>
               <button className="btn sm" onClick={() => setOpenId(openId === e.id ? null : e.id)}>{openId === e.id ? 'Close' : 'Open'}</button>
