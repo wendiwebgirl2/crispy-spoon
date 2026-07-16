@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Icon } from './shared.jsx'
 import { ep, video, rec, clientToken } from './dashboard-api.js'
 import { api } from './api.js'
+import { LookPicker } from './brief.jsx'
 
 const inputStyle = {
   background: 'var(--surface-2)', color: 'var(--text)',
@@ -62,6 +63,8 @@ function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = 
 function YourAvatars({ cid }) {
   const [avatars, setAvatars] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [openLooks, setOpenLooks] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   useEffect(() => {
     if (cid == null) { setLoading(false); return; }
     let live = true; setLoading(true);
@@ -78,13 +81,13 @@ function YourAvatars({ cid }) {
           if (!a || !a.heygen_avatar_id) continue;
           if (a.id != null && seen.has(a.id)) continue;
           if (a.id != null) seen.add(a.id);
-          out.push({ ...a, _name: (a.invite_token && nameByToken[a.invite_token]) || a.name || 'Avatar' });
+          out.push({ ...a, _name: (a.invite_token && nameByToken[a.invite_token]) || a.name || 'Avatar', _token: a.invite_token || tokens[0] || null });
         }
         if (live) setAvatars(out);
       } finally { if (live) setLoading(false); }
     })();
     return () => { live = false; };
-  }, [cid]);
+  }, [cid, refreshKey]);
 
   return (
     <div style={{ marginTop: 28 }}>
@@ -101,6 +104,12 @@ function YourAvatars({ cid }) {
                 {a.thumbnail_url ? <img src={a.thumbnail_url} alt={a._name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="avatars" size={20} style={{ color: 'var(--text-4)' }} />}
               </div>
               <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a._name}</div>
+              {a.heygen_group_id && (
+                <button className="btn sm" style={{ marginTop: 6 }} onClick={() => setOpenLooks(openLooks === a.id ? null : a.id)}>
+                  <Icon name="sliders" size={12} /> Looks
+                </button>
+              )}
+              {openLooks === a.id && <LookPicker avatar={a} onSet={() => { setOpenLooks(null); setRefreshKey((k) => k + 1); }} />}
             </div>
           ))}
         </div>
@@ -191,13 +200,22 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const [introMusicPrompt, setIntroMusicPrompt] = useState('');
   const [musicPrompt, setMusicPrompt] = useState('');
   const [musicMode, setMusicMode] = useState('segment');
+  const [assets, setAssets] = useState([]);
 
   const refresh = () => ep.full(cid, epId).then((f) => { setFull(f); if (f && f.music_mode) setMusicMode(f.music_mode); }).catch((e) => setErr(e.message));
+
+  const applyAsset = async (assetId, slot) => {
+    setBusy('asset'); setErr('');
+    try { await ep.useAsset(cid, epId, assetId, slot); setBust(Date.now()); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not apply asset.'); }
+    finally { setBusy(''); }
+  };
 
   useEffect(() => {
     setErr('');
     refresh();
     ep.voiceOutputs(cid).then((o) => setOuts(Array.isArray(o) ? o : (o.outputs || []))).catch(() => setOuts([]));
+    api.listAssets(cid).then((r) => setAssets(Array.isArray(r) ? r : (r && r.assets ? r.assets : []))).catch(() => setAssets([]));
     clientToken(cid).then((t) => {
       setRecToken(t);
       if (t) {
@@ -265,6 +283,29 @@ function EpisodeEditor({ cid, epId, onChange }) {
       <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 22, margin: '0 0 12px' }}>Producing: {full.title}</h2>
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
 
+      {assets.length > 0 && (
+        <div className="card card-pad" style={{ marginBottom: 10 }}>
+          <div className="label" style={{ marginBottom: 8 }}>BRIEF ASSETS · apply to a slot</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {assets.map((a) => {
+              const isImg = (a.kind === 'logo' || a.kind === 'background') || /\.(png|jpe?g|webp|gif)$/i.test(a.filename || '');
+              const isAudio = (a.kind === 'music') || /\.(mp3|wav|m4a|aac|ogg)$/i.test(a.filename || '');
+              return (
+                <div key={a.id} className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span className="badge">{a.kind || 'asset'}</span>
+                  <span className="mono" style={{ flex: 1, minWidth: 120, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.filename || ('asset ' + a.id)}</span>
+                  {isImg && <button className="btn sm" disabled={busy === 'asset'} onClick={() => applyAsset(a.id, 'cover')}>→ Cover</button>}
+                  {isAudio && <>
+                    <button className="btn sm" disabled={busy === 'asset'} onClick={() => applyAsset(a.id, 'intro_music')}>→ Intro music</button>
+                    <button className="btn sm" disabled={busy === 'asset'} onClick={() => applyAsset(a.id, 'music')}>→ Music</button>
+                  </>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 600, fontSize: 13 }}>Cover art</div>
@@ -305,6 +346,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
           <button className="btn sm" onClick={genIntroMusic} disabled={busy === 'intro_music'}><Icon name="sparkle" size={12} /> Generate</button>
           <input type="file" accept="audio/*" onChange={(e) => doUpload('intro_music', e.target.files[0])} style={{ fontSize: 12, maxWidth: 200 }} />
         </div>
+        {full.intro_music_path && <audio controls src={ep.slotUrl(cid, epId, 'intro_music') + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />}
       </div>
 
       <SlotCard name="intro" label="Intro (VO)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
@@ -323,6 +365,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
           <button className="btn sm" onClick={genMusic} disabled={busy === 'music'}><Icon name="sparkle" size={12} /> Generate</button>
           <input type="file" accept="audio/*" onChange={(e) => doUpload('music', e.target.files[0])} style={{ fontSize: 12, maxWidth: 200 }} />
         </div>
+        {full.music_path && <audio controls src={ep.slotUrl(cid, epId, 'music') + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />}
       </div>
 
       <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
@@ -369,6 +412,16 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   const [err, setErr] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [creating, setCreating] = useState(false);
+  const [approvedScripts, setApprovedScripts] = useState([]);
+  useEffect(() => {
+    if (activeClientId == null) { setApprovedScripts([]); return; }
+    api.listScripts(activeClientId)
+      .then((r) => {
+        const rows = Array.isArray(r) ? r : (r && r.scripts ? r.scripts : []);
+        setApprovedScripts(rows.filter((s) => s.status === 'approved' || (s.approval_status || '').startsWith('approved') || s.approval_status === 'in_production'));
+      })
+      .catch(() => setApprovedScripts([]));
+  }, [activeClientId]);
 
   const load = () => {
     if (cid == null) { setLoading(false); return Promise.resolve(); }
@@ -434,6 +487,16 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
       <div className="card card-pad" style={{ marginBottom: 14 }}>
         <div className="label" style={{ marginBottom: 10 }}>NEW EPISODE</div>
         <div className="row" style={{ gap: 8 }}>
+          {approvedScripts.length > 0 && (
+            <select value="" onChange={(e) => { if (e.target.value) setNewTitle(e.target.value); }}
+              style={{ ...inputStyle, maxWidth: 240 }}>
+              <option value="">Approved scripts…</option>
+              {approvedScripts.map((s) => {
+                const t = (s.topic && s.topic.trim()) || (s.body || '').slice(0, 40) || ('Script ' + s.id);
+                return <option key={s.id} value={t}>{t}</option>;
+              })}
+            </select>
+          )}
           <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Episode title" style={{ ...inputStyle, flex: 1 }} />
           <button className="btn primary" onClick={create} disabled={creating}><Icon name="plus" size={13} /> {creating ? 'Creating…' : 'Create episode'}</button>
         </div>

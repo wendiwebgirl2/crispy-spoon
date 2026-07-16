@@ -30,6 +30,8 @@ export const ep = {
   clearVideo: (cid, id, slot) => post(`/api/clients/${cid}/episodes/${id}/clear-video`, { slot }),
   videoFileUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/video`,
   fileUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/file`,
+  slotUrl: (cid, id, slot) => `/api/clients/${cid}/episodes/${id}/slot/${slot}`,
+  useAsset: (cid, id, assetId, slot) => post(`/api/clients/${cid}/episodes/${id}/use-asset`, { assetId, slot }),
   coverUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/cover`,
   voiceOutputs: (cid) => get(`/api/clients/${cid}/voice/outputs`),
 };
