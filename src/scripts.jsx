@@ -27,9 +27,11 @@ const ScriptsView = ({ onCastScript } = {}) => {
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
+  const [expandedTopic, setExpandedTopic] = useState(null);
   const [editBody, setEditBody] = useState('');
   const [revisePrompt, setRevisePrompt] = useState('');
   const [revising, setRevising] = useState(false);
+  const [reviseNote, setReviseNote] = useState('');
 
   // manual entry
   const [manualOpen, setManualOpen] = useState(false);
@@ -106,7 +108,16 @@ const ScriptsView = ({ onCastScript } = {}) => {
     } catch (e) { setErr(e.message); }
   };
   const copy    = (text) => { try { navigator.clipboard.writeText(text); } catch { /* noop */ } };
-  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setRevisePrompt(''); setErr(''); };
+  const download = (h) => {
+    try {
+      const name = ((h.topic || h.channel || 'script').replace(/[^\w-]+/g, '_')).slice(0, 40) + '-' + h.id + '.txt';
+      const blob = new Blob([String(h.body || '')], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch { /* noop */ }
+  };
+  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setRevisePrompt(''); setReviseNote(''); setErr(''); };
   const saveEdit = async () => {
     try {
       const payload = { body: editBody };
@@ -119,12 +130,18 @@ const ScriptsView = ({ onCastScript } = {}) => {
   };
   const reviseWithClaude = async () => {
     if (!revisePrompt.trim() || !editing) return;
-    setRevising(true); setErr('');
+    setRevising(true); setErr(''); setReviseNote('');
     try {
       const out = await api.reviseScript(clientId, editing.id, revisePrompt.trim());
-      setEditBody(out.body || editBody);
-      setRevisePrompt('');
-    } catch (e) { setErr(e.message); }
+      const revised = (out && (out.body || out.revised || out.text)) || (typeof out === 'string' ? out : '');
+      if (revised && revised.trim()) {
+        setEditBody(revised.trim());
+        setReviseNote('Claude revised the draft — review and Save to keep it.');
+        setRevisePrompt('');
+      } else {
+        setErr('Claude returned an empty revision. Try rephrasing your instruction.');
+      }
+    } catch (e) { setErr(e.message || 'Revision failed.'); }
     finally { setRevising(false); }
   };
   const wordCount = (t) => (String(t || '').trim().match(/\S+/g) || []).length;
@@ -136,17 +153,17 @@ const ScriptsView = ({ onCastScript } = {}) => {
 
   const labelFor = (k) => (channels.find(c => c.key === k) || {}).label || k;
 
-  // Group history by batch (same topic + generation moment) instead of one
-  // endless flat list. Manual entries get their own single-item group.
+  // Group history by TOPIC — each topic is a collapsible card you click to open
+  // and see every script composed on it. Entries with no topic group together.
   const groupedHistory = React.useMemo(() => {
     const groups = new Map();
     for (const h of history) {
-      const key = h.batch_id || `solo-${h.id}`;
-      if (!groups.has(key)) groups.set(key, { key, topic: h.topic, date: h.created_at, items: [] });
+      const t = (h.topic && h.topic.trim()) ? h.topic.trim() : '';
+      const key = t ? 'topic:' + t.toLowerCase() : 'untitled';
+      if (!groups.has(key)) groups.set(key, { key, topic: t || 'Untitled topic', date: h.created_at, items: [] });
       const g = groups.get(key);
       g.items.push(h);
       if (h.created_at && (!g.date || h.created_at > g.date)) g.date = h.created_at;
-      if (!g.topic && h.topic) g.topic = h.topic;
     }
     return [...groups.values()].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [history]);
@@ -257,13 +274,18 @@ const ScriptsView = ({ onCastScript } = {}) => {
           <span className="mono">{history.length} on file</span>
         </div>
         <div className="col" style={{ gap: 20 }}>
-          {groupedHistory.map(g => (
-            <div key={g.key}>
-              <div className="row" style={{ gap: 8, marginBottom: 8, alignItems: 'baseline' }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{g.topic || 'Untitled topic'}</span>
-                <span className="mono" style={{ color: 'var(--text-4)' }}>{g.date ? String(g.date).slice(0, 10) : ''} · {g.items.length} {g.items.length === 1 ? 'script' : 'scripts'}</span>
-              </div>
-              <div className="col" style={{ gap: 8 }}>
+          {groupedHistory.map(g => {
+            const open = expandedTopic === g.key;
+            return (
+            <div key={g.key} className="card" style={{ overflow: 'hidden' }}>
+              <button onClick={() => setExpandedTopic(open ? null : g.key)}
+                style={{ width: '100%', display: 'flex', gap: 10, alignItems: 'center', padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text)' }}>
+                <Icon name="arrow-r" size={13} style={{ color: 'var(--text-4)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+                <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{g.topic}</span>
+                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>{g.date ? String(g.date).slice(0, 10) : ''} · {g.items.length} {g.items.length === 1 ? 'script' : 'scripts'}</span>
+              </button>
+              {open && (
+              <div className="col" style={{ gap: 8, padding: '0 14px 14px' }}>
                 {g.items.map(h => (
             <div key={h.id} className="row" style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface)', gap: 12, alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -284,6 +306,7 @@ const ScriptsView = ({ onCastScript } = {}) => {
               </div>
               <div className="row" style={{ gap: 6 }}>
                 <button className="icon-btn" title="Copy" onClick={() => copy(h.body)}><Icon name="doc" size={13} /></button>
+                <button className="icon-btn" title="Download" onClick={() => download(h)}><Icon name="download" size={13} /></button>
                 <button className="icon-btn" title="Edit / review" onClick={() => openEdit(h)}><Icon name="sliders" size={13} /></button>
                 {h.approval_status !== 'approved' && h.approval_status !== 'in_production' && <button className="icon-btn" title="Mark approved" onClick={() => setApproval(h.id, 'approved', 'approved')}><Icon name="check" size={13} /></button>}
                 {(h.approval_status === 'approved' || h.approval_status === 'approved_with_changes') && <button className="icon-btn" title="Mark in production" onClick={() => setApproval(h.id, 'in_production', 'approved')}><Icon name="play" size={13} /></button>}
@@ -294,8 +317,10 @@ const ScriptsView = ({ onCastScript } = {}) => {
             </div>
                 ))}
               </div>
+              )}
             </div>
-          ))}
+            );
+          })}
           {history.length === 0 && <div className="mono" style={{ color: 'var(--text-4)' }}>No scripts yet for this client.</div>}
         </div>
       </div>
@@ -346,6 +371,8 @@ const ScriptsView = ({ onCastScript } = {}) => {
                 <Icon name="sparkle" size={13} /> {revising ? 'Revising…' : 'Edit with Claude'}
               </button>
             </div>
+            {err && <div className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>{err}</div>}
+            {reviseNote && !err && <div className="mono" style={{ color: 'var(--ok)', fontSize: 12 }}>{reviseNote}</div>}
             <div className="row" style={{ justifyContent: 'flex-end', gap: 10 }}>
               <button className="btn sm" onClick={() => setEditing(null)}>Cancel</button>
               <button className="btn primary sm" onClick={saveEdit}><Icon name="check" size={13} /> Save</button>
