@@ -4,7 +4,7 @@
 // cast.cuecreative.com Episodes tab.
 
 import React from 'react'
-import { api, generateVideo, listVideos } from './api.js'
+import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob } from './api.js'
 import { clientToken } from './dashboard-api.js'
 import { AvatarTile, Icon, StatusBadge } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
@@ -17,7 +17,7 @@ const SCENES = [
   { id: 'outdoor',   label: 'Outdoor', desc: 'Natural light.' },
 ];
 
-const DEFAULT_SCRIPT = "Hey team — quick cue for Tuesday. Discipline over motivation. Motivation is a mood. Discipline is a system you've already paid into. Today's rep is showing up for the system, even when the mood disagrees.";
+const DEFAULT_SCRIPT = "Hi! I'm excited you're here. This is a preview of the voice for your character—take a quick listen.";
 
 // destination = where the finished piece goes. types = valid content shapes per
 // destination (each presets an aspect ratio). 'download' is always available so a
@@ -127,6 +127,13 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     api.listCredentials(id).then((r) => setCredentials(Array.isArray(r) ? r : (r && r.credentials ? r.credentials : []))).catch(() => setCredentials([]));
     api.listAssets(id).then((r) => setBgAssets((Array.isArray(r) ? r : []).filter((a) => a.kind === 'background'))).catch(() => setBgAssets([]));
   };
+
+  // Load previous casts as soon as a client/token is available, so opening the
+  // cast window shows what's already been rendered (not just this session's).
+  React.useEffect(() => {
+    if (!token) { setQueue([]); return; }
+    listVideos(token).then((v) => setQueue(v.videos || [])).catch(() => {});
+  }, [token]);
 
   // Live-refresh recent renders while any video is still rendering.
   React.useEffect(() => {
@@ -384,6 +391,29 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   const estCost = (estSeconds * 0.04).toFixed(2);
   const canGenerate = !generating && !!script.trim() && avatar.status === 'ready';
 
+  const reloadQueue = async () => {
+    if (!token) return;
+    try { const v = await listVideos(token); setQueue(v.videos || []); } catch { /* ignore */ }
+  };
+  const renameCast = async (v) => {
+    const next = window.prompt('Rename this cast', v.title || '');
+    if (next == null || !next.trim()) return;
+    try { await renameVideo(v.id, next.trim(), token); await reloadQueue(); } catch (e) { alert(e.message || 'Rename failed'); }
+  };
+  const deleteCast = async (v) => {
+    if (!window.confirm('Delete this cast? ' + (v.title || 'Untitled') + '\nThis cannot be undone.')) return;
+    try { await deleteVideo(v.id, token); await reloadQueue(); } catch (e) { alert(e.message || 'Delete failed'); }
+  };
+  const downloadAudio = async (v) => {
+    if (!v.url) return;
+    try {
+      const blob = await castAudioBlob(v.url);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = ((v.title || 'cast').replace(/[^\w-]+/g, '_')).slice(0, 40) + '.mp3'; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch (e) { alert(e.message || 'Could not extract audio'); }
+  };
+
   const generate = async () => {
     if (!script.trim() || !token) return;
     setGenerating(true);
@@ -530,14 +560,21 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                 </div>
               </div>
 
-              <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
-                <div className="label">RECENT RENDERS</div>
-                <span className="mono">{queue.length} videos</span>
+              <div className="row" style={{ justifyContent: 'space-between', marginTop: 100, marginBottom: 16 }}>
+                <div className="label">PREVIOUS CASTS</div>
+                <span className="mono">{queue.length} {queue.length === 1 ? 'cast' : 'casts'}</span>
               </div>
 
-              <div className="col" style={{ gap: 10 }}>
-                {queue.map(v => <VideoRow key={v.id} video={v} avatars={avatars} />)}
-              </div>
+              {queue.length === 0 ? (
+                <div className="mono" style={{ color: 'var(--text-4)' }}>No casts yet for this client.</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                  {queue.map(v => (
+                    <CastCard key={v.id} video={v} avatars={avatars}
+                      onRename={() => renameCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} />
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* —— right rail: settings —— */}
@@ -962,6 +999,40 @@ const Crumb = ({ label, onClick }) => (
     {label}
   </button>
 );
+
+const CastCard = ({ video, avatars = [], onRename, onDelete, onDownloadAudio }) => {
+  const avatar = (avatars || []).find(a => a.id === video.avatarId) || { id: video.avatarId || 'na', contact: video.title || 'Avatar' };
+  const ready = video.status === 'ready' && video.url;
+  return (
+    <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: '100%', aspectRatio: '16/9', background: '#0a0a0a', overflow: 'hidden', position: 'relative' }}>
+        {ready ? (
+          <video controls src={video.url} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#0a0a0a' }} />
+        ) : (
+          <div style={{ width: '100%', height: '100%' }}><AvatarTile avatar={avatar} /></div>
+        )}
+      </div>
+      <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{video.title || 'Untitled cast'}</div>
+        <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
+          {video.createdAt || (video.created_at ? String(video.created_at).slice(0, 10) : '')} · {ready ? 'ready' : (video.status || 'rendering')}
+        </div>
+        {video.status === 'rendering' && (
+          <div style={{ height: 3, background: 'var(--surface-2)', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ width: `${video.progress || 0}%`, height: '100%', background: 'var(--accent)', transition: 'width 200ms linear' }} />
+          </div>
+        )}
+        {video.status === 'failed' && <div className="mono" style={{ color: 'var(--accent)', fontSize: 11 }}>{video.failure_reason || 'render failed'}</div>}
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+          {ready && <a className="btn sm" href={video.url} download target="_blank" rel="noopener noreferrer"><Icon name="download" size={12} /> Video</a>}
+          {ready && <button className="btn sm" onClick={onDownloadAudio}><Icon name="mic" size={12} /> Audio</button>}
+          <button className="btn sm" onClick={onRename}><Icon name="sliders" size={12} /> Edit</button>
+          <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={onDelete}><Icon name="close" size={12} /> Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const VideoRow = ({ video, avatars = [] }) => {
   const avatar = (avatars || []).find(a => a.id === video.avatarId)

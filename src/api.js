@@ -144,6 +144,22 @@ export function renameVideo(videoId, title, token = currentToken()) {
   );
 }
 
+// Extract an MP3 from a rendered video URL (same-origin tools endpoint).
+export async function castAudioBlob(videoUrl) {
+  const resp = await fetch("/api/tools/audio-from-url", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: videoUrl }),
+  });
+  if (!resp.ok) {
+    let msg = "audio extract failed";
+    try { const j = await resp.json(); msg = j.error || msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return resp.blob();
+}
+
 // Replace the face image for a recording's avatar and rebuild it (voice kept).
 export function refaceRecording(recordingId, file, token = currentToken()) {
   const form = new FormData();
