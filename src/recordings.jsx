@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { listRecordings, recordingDownloadUrl, deleteRecording, listVideos, currentToken } from './api.js'
+import { listRecordings, recordingDownloadUrl, deleteRecording, listVideos, deleteVideo, renameVideo, currentToken } from './api.js'
 import { api } from './api.js'
 import { Icon } from './shared.jsx'
 
@@ -16,12 +16,28 @@ function takeName(storageKey) {
   return parts[parts.length - 1] || storageKey;
 }
 
+function fmtDate(s) {
+  if (!s) return '';
+  return String(s).slice(0, 10);
+}
+
 function tokensFromInvites(res) {
   const rows = Array.isArray(res) ? res : (res && res.invites ? res.invites : []);
   return rows.map((r) => r && r.token).filter(Boolean);
 }
 
-function RecordingsView({ activeClientId }) {
+// Square thumbnail with graceful fallback to an icon when no image is available
+// (signed URLs are best-effort, so the object may not exist).
+function Thumb({ url, icon = 'cam', size = 52 }) {
+  const [broken, setBroken] = useState(false);
+  const box = { width: size, height: size, borderRadius: 'var(--r-sm)', flex: '0 0 auto', background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' };
+  if (url && !broken) {
+    return <div style={box}><img src={url} alt="" onError={() => setBroken(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>;
+  }
+  return <div style={box}><Icon name={icon} size={20} style={{ color: 'var(--text-4)' }} /></div>;
+}
+
+function RecordingsView({ activeClientId, onCreateEpisode }) {
   const [recordings, setRecordings] = useState([]);
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +45,7 @@ function RecordingsView({ activeClientId }) {
   const [player, setPlayer] = useState(null);
   const [urlBusy, setUrlBusy] = useState(null);
   const [delBusy, setDelBusy] = useState(null);
+  const [editing, setEditing] = useState(null); // { id, title } for avatar-clip rename
 
   const load = async () => {
     setErr('');
@@ -42,9 +59,6 @@ function RecordingsView({ activeClientId }) {
           setErr(e.message || 'Could not load invites.');
         }
       }
-      // Fall back to the ambient token ONLY when no client is selected.
-      // A selected client with no invites must show an empty list — never
-      // another client's recordings.
       if (activeClientId == null && tokens.length === 0) tokens = [currentToken()];
 
       const perToken = await Promise.all(
@@ -64,7 +78,7 @@ function RecordingsView({ activeClientId }) {
       setRecordings(merged);
 
       const vids = await Promise.all(
-        tokens.map((t) => listVideos(t).then((v) => v.videos || []).catch(() => []))
+        tokens.map((t) => listVideos(t).then((v) => (v.videos || []).map((x) => ({ ...x, _token: t }))).catch(() => []))
       );
       const vseen = new Set();
       const vmerged = [];
@@ -95,9 +109,21 @@ function RecordingsView({ activeClientId }) {
     }
   };
 
-  const remove = async (rec) => {
-    const ok = window.confirm('Permanently delete this master? ' + takeName(rec.storage_key) + ' This cannot be undone.');
-    if (!ok) return;
+  const downloadMaster = async (rec) => {
+    setUrlBusy(rec.id); setErr('');
+    try {
+      const res = await recordingDownloadUrl(rec.id, rec._token || currentToken());
+      window.open(res.url, '_blank', 'noopener');
+    } catch (e) {
+      setErr(e.message || 'Could not get a download URL.');
+    } finally {
+      setUrlBusy(null);
+    }
+  };
+
+  const removeMaster = async (rec) => {
+    const label = rec.signed_name || takeName(rec.storage_key);
+    if (!window.confirm('Permanently delete this master? ' + label + '\nThis cannot be undone.')) return;
     setDelBusy(rec.id); setErr('');
     try {
       await deleteRecording(rec.id, rec._token || currentToken());
@@ -110,7 +136,41 @@ function RecordingsView({ activeClientId }) {
     }
   };
 
+  const removeClip = async (v) => {
+    if (!window.confirm('Delete this avatar clip? ' + (v.title || 'Untitled') + '\nThis cannot be undone.')) return;
+    setDelBusy(v.id); setErr('');
+    try {
+      await deleteVideo(v.id, v._token || currentToken());
+      await load();
+    } catch (e) {
+      setErr(e.message || 'Could not delete the clip.');
+    } finally {
+      setDelBusy(null);
+    }
+  };
+
+  const saveRename = async () => {
+    if (!editing || !editing.title.trim()) return;
+    try {
+      await renameVideo(editing.id, editing.title.trim(), editing._token || currentToken());
+      setEditing(null);
+      await load();
+    } catch (e) {
+      setErr(e.message || 'Could not rename the clip.');
+    }
+  };
+
+  const makeEpisodeFromMaster = (rec) => {
+    if (!onCreateEpisode) return;
+    onCreateEpisode({ kind: 'recording', recordingId: rec.id, token: rec._token || currentToken(), title: (rec.signed_name || 'Episode') + ' — ' + fmtDate(new Date().toISOString()) });
+  };
+  const makeEpisodeFromClip = (v) => {
+    if (!onCreateEpisode) return;
+    onCreateEpisode({ kind: 'video', videoUrl: v.url, title: (v.title || 'Episode') });
+  };
+
   const scopeLabel = activeClientId != null ? ('CLIENT ' + activeClientId) : ('TOKEN ' + currentToken());
+  const btn = { };
 
   return (
     <div className="v-pad fade-in">
@@ -119,7 +179,7 @@ function RecordingsView({ activeClientId }) {
         The <em>masters</em>, and what they became.
       </h1>
       <div className="mono" style={{ color: 'var(--text-3)' }}>
-        Consented captures stored in R2.
+        Consented captures stored in R2, and the avatar clips rendered from them.
       </div>
 
       {err && (
@@ -128,9 +188,53 @@ function RecordingsView({ activeClientId }) {
         </div>
       )}
 
-      <div className="label" style={{ marginTop: 24, marginBottom: 10 }}>R2 MASTERS</div>
+      {/* AVATAR CLIPS (renders) — on top */}
+      <div className="label" style={{ marginTop: 24, marginBottom: 10 }}>AVATAR CLIPS</div>
       {loading ? (
-        <div className="mono" style={{ color: 'var(--text-3)' }}>Loading...</div>
+        <div className="mono" style={{ color: 'var(--text-3)' }}>Loading…</div>
+      ) : videos.length === 0 ? (
+        <div className="mono" style={{ color: 'var(--text-3)' }}>No avatar clips yet.</div>
+      ) : (
+        <div className="col" style={{ gap: 8 }}>
+          {videos.map((v) => (
+            <div key={v.id} className="card card-pad row" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Thumb url={v.thumbnail_url} icon="studio" />
+              <div style={{ flex: 1, minWidth: 160 }}>
+                {editing && editing.id === v.id ? (
+                  <div className="row" style={{ gap: 8 }}>
+                    <input value={editing.title} autoFocus onChange={(e) => setEditing({ ...editing, title: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && saveRename()}
+                      style={{ flex: 1, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 14, padding: '6px 9px' }} />
+                    <button className="btn sm" onClick={saveRename}><Icon name="check" size={13} /> Save</button>
+                    <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{v.title || 'Untitled render'}</div>
+                    <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
+                      {fmtDate(v.created_at)} · {v.status}{v.progress != null && v.status !== 'ready' ? ' ' + v.progress + '%' : ''}
+                    </div>
+                  </>
+                )}
+              </div>
+              {!(editing && editing.id === v.id) && (
+                <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                  {v.status === 'ready' && v.url && (
+                    <a className="btn sm" href={v.url} target="_blank" rel="noreferrer"><Icon name="download" size={13} /> Download</a>
+                  )}
+                  <button className="btn sm" onClick={() => makeEpisodeFromClip(v)} disabled={v.status !== 'ready' || !v.url}><Icon name="plus" size={13} /> Create episode</button>
+                  <button className="btn sm" onClick={() => setEditing({ id: v.id, title: v.title || '', _token: v._token })}><Icon name="sliders" size={13} /> Edit</button>
+                  <button className="btn sm" style={{ color: 'var(--accent)' }} disabled={delBusy === v.id} onClick={() => removeClip(v)}><Icon name="close" size={13} /> {delBusy === v.id ? '…' : 'Delete'}</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* R2 MASTERS — under the avatar clips */}
+      <div className="label" style={{ marginTop: 28, marginBottom: 10 }}>R2 MASTERS</div>
+      {loading ? (
+        <div className="mono" style={{ color: 'var(--text-3)' }}>Loading…</div>
       ) : recordings.length === 0 ? (
         <div className="mono" style={{ color: 'var(--text-3)' }}>
           {activeClientId != null ? 'No recordings for this client yet.' : 'No recordings for this token yet.'}
@@ -139,53 +243,28 @@ function RecordingsView({ activeClientId }) {
         <div className="col" style={{ gap: 8 }}>
           {recordings.map((rec) => (
             <div key={rec.id} className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div className="row" style={{ gap: 12, alignItems: 'center' }}>
-                <Icon name="cam" size={18} style={{ color: 'var(--text-3)' }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="mono" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {takeName(rec.storage_key)}
+              <div className="row" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Thumb url={rec.thumbnail_url} icon="cam" />
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {rec.signed_name || takeName(rec.storage_key)}
                   </div>
                   <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
-                    {fmtBytes(rec.bytes)} {rec.mime_type || ''} {rec.storage_provider || 'r2'}
+                    {fmtBytes(rec.bytes)} · {rec.mime_type || ''} · {rec.storage_provider || 'r2'}
                   </div>
                 </div>
                 <span className="badge">{rec.status || 'uploaded'}</span>
-                <button className="btn sm" onClick={() => play(rec)} disabled={urlBusy === rec.id}>
-                  <Icon name="play" size={13} />
-                  {urlBusy === rec.id ? 'Loading...' : (player && player.id === rec.id ? 'Reload' : 'Play')}
-                </button>
-                <button className="icon-btn" title="Delete master" onClick={() => remove(rec)} disabled={delBusy === rec.id} style={{ color: 'var(--accent)' }}>
-                  {delBusy === rec.id ? '...' : 'X'}
-                </button>
+                <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                  <button className="btn sm" onClick={() => play(rec)} disabled={urlBusy === rec.id}>
+                    <Icon name="play" size={13} /> {urlBusy === rec.id ? '…' : (player && player.id === rec.id ? 'Reload' : 'Play')}
+                  </button>
+                  <button className="btn sm" onClick={() => downloadMaster(rec)} disabled={urlBusy === rec.id}><Icon name="download" size={13} /> Download</button>
+                  <button className="btn sm" onClick={() => makeEpisodeFromMaster(rec)}><Icon name="plus" size={13} /> Create episode</button>
+                  <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => removeMaster(rec)} disabled={delBusy === rec.id}><Icon name="close" size={13} /> {delBusy === rec.id ? '…' : 'Delete'}</button>
+                </div>
               </div>
               {player && player.id === rec.id && (
                 <video src={player.url} controls autoPlay style={{ width: '100%', borderRadius: 'var(--r-sm)', background: '#000', maxHeight: 420 }} />
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="label" style={{ marginTop: 28, marginBottom: 10 }}>HEYGEN RENDERS</div>
-      {loading ? (
-        <div className="mono" style={{ color: 'var(--text-3)' }}>Loading...</div>
-      ) : videos.length === 0 ? (
-        <div className="mono" style={{ color: 'var(--text-3)' }}>No renders yet.</div>
-      ) : (
-        <div className="col" style={{ gap: 8 }}>
-          {videos.map((v) => (
-            <div key={v.id} className="card card-pad row" style={{ gap: 12, alignItems: 'center' }}>
-              <Icon name="studio" size={18} style={{ color: 'var(--text-3)' }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{v.title || 'Untitled render'}</div>
-                <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
-                  {v.status}{v.progress != null ? ' ' + v.progress + '%' : ''}
-                </div>
-              </div>
-              {v.status === 'ready' && v.url && (
-                <a className="btn sm" href={v.url} target="_blank" rel="noreferrer">
-                  <Icon name="play" size={13} /> Open
-                </a>
               )}
             </div>
           ))}

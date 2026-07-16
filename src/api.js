@@ -127,6 +127,23 @@ export function deleteRecording(recordingId, token = currentToken()) {
   );
 }
 
+// Delete a generated video (avatar clip).
+export function deleteVideo(videoId, token = currentToken()) {
+  return apiDelete(
+    "/api/videos/" + encodeURIComponent(token) +
+    "/" + encodeURIComponent(videoId)
+  );
+}
+
+// Rename a generated video (avatar clip).
+export function renameVideo(videoId, title, token = currentToken()) {
+  return apiPostJson(
+    "/api/videos/" + encodeURIComponent(token) +
+    "/" + encodeURIComponent(videoId) + "/rename",
+    { title }
+  );
+}
+
 // ============================================================================
 // VoiceCast API (same-origin) — clients, brief, scripts.
 //

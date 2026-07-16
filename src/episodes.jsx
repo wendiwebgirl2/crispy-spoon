@@ -291,7 +291,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
   );
 }
 
-function EpisodesView({ activeClientId }) {
+function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed }) {
   const cid = activeClientId;
   const [list, setList] = useState([]);
   const [openId, setOpenId] = useState(null);
@@ -307,6 +307,34 @@ function EpisodesView({ activeClientId }) {
       .catch((e) => setErr(e.message || 'Could not load episodes.')).finally(() => setLoading(false));
   };
   useEffect(() => { setOpenId(null); load(); }, [cid]);
+
+  // A "Create episode" click from the Recordings tab hands us a clip to preload
+  // into a fresh episode's body slot (recording master or rendered avatar clip).
+  useEffect(() => {
+    if (!episodeRequest || cid == null) return;
+    let cancelled = false;
+    (async () => {
+      setErr('');
+      try {
+        const title = (episodeRequest.title || 'New episode').slice(0, 120);
+        const e = await ep.create(cid, title);
+        if (episodeRequest.kind === 'video' && episodeRequest.videoUrl) {
+          await ep.useVideo(cid, e.id, 'body', episodeRequest.videoUrl);
+        } else if (episodeRequest.kind === 'recording' && episodeRequest.recordingId) {
+          await ep.useRecording(cid, e.id, 'body', episodeRequest.recordingId, episodeRequest.token);
+        }
+        if (cancelled) return;
+        await load();
+        setOpenId(e.id);
+      } catch (err) {
+        if (!cancelled) setErr(err.message || 'Could not start an episode from that clip.');
+      } finally {
+        if (onEpisodeRequestConsumed) onEpisodeRequestConsumed();
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line
+  }, [episodeRequest, cid]);
 
   const create = async () => {
     if (!newTitle.trim()) { setErr('Title needed'); return; }
