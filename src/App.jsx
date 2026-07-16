@@ -41,6 +41,8 @@ const HEADER_TITLES = {
 
 function App() {
   const [view, setView] = React.useState('clients');
+  const [studioNonce, setStudioNonce] = React.useState(0);
+  const goStudio = () => { setStudioNonce((n) => n + 1); setView('studio'); };
   const [castRequest, setCastRequest] = React.useState(null);
   const [activeClientId, setActiveClientId] = React.useState(null);
   const [activeClientName, setActiveClientName] = React.useState('');
@@ -96,7 +98,7 @@ function App() {
             <button
               key={n.id}
               className={'nav-item' + (view === n.id ? ' active' : '')}
-              onClick={() => setView(n.id)}
+              onClick={() => n.id === 'studio' ? goStudio() : setView(n.id)}
               title={n.label}
             >
               <Icon
@@ -121,7 +123,7 @@ function App() {
             <span>New avatar</span>
             <span className="nav-count" style={{ background: 'transparent' }}>⌘N</span>
           </button>
-          <button className="nav-item" onClick={() => setView('studio')}>
+          <button className="nav-item" onClick={goStudio}>
             <Icon name="sparkle" size={16} className="nav-icon" />
             <span>Quick render</span>
             <span className="nav-count" style={{ background: 'transparent' }}>⌘G</span>
@@ -199,7 +201,7 @@ function App() {
           {view === 'invitations' && <InvitationsView />}
           {view === 'planner' && <PlannerView activeClientId={activeClientId} onCastScript={(clientId, body) => { setCastRequest({ clientId, body }); setView('studio'); }} />}
           {view === 'scripts' && <ScriptsView onCastScript={(clientId, body) => { setCastRequest({ clientId, body }); setView('studio'); }} />}
-          {view === 'studio' && <StudioView onNavigate={setView} castRequest={castRequest} onCastConsumed={() => setCastRequest(null)} />}
+          {view === 'studio' && <StudioView key={studioNonce} onNavigate={setView} castRequest={castRequest} onCastConsumed={() => setCastRequest(null)} />}
           {view === 'episodes' && <EpisodesView activeClientId={activeClientId} />}
           {view === 'recordings' && <RecordingsView activeClientId={activeClientId} />}
           {view === 'onboarding' && (

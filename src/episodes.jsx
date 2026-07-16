@@ -328,9 +328,17 @@ function EpisodeEditor({ cid, epId, onChange }) {
       <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
       <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
 
-      <button className="btn primary" onClick={stitch} disabled={busy === 'stitch' || !full.body_path} style={{ marginTop: 6 }}>
-        <Icon name="sparkle" size={13} /> {busy === 'stitch' ? 'Stitching…' : 'Stitch into finished episode'}
-      </button>
+      <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+        <a className="btn" href={full.output_path ? (full.video_output_path ? ep.videoFileUrl(cid, epId) : ep.fileUrl(cid, epId)) : undefined}
+          target="_blank" rel="noreferrer"
+          onClick={(ev) => { if (!full.output_path) ev.preventDefault(); }}
+          style={{ opacity: full.output_path ? 1 : 0.5, pointerEvents: full.output_path ? 'auto' : 'none' }}>
+          <Icon name="play" size={13} /> Preview finished episode
+        </a>
+        <button className="btn primary" onClick={stitch} disabled={busy === 'stitch' || !full.body_path}>
+          <Icon name="sparkle" size={13} /> {busy === 'stitch' ? 'Stitching…' : 'Stitch into finished episode'}
+        </button>
+      </div>
       {!full.body_path && <div className="mono" style={{ color: 'var(--text-4)', marginTop: 6 }}>Set a body recording before stitching.</div>}
 
       {full.output_path && (
@@ -438,19 +446,24 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
       ) : list.length === 0 ? (
         <div className="mono" style={{ color: 'var(--text-3)' }}>No episodes yet.</div>
       ) : (
-        <div className="col" style={{ gap: 8, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 100, marginBottom: 16 }}>
           {list.map((e) => (
-            <div key={e.id} className="card card-pad row" style={{ gap: 12, alignItems: 'center' }}>
-              <div style={{ width: 40, height: 40, borderRadius: 'var(--r-sm)', flex: '0 0 auto', background: 'var(--surface-2)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {e.hasCover ? <img src={ep.coverUrl(cid, e.id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="play" size={16} style={{ color: 'var(--text-3)' }} />}
+            <div key={e.id} className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ width: '100%', aspectRatio: '16/9', background: 'var(--surface-2)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {e.hasCover ? <img src={ep.coverUrl(cid, e.id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="play" size={22} style={{ color: 'var(--text-4)' }} />}
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{e.title}</div>
-                <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>{String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}</div>
+              <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.title}</div>
+                <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
+                  {String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}
+                </div>
+                <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                  <button className="btn sm" onClick={() => setOpenId(openId === e.id ? null : e.id)}>{openId === e.id ? 'Close' : 'Open'}</button>
+                  {e.hasOutput && <a className="btn sm" href={ep.videoFileUrl(cid, e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Video</a>}
+                  {e.hasOutput && <a className="btn sm" href={ep.fileUrl(cid, e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Audio</a>}
+                  <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => remove(e.id)}><Icon name="close" size={12} /> Delete</button>
+                </div>
               </div>
-              <span className="badge" style={{ color: e.status === 'done' ? 'var(--ok)' : 'var(--text-2)' }}>{e.status || 'draft'}</span>
-              <button className="btn sm" onClick={() => setOpenId(openId === e.id ? null : e.id)}>{openId === e.id ? 'Close' : 'Open'}</button>
-              <button className="btn sm" onClick={() => remove(e.id)}><Icon name="more" size={13} /> Delete</button>
             </div>
           ))}
         </div>
