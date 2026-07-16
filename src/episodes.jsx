@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Icon } from './shared.jsx'
-import { ep, video, rec, clientToken } from './dashboard-api.js'
+import { ep, video, rec, clientToken, sched } from './dashboard-api.js'
 import { api } from './api.js'
 import { LookPicker } from './brief.jsx'
 
@@ -211,6 +211,28 @@ function EpisodeEditor({ cid, epId, onChange }) {
     finally { setBusy(''); }
   };
 
+  const approve = async () => {
+    setBusy('approve'); setErr('');
+    try { await ep.approve(cid, epId, 'approved'); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not approve.'); }
+    finally { setBusy(''); }
+  };
+  const sendToClient = async () => {
+    setBusy('send'); setErr('');
+    try {
+      const r = await ep.sendClient(cid, epId);
+      if (r.email && r.email.sent) alert('Sent to client.');
+      else alert((r.email && r.email.error ? r.email.error + '\n\n' : '') + 'Review link: ' + r.review_link);
+    } catch (e) { setErr(e.message || 'Could not send.'); }
+    finally { setBusy(''); }
+  };
+  const addToPlanner = async () => {
+    setBusy('planner'); setErr('');
+    try { await sched.add(cid, { channel: 'episode', channel_name: 'Episode', title: full.title, status: 'draft', notes: 'From episode #' + epId }); alert('Added to planner.'); }
+    catch (e) { setErr(e.message || 'Could not add to planner.'); }
+    finally { setBusy(''); }
+  };
+
   useEffect(() => {
     setErr('');
     refresh();
@@ -388,6 +410,8 @@ function EpisodeEditor({ cid, epId, onChange }) {
       {full.output_path && (
         <div style={{ marginTop: 12 }}>
           <span className="badge" style={{ color: 'var(--ok)' }}>✓ produced</span>
+          {full.approval_status === 'approved' && <span className="badge" style={{ color: 'var(--ok)', marginLeft: 6 }}>approved</span>}
+          {full.approval_status === 'changes_requested' && <span className="badge" style={{ color: 'var(--accent)', marginLeft: 6 }}>changes requested</span>}
           {full.video_output_path && (
             <video controls src={ep.videoFileUrl(cid, epId) + '?b=' + bust} style={{ width: '100%', marginTop: 8, borderRadius: 8, background: '#000' }} />
           )}
@@ -395,6 +419,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
           <div className="row" style={{ gap: 8, marginTop: 8 }}>
             {full.video_output_path && <a className="btn sm" href={ep.videoFileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download video</a>}
             <a className="btn sm" href={ep.fileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download audio</a>
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <button className="btn sm" disabled={busy === 'approve'} onClick={approve}><Icon name="check" size={12} /> {full.approval_status === 'approved' ? 'Approved' : 'Approve'}</button>
+            <button className="btn sm" disabled={busy === 'send'} onClick={sendToClient}><Icon name="send" size={12} /> {busy === 'send' ? 'Sending…' : 'Send to client'}</button>
+            <button className="btn sm" disabled={busy === 'planner'} onClick={addToPlanner}><Icon name="history" size={12} /> Add to planner</button>
           </div>
         </div>
       )}
