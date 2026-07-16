@@ -1,5 +1,6 @@
 import React from 'react'
-import { Icon, CueLogo, Wordmark } from './shared.jsx'
+import { Icon } from './shared.jsx'
+import logoLockup from './assets/LOGO-cuecreative.png'
 import { api } from './api.js'
 import { AVATARS, INVITATIONS, GENERATED_VIDEOS } from './data.jsx'
 import { ClientsView } from './clients.jsx'
@@ -86,8 +87,7 @@ function App() {
     <div className="shell">
       <aside className="side">
         <div className="side-brand">
-          <CueLogo size={32} />
-          <Wordmark tagline={true} />
+          <img src={logoLockup} alt="cue:creative" style={{ height: 32, width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
         </div>
 
         <div className="side-section">WORKSPACE</div>

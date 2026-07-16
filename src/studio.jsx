@@ -214,7 +214,8 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     ];
     return (
       <div className="fade-in" style={{ padding: 'var(--pad)', overflow: 'auto', height: '100%' }}>
-        <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, letterSpacing: '-0.01em', margin: '4px 0 4px' }}>
+        <button className="btn sm" onClick={() => onNavigate('clients')}><Icon name="arrow-l" size={12} /> Clients</button>
+        <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, letterSpacing: '-0.01em', margin: '18px 0 4px' }}>
           <em style={{ color: 'var(--accent)' }}>Studio</em>
         </h1>
         <div className="mono" style={{ marginBottom: 24 }}>Everything for producing an episode &mdash; pick where you want to work.</div>
@@ -235,7 +236,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   if (step === 'assets') {
     return (
       <div className="fade-in" style={{ padding: 'var(--pad)', overflow: 'auto', height: '100%' }}>
-        <button className="btn sm" onClick={() => setStep('home')}><Icon name="arrow-l" size={12} /> Studio</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn sm" onClick={() => onNavigate('clients')}><Icon name="arrow-l" size={12} /> Clients</button>
+          <button className="btn sm" onClick={() => setStep('home')}><Icon name="arrow-l" size={12} /> Studio</button>
+        </div>
         <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, letterSpacing: '-0.01em', margin: '18px 0 4px' }}>Assets</h1>
         <div className="mono" style={{ color: 'var(--text-4)' }}>A shared library of logos, music, backgrounds, and fonts for stitching &mdash; coming soon.</div>
       </div>
@@ -346,7 +350,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   if (!clientId) {
     return (
       <div className="fade-in" style={{ padding: 'var(--pad)', overflow: 'auto', height: '100%' }}>
-        <button className="btn sm" onClick={() => setStep('home')}><Icon name="arrow-l" size={12} /> Studio</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn sm" onClick={() => onNavigate('clients')}><Icon name="arrow-l" size={12} /> Clients</button>
+          <button className="btn sm" onClick={() => setStep('home')}><Icon name="arrow-l" size={12} /> Studio</button>
+        </div>
         <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, letterSpacing: '-0.01em', margin: '18px 0 8px' }}>
           Cast a <em style={{ color: 'var(--accent)' }}>script</em>
         </h1>
