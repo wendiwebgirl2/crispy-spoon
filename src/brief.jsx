@@ -23,7 +23,7 @@ const THEME = [
   ['theme_secondary', 'Secondary'],
   ['theme_accent', 'Accent'],
 ];
-const KEYS = [...CONTACT, ...REPO, ...THEME].map(([k]) => k);
+const KEYS = [...CONTACT, ...REPO, ...THEME].map(([k]) => k).concat(['repo_richtext']);
 
 const KIND_OPTS = ['podcast', 'social', 'website', 'other'];
 
@@ -301,6 +301,130 @@ function AvatarsSection({ clientId }) {
   );
 }
 
+function RichText({ value, onChange }) {
+  const ref = React.useRef(null);
+  // Sync external value into the div, but never while the user is typing in it
+  // (that would clobber the caret). onInput pushes edits back out to state.
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || document.activeElement === el) return;
+    if (el.innerHTML !== (value || '')) el.innerHTML = value || '';
+  }, [value]);
+  const exec = (cmd, arg) => {
+    if (ref.current) ref.current.focus();
+    document.execCommand(cmd, false, arg);
+    if (ref.current) onChange(ref.current.innerHTML);
+  };
+  const tb = { padding: '4px 9px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 12, cursor: 'pointer' };
+  return (
+    <div>
+      <div className="row" style={{ gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+        <button type="button" style={{ ...tb, fontWeight: 700 }} onClick={() => exec('bold')}>B</button>
+        <button type="button" style={{ ...tb, fontStyle: 'italic' }} onClick={() => exec('italic')}>I</button>
+        <button type="button" style={{ ...tb, textDecoration: 'underline' }} onClick={() => exec('underline')}>U</button>
+        <button type="button" style={tb} onClick={() => exec('formatBlock', 'H3')}>H</button>
+        <button type="button" style={tb} onClick={() => exec('insertUnorderedList')}>&bull; List</button>
+        <button type="button" style={tb} onClick={() => exec('insertOrderedList')}>1. List</button>
+        <button type="button" style={tb} onClick={() => exec('removeFormat')}>Clear</button>
+      </div>
+      <div
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={() => ref.current && onChange(ref.current.innerHTML)}
+        data-ph="Type the client's repository — positioning, offers, key facts. Use the toolbar for headings, bold, and lists."
+        style={{
+          height: 400, overflowY: 'auto', padding: '12px 14px',
+          border: '1px solid var(--border)', borderRadius: 'var(--r-sm)',
+          background: 'var(--surface-2)', color: 'var(--text)',
+          fontFamily: '"DM Sans", inherit', fontSize: 14, lineHeight: 1.55, outline: 'none',
+        }}
+      />
+    </div>
+  );
+}
+
+function TopicsSection({ clientId }) {
+  const [topics, setTopics] = useState([]);
+  const [adding, setAdding] = useState('');
+  const [editing, setEditing] = useState(null);   // { id, text }
+  const [busy, setBusy] = useState(null);          // topicId being sent
+  const [err, setErr] = useState('');
+
+  const load = () => api.listTopics(clientId).then((r) => setTopics(Array.isArray(r) ? r : [])).catch(() => setTopics([]));
+  useEffect(() => { if (clientId != null) load(); /* eslint-disable-next-line */ }, [clientId]);
+
+  const inp = { flex: 1, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 14, padding: '8px 10px', boxSizing: 'border-box' };
+
+  const add = async () => {
+    const t = adding.trim(); if (!t) return;
+    try { await api.addTopic(clientId, t); setAdding(''); load(); } catch (e) { setErr(e.message || 'Could not add topic.'); }
+  };
+  const saveEdit = async () => {
+    if (!editing || !editing.text.trim()) return;
+    try { await api.updateTopic(clientId, editing.id, editing.text.trim()); setEditing(null); load(); } catch (e) { setErr(e.message || 'Could not save topic.'); }
+  };
+  const remove = async (id) => {
+    try { await api.deleteTopic(clientId, id); load(); } catch (e) { setErr(e.message || 'Could not delete topic.'); }
+  };
+  const copy = (text) => { try { navigator.clipboard.writeText(text); } catch { /* ignore */ } };
+
+  const sendToScript = async (topic) => {
+    setBusy(topic.id); setErr('');
+    try {
+      let channels = [];
+      try {
+        const creds = await api.listCredentials(clientId);
+        channels = [...new Set((Array.isArray(creds) ? creds : []).map((c) => c.kind).filter(Boolean))];
+      } catch { /* ignore */ }
+      if (!channels.length) channels = ['podcast'];
+      await api.generate(clientId, { topic: topic.text, channels });
+      await api.deleteTopic(clientId, topic.id);   // moved into generation → drop from queue
+      load();
+    } catch (e) {
+      setErr(e.message || 'Could not send to script generation.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="card card-pad" style={{ marginTop: 16 }}>
+      <div className="label" style={{ marginBottom: 12 }}>TOPICS · queue ideas for script generation</div>
+      {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
+      <div className="row" style={{ gap: 8, marginBottom: 14 }}>
+        <input value={adding} onChange={(e) => setAdding(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder="New topic…" style={inp} />
+        <button className="btn primary sm" onClick={add}><Icon name="plus" size={13} /> Add topic</button>
+      </div>
+      {topics.length === 0 ? (
+        <div className="mono" style={{ color: 'var(--text-3)' }}>No topics yet — add one above.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {topics.map((t) => (
+            <div key={t.id} className="card" style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {editing && editing.id === t.id ? (
+                <>
+                  <input value={editing.text} autoFocus onChange={(e) => setEditing({ ...editing, text: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && saveEdit()} style={inp} />
+                  <button className="btn sm" onClick={saveEdit}><Icon name="check" size={13} /> Save</button>
+                  <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <div style={{ flex: 1, fontSize: 14, minWidth: 160 }}>{t.text}</div>
+                  <button className="btn sm" onClick={() => copy(t.text)}><Icon name="doc" size={13} /> Copy</button>
+                  <button className="btn sm" onClick={() => setEditing({ id: t.id, text: t.text })}><Icon name="sliders" size={13} /> Edit</button>
+                  <button className="btn sm" disabled={busy === t.id} onClick={() => sendToScript(t)}>{busy === t.id ? 'Sending…' : (<><Icon name="send" size={13} /> Send to script</>)}</button>
+                  <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => remove(t.id)}><Icon name="close" size={13} /> Delete</button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BriefView({ clientId }) {
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
@@ -368,27 +492,27 @@ function BriefView({ clientId }) {
             <Field key={k} label={label} multiline={ml} value={form[k] ?? ''} onChange={(v) => set(k, v)} />
           ))}
         </div>
-        <div className="card card-pad" style={{ flex: '1 1 320px' }}>
-          <div className="label" style={{ marginBottom: 12 }}>REPOSITORY · steers the copy</div>
-          {REPO.map(([k, label, ml]) => (
-            <Field key={k} label={label} multiline={ml} value={form[k] ?? ''} onChange={(v) => set(k, v)} />
-          ))}
-        </div>
         <DistributionCard clientId={clientId} />
-        <div className="card card-pad" style={{ flex: '1 1 320px' }}>
-          <div className="label" style={{ marginBottom: 12 }}>THEME · brand colors</div>
-          {THEME.map(([k, label]) => (
-            <div key={k} style={{ marginBottom: 12 }}>
-              <div className="label" style={{ marginBottom: 6 }}>{label}</div>
-              <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-                <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(form[k] || '') ? form[k] : '#000000'} onChange={(e) => set(k, e.target.value)}
-                  style={{ width: 44, height: 34, padding: 0, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', cursor: 'pointer' }} />
-                <input value={form[k] ?? ''} onChange={(e) => set(k, e.target.value)} placeholder="#RRGGBB"
-                  style={{ flex: 1, height: 34, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 }} />
-              </div>
+      </div>
+
+      <div className="card card-pad" style={{ marginTop: 16 }}>
+        <div className="label" style={{ marginBottom: 12 }}>REPO · steers the copy</div>
+        <RichText value={form.repo_richtext ?? ''} onChange={(v) => set('repo_richtext', v)} />
+      </div>
+
+      <div className="card card-pad" style={{ marginTop: 16, maxWidth: 480 }}>
+        <div className="label" style={{ marginBottom: 12 }}>THEME · brand colors</div>
+        {THEME.map(([k, label]) => (
+          <div key={k} style={{ marginBottom: 12 }}>
+            <div className="label" style={{ marginBottom: 6 }}>{label}</div>
+            <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+              <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(form[k] || '') ? form[k] : '#000000'} onChange={(e) => set(k, e.target.value)}
+                style={{ width: 44, height: 34, padding: 0, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', cursor: 'pointer' }} />
+              <input value={form[k] ?? ''} onChange={(e) => set(k, e.target.value)} placeholder="#RRGGBB"
+                style={{ flex: 1, height: 34, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 }} />
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
 
       <div className="row" style={{ gap: 12, alignItems: 'center', marginTop: 18 }}>
@@ -400,6 +524,8 @@ function BriefView({ clientId }) {
           <span className="mono" style={{ color: 'var(--ok)' }}>✓ saved</span>
         )}
       </div>
+
+      <TopicsSection clientId={clientId} />
 
       <AssetsSection clientId={clientId} />
       <AvatarsSection clientId={clientId} />

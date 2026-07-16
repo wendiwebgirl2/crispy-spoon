@@ -414,3 +414,5 @@
   /* fade-in */
   .fade-in { animation: fadeIn 240ms ease both; }
   @keyframes fadeIn { from { transform: translateY(4px); } to { transform: none; } }
+
+[contenteditable][data-ph]:empty:before { content: attr(data-ph); color: var(--text-4); pointer-events: none; }
