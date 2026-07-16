@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { listRecordings, recordingDownloadUrl, deleteRecording, listVideos, deleteVideo, renameVideo, currentToken } from './api.js'
+import { listRecordings, recordingDownloadUrl, deleteRecording, listVideos, deleteVideo, renameVideo, refaceRecording, currentToken } from './api.js'
 import { api } from './api.js'
 import { Icon } from './shared.jsx'
 
@@ -46,6 +46,9 @@ function RecordingsView({ activeClientId, onCreateEpisode }) {
   const [urlBusy, setUrlBusy] = useState(null);
   const [delBusy, setDelBusy] = useState(null);
   const [editing, setEditing] = useState(null); // { id, title } for avatar-clip rename
+  const [refaceBusy, setRefaceBusy] = useState(null);
+  const refaceInput = React.useRef(null);
+  const refaceTarget = React.useRef(null);
 
   const load = async () => {
     setErr('');
@@ -160,6 +163,26 @@ function RecordingsView({ activeClientId, onCreateEpisode }) {
     }
   };
 
+  const pickReface = (rec) => {
+    refaceTarget.current = rec;
+    if (refaceInput.current) { refaceInput.current.value = ''; refaceInput.current.click(); }
+  };
+  const onRefaceFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    const rec = refaceTarget.current;
+    if (!file || !rec) return;
+    setRefaceBusy(rec.id); setErr('');
+    try {
+      await refaceRecording(rec.id, file, rec._token || currentToken());
+      await load();
+    } catch (err) {
+      setErr(err.message || 'Could not update the avatar image.');
+    } finally {
+      setRefaceBusy(null);
+      refaceTarget.current = null;
+    }
+  };
+
   const makeEpisodeFromMaster = (rec) => {
     if (!onCreateEpisode) return;
     onCreateEpisode({ kind: 'recording', recordingId: rec.id, token: rec._token || currentToken(), title: (rec.signed_name || 'Episode') + ' — ' + fmtDate(new Date().toISOString()) });
@@ -174,6 +197,7 @@ function RecordingsView({ activeClientId, onCreateEpisode }) {
 
   return (
     <div className="v-pad fade-in">
+      <input ref={refaceInput} type="file" accept="image/*" onChange={onRefaceFile} style={{ display: 'none' }} />
       <div className="label">RECORDINGS LIVE {scopeLabel}</div>
       <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, lineHeight: 1.1, margin: '6px 0 4px' }}>
         The <em>masters</em>, and what they became.
@@ -260,6 +284,7 @@ function RecordingsView({ activeClientId, onCreateEpisode }) {
                   </button>
                   <button className="btn sm" onClick={() => downloadMaster(rec)} disabled={urlBusy === rec.id}><Icon name="download" size={13} /> Download</button>
                   <button className="btn sm" onClick={() => makeEpisodeFromMaster(rec)}><Icon name="plus" size={13} /> Create episode</button>
+                  <button className="btn sm" onClick={() => pickReface(rec)} disabled={refaceBusy === rec.id}><Icon name="cam" size={13} /> {refaceBusy === rec.id ? 'Rebuilding…' : 'Edit image'}</button>
                   <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => removeMaster(rec)} disabled={delBusy === rec.id}><Icon name="close" size={13} /> {delBusy === rec.id ? '…' : 'Delete'}</button>
                 </div>
               </div>

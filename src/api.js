@@ -144,6 +144,17 @@ export function renameVideo(videoId, title, token = currentToken()) {
   );
 }
 
+// Replace the face image for a recording's avatar and rebuild it (voice kept).
+export function refaceRecording(recordingId, file, token = currentToken()) {
+  const form = new FormData();
+  form.append("image", file, (file && file.name) || "face.jpg");
+  return apiPostForm(
+    "/api/recordings/" + encodeURIComponent(token) +
+    "/" + encodeURIComponent(recordingId) + "/reface",
+    form
+  );
+}
+
 // ============================================================================
 // VoiceCast API (same-origin) — clients, brief, scripts.
 //
