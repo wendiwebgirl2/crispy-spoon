@@ -5,7 +5,7 @@
 
 import React from 'react'
 import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob } from './api.js'
-import { clientToken } from './dashboard-api.js'
+import { clientToken, voice } from './dashboard-api.js'
 import { AvatarTile, Icon, StatusBadge } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
 import { LookPicker } from './brief.jsx'
@@ -42,6 +42,12 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   // —— decision flow ——
   const [step, setStep] = React.useState('home');   // home | assets | client | destination | type | render
   const [clientId, setClientId] = React.useState(null);
+  const [castType, setCastType] = React.useState('video');   // 'video' (HeyGen) | 'audio' (ElevenLabs)
+  const [voiceProfiles, setVoiceProfiles] = React.useState([]);
+  const [voiceProfileId, setVoiceProfileId] = React.useState('');
+  const [audioOutputs, setAudioOutputs] = React.useState([]);
+  const [synthing, setSynthing] = React.useState(false);
+  const [audioErr, setAudioErr] = React.useState('');
   const [destination, setDestination] = React.useState('download');
   const [contentType, setContentType] = React.useState('file');
   const [renderMode, setRenderMode] = React.useState('video');   // video | assembly
@@ -105,6 +111,14 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
         if (tok) tokens.push(tok);
       }
       setToken(tokens[0] || null);
+
+      // audio-only casting uses the client's ElevenLabs voice profiles
+      voice.profiles(id).then((p) => {
+        const rows = Array.isArray(p) ? p : [];
+        setVoiceProfiles(rows);
+        setVoiceProfileId(rows[0] ? String(rows[0].id) : '');
+      }).catch(() => { setVoiceProfiles([]); setVoiceProfileId(''); });
+      voice.outputs(id).then((o) => setAudioOutputs(Array.isArray(o) ? o : [])).catch(() => setAudioOutputs([]));
 
       const perToken = await Promise.all(
         tokens.map((t) => api.listAvatars(t).then((r) => r.avatars || []).catch(() => []))
@@ -423,6 +437,35 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     } catch (e) { alert(e.message || 'Could not render waveform'); }
   };
 
+  const reloadAudio = async () => {
+    if (clientId == null) return;
+    try { const o = await voice.outputs(clientId); setAudioOutputs(Array.isArray(o) ? o : []); } catch { /* ignore */ }
+  };
+  const castToAudio = async () => {
+    if (!script.trim() || clientId == null) return;
+    if (!voiceProfileId) { setAudioErr('Pick or create a voice for this client first.'); return; }
+    setSynthing(true); setAudioErr('');
+    try {
+      await voice.synthesize(clientId, Number(voiceProfileId), script.trim());
+      await reloadAudio();
+    } catch (e) {
+      setAudioErr(e.message || 'Could not synthesize audio.');
+    } finally { setSynthing(false); }
+  };
+  const createVoiceFromClip = async (file) => {
+    if (!file || clientId == null) return;
+    setSynthing(true); setAudioErr('');
+    try {
+      await voice.createProfile(clientId, 'Voice ' + new Date().toISOString().slice(0, 10), file);
+      const p = await voice.profiles(clientId);
+      const rows = Array.isArray(p) ? p : [];
+      setVoiceProfiles(rows);
+      setVoiceProfileId(rows[0] ? String(rows[0].id) : '');
+    } catch (e) {
+      setAudioErr(e.message || 'Could not create the voice.');
+    } finally { setSynthing(false); }
+  };
+
   const generate = async () => {
     if (!script.trim() || !token) return;
     setGenerating(true);
@@ -483,6 +526,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
             {outputOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
           </select>
           <button className="btn sm" onClick={startOver}><Icon name="more" size={12} /> Start over</button>
+          <div className="row" style={{ gap: 0, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', overflow: 'hidden' }}>
+            <button onClick={() => setCastType('video')} style={{ padding: '6px 12px', border: 'none', background: castType === 'video' ? 'var(--accent)' : 'transparent', color: castType === 'video' ? '#fff' : 'var(--text-2)', cursor: 'pointer', fontSize: 12 }}>Video</button>
+            <button onClick={() => setCastType('audio')} style={{ padding: '6px 12px', border: 'none', background: castType === 'audio' ? 'var(--accent)' : 'transparent', color: castType === 'audio' ? '#fff' : 'var(--text-2)', cursor: 'pointer', fontSize: 12 }}>Audio only</button>
+          </div>
         </div>
         <ModeToggle />
       </div>
@@ -570,11 +617,28 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
               </div>
 
               <div className="row" style={{ justifyContent: 'space-between', marginTop: 100, marginBottom: 16 }}>
-                <div className="label">PREVIOUS CASTS</div>
-                <span className="mono">{queue.length} {queue.length === 1 ? 'cast' : 'casts'}</span>
+                <div className="label">{castType === 'audio' ? 'PREVIOUS AUDIO CASTS' : 'PREVIOUS CASTS'}</div>
+                <span className="mono">{castType === 'audio' ? audioOutputs.length : queue.length} {castType === 'audio' ? (audioOutputs.length === 1 ? 'clip' : 'clips') : (queue.length === 1 ? 'cast' : 'casts')}</span>
               </div>
 
-              {queue.length === 0 ? (
+              {castType === 'audio' ? (
+                audioOutputs.length === 0 ? (
+                  <div className="mono" style={{ color: 'var(--text-4)' }}>No audio casts yet for this client.</div>
+                ) : (
+                  <div className="col" style={{ gap: 10 }}>
+                    {audioOutputs.map((o) => (
+                      <div key={o.id} className="card card-pad">
+                        <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginBottom: 6 }}>{String(o.created_at || '').slice(0, 10)} · {o.provider}</div>
+                        <div style={{ fontSize: 13, marginBottom: 8 }}>{(o.text || '').slice(0, 120) || 'Audio clip'}</div>
+                        <audio controls src={voice.outputUrl(clientId, o.id)} style={{ width: '100%' }} />
+                        <div className="row" style={{ gap: 6, marginTop: 8 }}>
+                          <a className="btn sm" href={voice.outputUrl(clientId, o.id)} download target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download audio</a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : queue.length === 0 ? (
                 <div className="mono" style={{ color: 'var(--text-4)' }}>No casts yet for this client.</div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
@@ -731,14 +795,39 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                 <div className="mono">{estSeconds}s · {wordCount} words · charged on completion</div>
               </div>
 
-              <button className="btn primary lg" onClick={generate} disabled={!canGenerate}
-                style={{ justifyContent: 'center', opacity: canGenerate ? 1 : 0.5 }}>
-                {generating
-                  ? <>Queueing…</>
-                  : (avatar.status === 'ready'
-                      ? <><Icon name="sparkle" size={14} /> Generate {typeLabel || 'video'}</>
-                      : <>Avatar still training</>)}
-              </button>
+              {castType === 'video' ? (
+                <button className="btn primary lg" onClick={generate} disabled={!canGenerate}
+                  style={{ justifyContent: 'center', opacity: canGenerate ? 1 : 0.5 }}>
+                  {generating
+                    ? <>Queueing…</>
+                    : (avatar.status === 'ready'
+                        ? <><Icon name="sparkle" size={14} /> Generate {typeLabel || 'video'}</>
+                        : <>Avatar still training</>)}
+                </button>
+              ) : (
+                <div className="col" style={{ gap: 8 }}>
+                  {voiceProfiles.length > 0 ? (
+                    <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                      <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>Voice</span>
+                      <select value={voiceProfileId} onChange={(e) => setVoiceProfileId(e.target.value)}
+                        style={{ flex: 1, padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 }}>
+                        {voiceProfiles.map((p) => <option key={p.id} value={p.id}>{p.label || ('Voice ' + p.id)}</option>)}
+                      </select>
+                    </div>
+                  ) : (
+                    <label className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                      No ElevenLabs voice for this client yet — upload a short clip to create one:
+                      <input type="file" accept="audio/*" disabled={synthing} onChange={(e) => createVoiceFromClip(e.target.files[0])} style={{ display: 'block', marginTop: 6, fontSize: 12 }} />
+                    </label>
+                  )}
+                  {audioErr && <div className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>{audioErr}</div>}
+                  <button className="btn primary lg" onClick={castToAudio} disabled={synthing || !script.trim() || !voiceProfileId}
+                    style={{ justifyContent: 'center', opacity: (synthing || !script.trim() || !voiceProfileId) ? 0.5 : 1 }}>
+                    {synthing ? <>Synthesizing…</> : <><Icon name="mic" size={14} /> Cast to audio</>}
+                  </button>
+                  <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>ElevenLabs voice · no character cap · far cheaper than a video render</div>
+                </div>
+              )}
             </div>
           </div>
         )}

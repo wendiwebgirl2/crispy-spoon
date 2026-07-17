@@ -38,6 +38,15 @@ export const ep = {
   voiceOutputs: (cid) => get(`/api/clients/${cid}/voice/outputs`),
 };
 
+// ElevenLabs voice synthesis (audio-only casting — cheaper than a HeyGen video).
+export const voice = {
+  profiles: (cid) => get(`/api/clients/${cid}/voice/profiles`),
+  synthesize: (cid, profileId, text) => post(`/api/clients/${cid}/voice/synthesize`, { profileId, text }),
+  outputs: (cid) => get(`/api/clients/${cid}/voice/outputs`),
+  outputUrl: (cid, outId) => `/api/clients/${cid}/voice/outputs/${outId}/file`,
+  createProfile: (cid, label, clipFile) => { const f = new FormData(); f.append('label', label); f.append('clip', clipFile); return postForm(`/api/clients/${cid}/voice/profiles`, f); },
+};
+
 export const rec = {
   list: (token) => get(`${RAILWAY}/api/recordings/${encodeURIComponent(token)}`),
 };
