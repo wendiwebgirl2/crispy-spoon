@@ -4,7 +4,7 @@
 // cast.cuecreative.com Episodes tab.
 
 import React from 'react'
-import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob } from './api.js'
+import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob } from './api.js'
 import { clientToken } from './dashboard-api.js'
 import { AvatarTile, Icon, StatusBadge } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
@@ -413,6 +413,15 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
       setTimeout(() => URL.revokeObjectURL(url), 1500);
     } catch (e) { alert(e.message || 'Could not extract audio'); }
   };
+  const downloadWaveform = async (v) => {
+    if (!v.url) return;
+    try {
+      const blob = await castWaveformBlob(v.url, v.thumbnail_url || '');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = ((v.title || 'cast').replace(/[^\w-]+/g, '_')).slice(0, 40) + '-waveform.mp4'; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch (e) { alert(e.message || 'Could not render waveform'); }
+  };
 
   const generate = async () => {
     if (!script.trim() || !token) return;
@@ -571,7 +580,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                   {queue.map(v => (
                     <CastCard key={v.id} video={v} avatars={avatars}
-                      onRename={() => renameCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} />
+                      onRename={() => renameCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} onWaveform={() => downloadWaveform(v)} />
                   ))}
                 </div>
               )}
@@ -1000,7 +1009,7 @@ const Crumb = ({ label, onClick }) => (
   </button>
 );
 
-const CastCard = ({ video, avatars = [], onRename, onDelete, onDownloadAudio }) => {
+const CastCard = ({ video, avatars = [], onRename, onDelete, onDownloadAudio, onWaveform }) => {
   const avatar = (avatars || []).find(a => a.id === video.avatarId) || { id: video.avatarId || 'na', contact: video.title || 'Avatar' };
   const ready = video.status === 'ready' && video.url;
   return (
@@ -1026,6 +1035,7 @@ const CastCard = ({ video, avatars = [], onRename, onDelete, onDownloadAudio }) 
         <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
           {ready && <a className="btn sm" href={video.url} download target="_blank" rel="noopener noreferrer"><Icon name="download" size={12} /> Video</a>}
           {ready && <button className="btn sm" onClick={onDownloadAudio}><Icon name="mic" size={12} /> Audio</button>}
+          {ready && <button className="btn sm" onClick={onWaveform}><Icon name="sliders" size={12} /> Waveform</button>}
           <button className="btn sm" onClick={onRename}><Icon name="sliders" size={12} /> Edit</button>
           <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={onDelete}><Icon name="close" size={12} /> Delete</button>
         </div>

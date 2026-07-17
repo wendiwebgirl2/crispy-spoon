@@ -160,6 +160,38 @@ export async function castAudioBlob(videoUrl) {
   return resp.blob();
 }
 
+// Render an audiogram (frequency-bar waveform) video from a cast video URL.
+export async function castWaveformBlob(mediaUrl, coverUrl) {
+  const resp = await fetch("/api/tools/waveform-from-url", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mediaUrl, coverUrl }),
+  });
+  if (!resp.ok) {
+    let msg = "waveform render failed";
+    try { const j = await resp.json(); msg = j.error || msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return resp.blob();
+}
+
+// Render an audiogram video from a produced episode's audio.
+export async function episodeWaveformBlob(cid, epId) {
+  const resp = await fetch(`/api/clients/${cid}/episodes/${epId}/waveform`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!resp.ok) {
+    let msg = "waveform render failed";
+    try { const j = await resp.json(); msg = j.error || msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return resp.blob();
+}
+
 // Replace the face image for a recording's avatar and rebuild it (voice kept).
 export function refaceRecording(recordingId, file, token = currentToken()) {
   const form = new FormData();

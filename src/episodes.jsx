@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Icon } from './shared.jsx'
 import { ep, video, rec, clientToken, sched } from './dashboard-api.js'
-import { api } from './api.js'
+import { api, episodeWaveformBlob } from './api.js'
 import { LookPicker } from './brief.jsx'
 
 const inputStyle = {
@@ -232,6 +232,16 @@ function EpisodeEditor({ cid, epId, onChange }) {
     catch (e) { setErr(e.message || 'Could not add to planner.'); }
     finally { setBusy(''); }
   };
+  const downloadWaveform = async () => {
+    setBusy('waveform'); setErr('');
+    try {
+      const blob = await episodeWaveformBlob(cid, epId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = ((full.title || 'episode').replace(/[^\w-]+/g, '_')).slice(0, 40) + '-waveform.mp4'; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch (e) { setErr(e.message || 'Could not render waveform.'); }
+    finally { setBusy(''); }
+  };
 
   useEffect(() => {
     setErr('');
@@ -419,6 +429,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
           <div className="row" style={{ gap: 8, marginTop: 8 }}>
             {full.video_output_path && <a className="btn sm" href={ep.videoFileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download video</a>}
             <a className="btn sm" href={ep.fileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download audio</a>
+            <button className="btn sm" disabled={busy === 'waveform'} onClick={downloadWaveform}><Icon name="mic" size={12} /> {busy === 'waveform' ? 'Rendering…' : 'Waveform video'}</button>
           </div>
           <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
             <button className="btn sm" disabled={busy === 'approve'} onClick={approve}><Icon name="check" size={12} /> {full.approval_status === 'approved' ? 'Approved' : 'Approve'}</button>
