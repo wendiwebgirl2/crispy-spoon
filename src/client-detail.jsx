@@ -69,6 +69,7 @@ function InvitesSection({ clientId }) {
   const [email, setEmail] = useState('');
   const [label, setLabel] = useState('');
   const [days, setDays] = useState(7);
+  const [mode, setMode] = useState('video');
   const [creating, setCreating] = useState(false);
 
   const load = () => {
@@ -104,7 +105,7 @@ function InvitesSection({ clientId }) {
   const create = async () => {
     setCreating(true); setErr('');
     try {
-      await api.createInvite(clientId, { clientEmail: email.trim() || null, label: label.trim() || null, days: Number(days) || 7 });
+      await api.createInvite(clientId, { clientEmail: email.trim() || null, label: label.trim() || null, days: Number(days) || 7, mode });
       setEmail(''); setLabel('');
       await load();
     } catch (e) { setErr(e.message || 'Could not create invite.'); } finally { setCreating(false); }
@@ -137,6 +138,10 @@ function InvitesSection({ clientId }) {
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Client email (optional)" style={{ ...inputStyle, width: '100%' }} />
           <div className="row" style={{ gap: 8, alignItems: 'stretch' }}>
             <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label (e.g. CEO avatar)" style={{ ...inputStyle, flex: 1 }} />
+            <select value={mode} onChange={(e) => setMode(e.target.value)} style={{ ...inputStyle, width: 150 }}>
+              <option value="video">Image avatar</option>
+              <option value="voice">Voice only</option>
+            </select>
             <select value={days} onChange={(e) => setDays(e.target.value)} style={{ ...inputStyle, width: 90 }}>
               <option value={3}>3 days</option>
               <option value={7}>7 days</option>
@@ -150,6 +155,7 @@ function InvitesSection({ clientId }) {
           </div>
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
             Creates a record link for this client. If an email is provided, it's sent automatically.
+            {' '}Image avatar records camera and microphone; voice only records the microphone alone.
           </div>
         </div>
       </div>
@@ -171,6 +177,7 @@ function InvitesSection({ clientId }) {
                   {inv.token} · created {fmtDate(inv.created_at)} · expires {fmtDate(inv.expires_at)}
                 </div>
               </div>
+              <span className="badge">{inv.mode === 'voice' ? 'voice only' : 'image avatar'}</span>
               <span className="badge">{inv.status || 'pending'}</span>
               <button className="btn sm" onClick={() => copyLink(inv.token)}>
                 <Icon name="send" size={13} />
