@@ -71,6 +71,7 @@ function InvitesSection({ clientId }) {
   const [days, setDays] = useState(7);
   const [mode, setMode] = useState('video');
   const [creating, setCreating] = useState(false);
+  const [note, setNote] = useState('');
 
   const load = () => {
     setLoading(true); setErr('');
@@ -105,7 +106,10 @@ function InvitesSection({ clientId }) {
   const create = async () => {
     setCreating(true); setErr('');
     try {
-      await api.createInvite(clientId, { clientEmail: email.trim() || null, label: label.trim() || null, days: Number(days) || 7, mode });
+      const r = await api.createInvite(clientId, { clientEmail: email.trim() || null, label: label.trim() || null, days: Number(days) || 7, mode });
+      if (r && r.email && r.email.sent) setNote('Invite created and emailed.');
+      else if (r && r.email && r.email.skipped) setNote('Invite created. No email address given — use Copy link to send it.');
+      else setNote('Invite created, but the email did NOT send: ' + ((r && r.email && r.email.error) || 'unknown error') + ' — use Copy link to send it manually.');
       setEmail(''); setLabel('');
       await load();
     } catch (e) { setErr(e.message || 'Could not create invite.'); } finally { setCreating(false); }
@@ -161,6 +165,12 @@ function InvitesSection({ clientId }) {
       </div>
 
       {err && <div className="mono" style={{ color: 'var(--accent)' }}>{err}</div>}
+      {note && (
+        <div className="card card-pad mono" style={{ fontSize: 12, color: note.includes('did NOT send') ? 'var(--accent)' : 'var(--text-2)', borderColor: note.includes('did NOT send') ? 'var(--accent)' : 'var(--border)' }}>
+          {note}
+          <button className="btn sm ghost" style={{ marginLeft: 10 }} onClick={() => setNote('')}>Dismiss</button>
+        </div>
+      )}
 
       {loading ? (
         <div className="mono" style={{ color: 'var(--text-3)' }}>Loading invites…</div>
