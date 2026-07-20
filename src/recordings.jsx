@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { listRecordings, recordingDownloadUrl, deleteRecording, listVideos, deleteVideo, renameVideo, refaceRecording, currentToken } from './api.js'
 import { api } from './api.js'
 import { Icon } from './shared.jsx'
+import { LookPicker } from './brief.jsx'
 
 function fmtBytes(b) {
   if (!b && b !== 0) return '-';
@@ -45,7 +46,10 @@ function RecordingsView({ activeClientId, onCreateEpisode }) {
   const [player, setPlayer] = useState(null);
   const [urlBusy, setUrlBusy] = useState(null);
   const [delBusy, setDelBusy] = useState(null);
-  const [editing, setEditing] = useState(null); // { id, title } for avatar-clip rename
+  const [detailId, setDetailId] = useState(null);   // expanded avatar-clip detail
+  const [draftTitle, setDraftTitle] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [avatars, setAvatars] = useState([]);
   const [refaceBusy, setRefaceBusy] = useState(null);
   const refaceInput = React.useRef(null);
   const refaceTarget = React.useRef(null);
@@ -91,6 +95,18 @@ function RecordingsView({ activeClientId, onCreateEpisode }) {
         vmerged.push(v);
       }
       setVideos(vmerged);
+
+      const avs = await Promise.all(
+        tokens.map((t) => api.listAvatars(t).then((r) => (r.avatars || []).map((a) => ({ ...a, _token: t }))).catch(() => []))
+      );
+      const aseen = new Set();
+      const amerged = [];
+      for (const a of avs.flat()) {
+        if (!a || (a.id != null && aseen.has(a.id))) continue;
+        if (a.id != null) aseen.add(a.id);
+        amerged.push(a);
+      }
+      setAvatars(amerged);
     } catch (e) {
       setErr(e.message || 'Could not load recordings.');
     } finally {
@@ -152,16 +168,31 @@ function RecordingsView({ activeClientId, onCreateEpisode }) {
     }
   };
 
-  const saveRename = async () => {
-    if (!editing || !editing.title.trim()) return;
+  const openDetail = (v) => {
+    if (detailId === v.id) { setDetailId(null); return; }
+    setDetailId(v.id);
+    setDraftTitle(v.title || '');
+  };
+
+  const saveTitle = async (v) => {
+    if (!draftTitle.trim()) return;
+    setSaving(true); setErr('');
     try {
-      await renameVideo(editing.id, editing.title.trim(), editing._token || currentToken());
-      setEditing(null);
+      await renameVideo(v.id, draftTitle.trim(), v._token || currentToken());
       await load();
     } catch (e) {
       setErr(e.message || 'Could not rename the clip.');
+    } finally {
+      setSaving(false);
     }
   };
+
+  // The avatar a clip was rendered from — matched on the recording/invitation
+  // pair the Railway list endpoint returns on both rows.
+  const avatarForClip = (v) => avatars.find((a) =>
+    a.recording_id != null && a.recording_id === v.recording_id &&
+    (v.invitation_id == null || a.invitation_id === v.invitation_id)
+  ) || null;
 
   const pickReface = (rec) => {
     refaceTarget.current = rec;
@@ -220,38 +251,87 @@ function RecordingsView({ activeClientId, onCreateEpisode }) {
         <div className="mono" style={{ color: 'var(--text-3)' }}>No avatar clips yet.</div>
       ) : (
         <div className="col" style={{ gap: 8 }}>
-          {videos.map((v) => (
-            <div key={v.id} className="card card-pad row" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Thumb url={v.thumbnail_url} icon="studio" />
-              <div style={{ flex: 1, minWidth: 160 }}>
-                {editing && editing.id === v.id ? (
-                  <div className="row" style={{ gap: 8 }}>
-                    <input value={editing.title} autoFocus onChange={(e) => setEditing({ ...editing, title: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && saveRename()}
-                      style={{ flex: 1, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 14, padding: '6px 9px' }} />
-                    <button className="btn sm" onClick={saveRename}><Icon name="check" size={13} /> Save</button>
-                    <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
+          {videos.map((v) => {
+            const open = detailId === v.id;
+            const av = open ? avatarForClip(v) : null;
+            return (
+            <div key={v.id} className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="row" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Thumb url={v.thumbnail_url} icon="studio" />
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{v.title || 'Untitled render'}</div>
+                  <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
+                    {fmtDate(v.created_at)} · {v.status}{v.progress != null && v.status !== 'ready' ? ' ' + v.progress + '%' : ''}
                   </div>
-                ) : (
-                  <>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{v.title || 'Untitled render'}</div>
-                    <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
-                      {fmtDate(v.created_at)} · {v.status}{v.progress != null && v.status !== 'ready' ? ' ' + v.progress + '%' : ''}
-                    </div>
-                  </>
-                )}
-              </div>
-              {!(editing && editing.id === v.id) && (
+                </div>
                 <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                   {v.status === 'ready' && v.url && (
                     <a className="btn sm" href={v.url} target="_blank" rel="noreferrer"><Icon name="download" size={13} /> Download</a>
                   )}
                   <button className="btn sm" onClick={() => makeEpisodeFromClip(v)} disabled={v.status !== 'ready' || !v.url}><Icon name="plus" size={13} /> Create episode</button>
-                  <button className="btn sm" onClick={() => setEditing({ id: v.id, title: v.title || '', _token: v._token })}><Icon name="sliders" size={13} /> Edit</button>
+                  <button className={'btn sm' + (open ? ' primary' : '')} onClick={() => openDetail(v)}><Icon name="sliders" size={13} /> {open ? 'Close' : 'Edit'}</button>
                   <button className="btn sm" style={{ color: 'var(--accent)' }} disabled={delBusy === v.id} onClick={() => removeClip(v)}><Icon name="close" size={13} /> {delBusy === v.id ? '…' : 'Delete'}</button>
+                </div>
+              </div>
+
+              {open && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(220px, 1fr)', gap: 16 }}>
+                  <div className="col" style={{ gap: 10 }}>
+                    <div className="label">CLIP</div>
+                    {v.status === 'ready' && v.url ? (
+                      <video src={v.url} controls style={{ width: '100%', borderRadius: 'var(--r-sm)', background: '#000', maxHeight: 300 }} />
+                    ) : (
+                      <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>
+                        {v.status === 'failed' ? (v.failure_reason || 'Render failed.') : 'Still rendering — no playable file yet.'}
+                      </div>
+                    )}
+                    <div className="col" style={{ gap: 6 }}>
+                      <div className="label">TITLE</div>
+                      <div className="row" style={{ gap: 8 }}>
+                        <input value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && saveTitle(v)}
+                          style={{ flex: 1, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 14, padding: '8px 10px' }} />
+                        <button className="btn sm" onClick={() => saveTitle(v)} disabled={saving || !draftTitle.trim()}>
+                          <Icon name="check" size={13} /> {saving ? 'Saving…' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, lineHeight: 1.7 }}>
+                      Created {fmtDate(v.created_at)}<br />
+                      Status {v.status}{v.progress != null ? ' · ' + v.progress + '%' : ''}<br />
+                      {v.heygen_video_id ? 'HeyGen ' + v.heygen_video_id : 'No HeyGen id on this row'}
+                    </div>
+                  </div>
+
+                  <div className="col" style={{ gap: 10 }}>
+                    <div className="label">AVATAR</div>
+                    {!av ? (
+                      <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>
+                        Could not match this clip to an avatar on file.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+                          <Thumb url={av.thumbnail_url} icon="avatars" size={64} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: 14 }}>{av.name || 'Avatar'}</div>
+                            <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
+                              {av.status || 'ready'}{av.voice_id ? ' · voice cloned' : ''}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
+                          Pick the look this avatar renders with. Changing it does not touch the cloned voice.
+                        </div>
+                        <LookPicker avatar={av} onSet={() => load()} />
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
