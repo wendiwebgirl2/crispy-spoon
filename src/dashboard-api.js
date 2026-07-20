@@ -33,7 +33,7 @@ export const ep = {
   slotUrl: (cid, id, slot) => `/api/clients/${cid}/episodes/${id}/slot/${slot}`,
   useAsset: (cid, id, assetId, slot) => post(`/api/clients/${cid}/episodes/${id}/use-asset`, { assetId, slot }),
   approve: (cid, id, status) => post(`/api/clients/${cid}/episodes/${id}/approval`, { status }),
-  sendClient: (cid, id) => post(`/api/clients/${cid}/episodes/${id}/send-client`, {}),
+  sendClient: (cid, id, email) => post(`/api/clients/${cid}/episodes/${id}/send-client`, email ? { email } : {}),
   coverUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/cover`,
   voiceOutputs: (cid) => get(`/api/clients/${cid}/voice/outputs`),
 };

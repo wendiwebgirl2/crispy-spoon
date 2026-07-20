@@ -7,6 +7,7 @@ import { Icon } from './shared.jsx'
 // the repository fields (positioning/audience/tone/notes) steer the copy.
 const CONTACT = [
   ['email', 'Email', false],
+  ['approval_email', 'Approval contact email', false],
   ['phone', 'Phone', false],
   ['mobile', 'Mobile', false],
   ['website', 'Website', false],
@@ -488,6 +489,9 @@ function BriefView({ clientId }) {
       <div className="row" style={{ gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div className="card card-pad" style={{ flex: '1 1 320px' }}>
           <div className="label" style={{ marginBottom: 12 }}>CONTACT · injected verbatim into scripts</div>
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginBottom: 10 }}>
+            Approval contact email receives script and episode approval requests. It is not used in generated copy.
+          </div>
           {CONTACT.map(([k, label, ml]) => (
             <Field key={k} label={label} multiline={ml} value={form[k] ?? ''} onChange={(v) => set(k, v)} />
           ))}

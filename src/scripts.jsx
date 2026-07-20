@@ -100,7 +100,9 @@ const ScriptsView = ({ onCastScript } = {}) => {
   const sendApproval = async (sid) => {
     setErr('');
     try {
-      const r = await api.sendScriptApproval(clientId, sid);
+      const to = window.prompt('Send this script for approval to which email?\n(Leave blank to use the brief approval contact.)', '');
+      if (to === null) return;
+      const r = await api.sendScriptApproval(clientId, sid, to.trim() || undefined);
       if (!(r && r.email && r.email.sent)) {
         setErr('Marked pending — email not sent: ' + ((r && r.email && r.email.error) || 'unknown') + (r && r.approval_link ? ' (link: ' + r.approval_link + ')' : ''));
       }
@@ -144,10 +146,9 @@ const ScriptsView = ({ onCastScript } = {}) => {
     } catch (e) { setErr(e.message || 'Revision failed.'); }
     finally { setRevising(false); }
   };
-  const wordCount = (t) => (String(t || '').trim().match(/\S+/g) || []).length;
+  const charCount = (t) => String(t || '').trim().length;
   const readTime = (t) => {
-    const words = wordCount(t);
-    const mins = words / 140;
+    const mins = charCount(t) / 850;
     return mins < 1 ? `${Math.max(1, Math.round(mins * 60))} sec` : `${mins.toFixed(1)} min`;
   };
 
@@ -359,7 +360,7 @@ const ScriptsView = ({ onCastScript } = {}) => {
             <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)}
               style={{ flex: 1, minHeight: 340, resize: 'vertical', padding: 14, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 15, lineHeight: 1.6 }} />
             <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>
-              {wordCount(editBody)} words · ~{readTime(editBody)} read
+              {charCount(editBody).toLocaleString()} characters · ~{readTime(editBody)} read
             </div>
             <div className="row" style={{ gap: 8 }}>
               <input className="textarea" value={revisePrompt} onChange={(e) => setRevisePrompt(e.target.value)}

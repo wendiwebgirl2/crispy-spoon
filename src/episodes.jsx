@@ -220,7 +220,9 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const sendToClient = async () => {
     setBusy('send'); setErr('');
     try {
-      const r = await ep.sendClient(cid, epId);
+      const to = window.prompt('Send this episode for approval to which email?\n(Leave blank to use the brief approval contact.)', '');
+      if (to === null) { setBusy(''); return; }
+      const r = await ep.sendClient(cid, epId, to.trim() || undefined);
       if (r.email && r.email.sent) alert('Sent to client.');
       else alert((r.email && r.email.error ? r.email.error + '\n\n' : '') + 'Review link: ' + r.review_link);
     } catch (e) { setErr(e.message || 'Could not send.'); }
@@ -402,6 +404,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
 
       <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
       <SlotCard name="body2" label="Main recording — Part 2 (optional)" pathField="body2_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
+      <SlotCard name="body3" label="Main recording — Part 3 (optional)" pathField="body3_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
       <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
 
       <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
