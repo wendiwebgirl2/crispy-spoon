@@ -44,6 +44,22 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   const [clientId, setClientId] = React.useState(null);
   // Local approval state for casts, keyed on the Railway video id.
   const [castMeta, setCastMeta] = React.useState({});
+
+  // Approval state lives in voicecast, keyed on the Railway video id.
+  // These hooks must stay above the `if (!clientId) return` early return below:
+  // declaring them after it changes the hook count between renders and React
+  // throws, blanking the page the moment a client is selected.
+  const refreshCastMeta = React.useCallback(async () => {
+    if (clientId == null) return;
+    try {
+      const rows = await api.listCasts(clientId);
+      const byId = {};
+      (Array.isArray(rows) ? rows : []).forEach((c) => { byId[c.railway_video_id] = c; });
+      setCastMeta(byId);
+    } catch { /* approval state is additive - never block the cast list */ }
+  }, [clientId]);
+
+  React.useEffect(() => { refreshCastMeta(); }, [refreshCastMeta]);
   const [castType, setCastType] = React.useState('video');   // 'video' (HeyGen) | 'audio' (ElevenLabs)
   const [voiceProfiles, setVoiceProfiles] = React.useState([]);
   const [voiceProfileId, setVoiceProfileId] = React.useState('');
@@ -412,19 +428,6 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     try { const v = await listVideos(token); setQueue(v.videos || []); } catch { /* ignore */ }
     refreshCastMeta();
   };
-  // Approval state lives in voicecast, keyed on the Railway video id.
-  const refreshCastMeta = React.useCallback(async () => {
-    if (clientId == null) return;
-    try {
-      const rows = await api.listCasts(clientId);
-      const byId = {};
-      (Array.isArray(rows) ? rows : []).forEach((c) => { byId[c.railway_video_id] = c; });
-      setCastMeta(byId);
-    } catch { /* approval state is additive - never block the cast list */ }
-  }, [clientId]);
-
-  React.useEffect(() => { refreshCastMeta(); }, [refreshCastMeta]);
-
   const approveCast = async (v) => {
     try {
       await api.setCastApproval(clientId, v.id, 'approved', v.title || null);
