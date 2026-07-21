@@ -42,6 +42,8 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   // —— decision flow ——
   const [step, setStep] = React.useState('home');   // home | assets | client | destination | type | render
   const [clientId, setClientId] = React.useState(null);
+  // Local approval state for casts, keyed on the Railway video id.
+  const [castMeta, setCastMeta] = React.useState({});
   const [castType, setCastType] = React.useState('video');   // 'video' (HeyGen) | 'audio' (ElevenLabs)
   const [voiceProfiles, setVoiceProfiles] = React.useState([]);
   const [voiceProfileId, setVoiceProfileId] = React.useState('');
@@ -408,7 +410,54 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   const reloadQueue = async () => {
     if (!token) return;
     try { const v = await listVideos(token); setQueue(v.videos || []); } catch { /* ignore */ }
+    refreshCastMeta();
   };
+  // Approval state lives in voicecast, keyed on the Railway video id.
+  const refreshCastMeta = React.useCallback(async () => {
+    if (clientId == null) return;
+    try {
+      const rows = await api.listCasts(clientId);
+      const byId = {};
+      (Array.isArray(rows) ? rows : []).forEach((c) => { byId[c.railway_video_id] = c; });
+      setCastMeta(byId);
+    } catch { /* approval state is additive - never block the cast list */ }
+  }, [clientId]);
+
+  React.useEffect(() => { refreshCastMeta(); }, [refreshCastMeta]);
+
+  const approveCast = async (v) => {
+    try {
+      await api.setCastApproval(clientId, v.id, 'approved', v.title || null);
+      await refreshCastMeta();
+    } catch (e) { window.alert('Could not approve: ' + e.message); }
+  };
+
+  const sendCastForReview = async (v) => {
+    const to = window.prompt('Send this cast for review to which email?\n(Leave blank to use the brief approval contact.)', '');
+    if (to === null) return;
+    try {
+      const r = await api.sendCastForReview(clientId, v.id, v.title || null, to.trim() || undefined);
+      if (r && r.email && r.email.sent) {
+        window.alert('Review link sent.');
+      } else {
+        window.alert('Marked pending, but the email did not send: '
+          + ((r && r.email && r.email.error) || 'unknown')
+          + (r && r.review_link ? '\n\nLink: ' + r.review_link : ''));
+      }
+      await refreshCastMeta();
+    } catch (e) { window.alert('Could not send: ' + e.message); }
+  };
+
+  const addCastToPlanner = async (v) => {
+    const when = window.prompt('Schedule for which date? (YYYY-MM-DD, or leave blank to add as a draft)', '');
+    if (when === null) return;
+    try {
+      await api.addCastToPlanner(clientId, v.id, v.title || null, when.trim() || undefined);
+      window.alert(when.trim() ? 'Added to the Planner for ' + when.trim() + '.' : 'Added to the Planner as a draft.');
+      await refreshCastMeta();
+    } catch (e) { window.alert('Could not add to planner: ' + e.message); }
+  };
+
   const renameCast = async (v) => {
     const next = window.prompt('Rename this cast', v.title || '');
     if (next == null || !next.trim()) return;
@@ -643,8 +692,9 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                   {queue.map(v => (
-                    <CastCard key={v.id} video={v} avatars={avatars}
-                      onRename={() => renameCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} onWaveform={() => downloadWaveform(v)} />
+                    <CastCard key={v.id} video={v} avatars={avatars} meta={castMeta[v.id]}
+                      onRename={() => renameCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} onWaveform={() => downloadWaveform(v)}
+                      onApprove={() => approveCast(v)} onSend={() => sendCastForReview(v)} onPlanner={() => addCastToPlanner(v)} />
                   ))}
                 </div>
               )}
@@ -1098,7 +1148,7 @@ const Crumb = ({ label, onClick }) => (
   </button>
 );
 
-const CastCard = ({ video, avatars = [], onRename, onDelete, onDownloadAudio, onWaveform }) => {
+const CastCard = ({ video, avatars = [], meta, onRename, onDelete, onDownloadAudio, onWaveform, onApprove, onSend, onPlanner }) => {
   const avatar = (avatars || []).find(a => a.id === video.avatarId) || { id: video.avatarId || 'na', contact: video.title || 'Avatar' };
   const ready = video.status === 'ready' && video.url;
   return (
@@ -1111,6 +1161,13 @@ const CastCard = ({ video, avatars = [], onRename, onDelete, onDownloadAudio, on
         )}
       </div>
       <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+        {meta && meta.approval_status && meta.approval_status !== 'none' && (
+          <span className="mono" style={{
+            fontSize: 11,
+            color: meta.approval_status === 'approved' ? 'var(--ok)'
+              : meta.approval_status === 'changes_requested' ? 'var(--accent)' : 'var(--text-4)',
+          }}>{meta.approval_status.replace(/_/g, ' ')}</span>
+        )}
         <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{video.title || 'Untitled cast'}</div>
         <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
           {video.createdAt || (video.created_at ? String(video.created_at).slice(0, 10) : '')} · {ready ? 'ready' : (video.status || 'rendering')}
@@ -1128,6 +1185,15 @@ const CastCard = ({ video, avatars = [], onRename, onDelete, onDownloadAudio, on
           <button className="btn sm" onClick={onRename}><Icon name="sliders" size={12} /> Edit</button>
           <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={onDelete}><Icon name="close" size={12} /> Delete</button>
         </div>
+        {ready && (
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            {onApprove && (meta || {}).approval_status !== 'approved' && (
+              <button className="btn sm" onClick={onApprove}><Icon name="check" size={12} /> Approve</button>
+            )}
+            {onSend && <button className="btn sm" onClick={onSend}><Icon name="send" size={12} /> Send for review</button>}
+            {onPlanner && <button className="btn sm" onClick={onPlanner}><Icon name="history" size={12} /> Add to planner</button>}
+          </div>
+        )}
       </div>
     </div>
   );

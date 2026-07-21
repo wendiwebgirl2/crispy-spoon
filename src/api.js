@@ -252,6 +252,15 @@ export const api = {
   updateTopic: (id, tid, text) => vcReq(`/clients/${id}/topics/${tid}`, { method: "PUT", body: JSON.stringify({ text }) }),
   deleteTopic: (id, tid) => vcReq(`/clients/${id}/topics/${tid}`, { method: "DELETE" }),
   listClientInvites: (id) => vcReq(`/clients/${id}/invites`),
+  // Cast approval workflow. Railway owns the cast; voicecast owns whether it
+  // has been approved, keyed on the Railway video id.
+  listCasts: (id) => vcReq(`/clients/${id}/casts`),
+  setCastApproval: (id, railwayVideoId, status, title) =>
+    vcReq(`/clients/${id}/casts/approval`, { method: "POST", body: JSON.stringify({ railwayVideoId, status, title }) }),
+  sendCastForReview: (id, railwayVideoId, title, email) =>
+    vcReq(`/clients/${id}/casts/send`, { method: "POST", body: JSON.stringify({ railwayVideoId, title, email }) }),
+  addCastToPlanner: (id, railwayVideoId, title, scheduledFor) =>
+    vcReq(`/clients/${id}/casts/planner`, { method: "POST", body: JSON.stringify({ railwayVideoId, title, scheduledFor }) }),
   listAllInvites: () => vcReq(`/invites`),
   listCredentials: (id) => vcReq(`/clients/${id}/credentials`),
   addCredential: (id, payload) => vcReq(`/clients/${id}/credentials`, { method: "POST", body: JSON.stringify(payload) }),
