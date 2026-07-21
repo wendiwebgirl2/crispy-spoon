@@ -144,11 +144,16 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
       const seen = new Set();
       const list = [];
       for (const a of perToken.flat()) {
-        if (!a || !a.heygen_avatar_id) continue;          // real, castable twins only
+        if (!a) continue;
+        // A voice-only recording has no HeyGen twin. Keep it in the list rather
+        // than dropping it, flagged so the picker can show it as unavailable for
+        // video - otherwise the recording simply vanishes with no explanation.
+        const voiceOnly = !a.heygen_avatar_id;
         if (a.id != null && seen.has(a.id)) continue;     // dedupe across tokens
         if (a.id != null) seen.add(a.id);
         list.push({
           ...normalizeAvatar(a),
+          _voiceOnly: voiceOnly,
           _token: a.invite_token || tokens[0] || null,
           _invite: (a.invite_token && inviteName[a.invite_token]) || a.name || null,
         });
@@ -705,9 +710,9 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
 
             {/* —— right rail: settings —— */}
             <div style={{ borderLeft: '1px solid var(--border)', padding: 'var(--pad)', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-              <div className="label" style={{ marginBottom: 14 }}>AVATAR</div>
+              <div className="label" style={{ marginBottom: 14 }}>{castType === 'audio' ? 'RECORDING' : 'AVATAR'}</div>
               {readyAvatars.length === 0 ? (
-                <div className="mono" style={{ marginBottom: 22, color: 'var(--text-4)' }}>No recorded avatars for this client yet.</div>
+                <div className="mono" style={{ marginBottom: 22, color: 'var(--text-4)' }}>No recordings for this client yet.</div>
               ) : (
                 <select
                   value={avatarId || ''}
@@ -722,8 +727,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                   }}>
                   <option value="" disabled>Select an avatar…</option>
                   {readyAvatars.map((av) => (
-                    <option key={av.id} value={av.id}>
-                      {(av._invite || av.contact) + (av.created_at ? ' · ' + String(av.created_at).slice(0, 10) : '')}
+                    <option key={av.id} value={av.id} disabled={av._voiceOnly && castType !== 'audio'}>
+                      {(av._invite || av.contact)
+                        + (av.created_at ? ' · ' + String(av.created_at).slice(0, 10) : '')
+                        + (av._voiceOnly ? ' · voice only' : '')}
                     </option>
                   ))}
                 </select>

@@ -38,7 +38,7 @@ function Thumb({ url, icon = 'cam', size = 52 }) {
   return <div style={box}><Icon name={icon} size={20} style={{ color: 'var(--text-4)' }} /></div>;
 }
 
-function RecordingsView({ activeClientId, onCreateEpisode }) {
+function RecordingsView({ activeClientId, onCreateEpisode, onCastScript }) {
   const [recordings, setRecordings] = useState([]);
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -214,6 +214,14 @@ function RecordingsView({ activeClientId, onCreateEpisode }) {
     }
   };
 
+  // Send the client straight to the Cast page. Previously these were "Create
+  // episode" buttons wired to onCreateEpisode, which App never passed - so they
+  // did nothing at all when clicked.
+  const castFromRecording = () => {
+    if (!onCastScript || activeClientId == null) return;
+    onCastScript(activeClientId);
+  };
+
   const makeEpisodeFromMaster = (rec) => {
     if (!onCreateEpisode) return;
     onCreateEpisode({ kind: 'recording', recordingId: rec.id, token: rec._token || currentToken(), title: (rec.signed_name || 'Episode') + ' — ' + fmtDate(new Date().toISOString()) });
@@ -268,7 +276,7 @@ function RecordingsView({ activeClientId, onCreateEpisode }) {
                   {v.status === 'ready' && v.url && (
                     <a className="btn sm" href={v.url} target="_blank" rel="noreferrer"><Icon name="download" size={13} /> Download</a>
                   )}
-                  <button className="btn sm" onClick={() => makeEpisodeFromClip(v)} disabled={v.status !== 'ready' || !v.url}><Icon name="plus" size={13} /> Create episode</button>
+                  <button className="btn sm" onClick={castFromRecording}><Icon name="sparkle" size={13} /> Cast a script</button>
                   <button className={'btn sm' + (open ? ' primary' : '')} onClick={() => openDetail(v)}><Icon name="sliders" size={13} /> {open ? 'Close' : 'Edit'}</button>
                   <button className="btn sm" style={{ color: 'var(--accent)' }} disabled={delBusy === v.id} onClick={() => removeClip(v)}><Icon name="close" size={13} /> {delBusy === v.id ? '…' : 'Delete'}</button>
                 </div>
@@ -363,7 +371,7 @@ function RecordingsView({ activeClientId, onCreateEpisode }) {
                     <Icon name="play" size={13} /> {urlBusy === rec.id ? '…' : (player && player.id === rec.id ? 'Reload' : 'Play')}
                   </button>
                   <button className="btn sm" onClick={() => downloadMaster(rec)} disabled={urlBusy === rec.id}><Icon name="download" size={13} /> Download</button>
-                  <button className="btn sm" onClick={() => makeEpisodeFromMaster(rec)}><Icon name="plus" size={13} /> Create episode</button>
+                  <button className="btn sm" onClick={castFromRecording}><Icon name="sparkle" size={13} /> Cast a script</button>
                   <button className="btn sm" onClick={() => pickReface(rec)} disabled={refaceBusy === rec.id}><Icon name="cam" size={13} /> {refaceBusy === rec.id ? 'Rebuilding…' : 'Edit image'}</button>
                   <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => removeMaster(rec)} disabled={delBusy === rec.id}><Icon name="close" size={13} /> {delBusy === rec.id ? '…' : 'Delete'}</button>
                 </div>

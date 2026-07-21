@@ -175,7 +175,7 @@ function App() {
           {view === 'scripts' && <ScriptsView onCastScript={(clientId, body) => { setCastRequest({ clientId, body }); setView('studio'); }} />}
           {view === 'studio' && <StudioView key={studioNonce} onNavigate={setView} castRequest={castRequest} onCastConsumed={() => setCastRequest(null)} />}
           {view === 'episodes' && <EpisodesView activeClientId={activeClientId} />}
-          {view === 'recordings' && <RecordingsView activeClientId={activeClientId} />}
+          {view === 'recordings' && <RecordingsView activeClientId={activeClientId} onCastScript={(clientId) => { setCastRequest({ clientId }); setView('studio'); }} />}
           {view === 'onboarding' && (
             <OnboardingView
               onDone={() => setView('clients')}
