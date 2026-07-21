@@ -11,6 +11,7 @@ const CONTACT = [
   ['phone', 'Phone', false],
   ['mobile', 'Mobile', false],
   ['website', 'Website', false],
+  ['blog_url', 'Blog link', false],
   ['address', 'Address', true],
 ];
 const REPO = [
@@ -34,6 +35,7 @@ function DistributionCard({ clientId }) {
   const [form, setForm] = useState({ kind: 'podcast', platform: '', url: '', username: '', notes: '', secret: '' });
   const [revealed, setRevealed] = useState({});
   const [busy, setBusy] = useState(false);
+  const [edit, setEdit] = useState(null);
 
   const load = () => api.listCredentials(clientId)
     .then((r) => setRows(Array.isArray(r) ? r : []))
@@ -54,6 +56,20 @@ function DistributionCard({ clientId }) {
     try { const d = await api.revealCredential(clientId, id); setRevealed((r) => ({ ...r, [id]: d.secret || '(empty)' })); }
     catch (e) { setErr(e.message || 'Could not reveal password.'); }
   };
+  const saveEdit = async () => {
+    if (!edit.platform.trim()) { setErr('Platform is required.'); return; }
+    setBusy(true); setErr('');
+    try {
+      await api.updateCredential(clientId, edit.id, {
+        kind: edit.kind, platform: edit.platform, url: edit.url,
+        username: edit.username, notes: edit.notes,
+        ...(edit.secret ? { secret: edit.secret } : {}),
+      });
+      setEdit(null);
+      await load();
+    } catch (e) { setErr(e.message || 'Could not save channel.'); } finally { setBusy(false); }
+  };
+
   const remove = async (id) => {
     try { await api.deleteCredential(clientId, id); await load(); }
     catch (e) { setErr(e.message || 'Could not remove channel.'); }
@@ -66,7 +82,24 @@ function DistributionCard({ clientId }) {
       <div className="label" style={{ marginBottom: 12 }}>DISTRIBUTION · podcast / socials / websites</div>
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 8 }}>{err}</div>}
       {rows.length === 0 && <div className="mono" style={{ color: 'var(--text-4)', marginBottom: 10 }}>No channels yet.</div>}
-      {rows.map((c) => (
+      {rows.map((c) => (edit && edit.id === c.id ? (
+        <div key={c.id} className="col" style={{ gap: 8, borderBottom: '1px solid var(--border)', padding: '10px 0' }}>
+          <div className="row" style={{ gap: 8 }}>
+            <select value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value })} style={{ ...inp, width: 130 }}>
+              {KIND_OPTS.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <input placeholder="Platform" value={edit.platform} onChange={(e) => setEdit({ ...edit, platform: e.target.value })} style={inp} />
+          </div>
+          <input placeholder="URL" value={edit.url} onChange={(e) => setEdit({ ...edit, url: e.target.value })} style={inp} />
+          <input placeholder="Handle / username" value={edit.username} onChange={(e) => setEdit({ ...edit, username: e.target.value })} style={inp} />
+          <input type="password" placeholder="New password (leave blank to keep)" value={edit.secret} onChange={(e) => setEdit({ ...edit, secret: e.target.value })} style={inp} autoComplete="new-password" />
+          <input placeholder="Notes" value={edit.notes} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} style={inp} />
+          <div className="row" style={{ gap: 6 }}>
+            <button className="btn sm primary" onClick={saveEdit} disabled={busy}>{busy ? 'Saving…' : 'Save channel'}</button>
+            <button className="btn sm" onClick={() => setEdit(null)}>Cancel</button>
+          </div>
+        </div>
+      ) : (
         <div key={c.id} className="row" style={{ justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', padding: '6px 0' }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{c.platform} <span className="mono" style={{ color: 'var(--text-4)', fontWeight: 400 }}>{c.kind}</span></div>
@@ -76,10 +109,11 @@ function DistributionCard({ clientId }) {
           </div>
           <div className="row" style={{ gap: 6 }}>
             {c.hasSecret && <button className="btn sm" onClick={() => reveal(c.id)}>{revealed[c.id] ? 'Hide' : 'Password'}</button>}
+            <button className="btn sm" onClick={() => setEdit({ id: c.id, kind: c.kind || 'podcast', platform: c.platform || '', url: c.url || '', username: c.username || '', notes: c.notes || '', secret: '' })}>Edit</button>
             <button className="btn sm" onClick={() => remove(c.id)}>Remove</button>
           </div>
         </div>
-      ))}
+      )))}
       <div className="col" style={{ gap: 8, marginTop: 12 }}>
         <div className="row" style={{ gap: 8 }}>
           <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} style={{ ...inp, width: 130 }}>
@@ -474,10 +508,21 @@ function BriefView({ clientId }) {
 
   return (
     <div className="v-pad fade-in">
-      <div className="label">BRIEF · LIVE</div>
-      <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 30, lineHeight: 1.1, margin: '6px 0 16px' }}>
-        The client <em>brief</em>.
-      </h1>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <div className="label">BRIEF · LIVE</div>
+          <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 30, lineHeight: 1.1, margin: '6px 0 16px' }}>
+            The client <em>brief</em>.
+          </h1>
+        </div>
+        <div className="row" style={{ gap: 12, alignItems: 'center', paddingTop: 18 }}>
+          {saved && <span className="mono" style={{ color: 'var(--ok)' }}>✓ saved</span>}
+          <button className="btn primary lg" onClick={save} disabled={saving}>
+            <Icon name="check" size={15} stroke={2.2} />
+            {saving ? 'Saving…' : 'Save brief'}
+          </button>
+        </div>
+      </div>
 
       {err && (
         <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--accent)' }}>
@@ -517,16 +562,6 @@ function BriefView({ clientId }) {
             </div>
           </div>
         ))}
-      </div>
-
-      <div className="row" style={{ gap: 12, alignItems: 'center', marginTop: 18 }}>
-        <button className="btn primary lg" onClick={save} disabled={saving}>
-          <Icon name="check" size={15} stroke={2.2} />
-          {saving ? 'Saving…' : 'Save brief'}
-        </button>
-        {saved && (
-          <span className="mono" style={{ color: 'var(--ok)' }}>✓ saved</span>
-        )}
       </div>
 
       <TopicsSection clientId={clientId} />

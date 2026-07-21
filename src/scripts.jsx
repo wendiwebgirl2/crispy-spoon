@@ -7,10 +7,9 @@ import { api } from './api.js'
 import { Icon } from './shared.jsx'
 
 const CHANNEL_FALLBACK = [
-  { key: 'podcast',   label: 'Podcast segment' },
-  { key: 'instagram', label: 'Instagram caption' },
-  { key: 'linkedin',  label: 'LinkedIn post' },
-  { key: 'x',         label: 'X / Tweet' },
+  { key: 'longform',  label: 'Longform (5–7 min)', variants: 1 },
+  { key: 'shortform', label: 'Shortform (under 1 min)', variants: 3 },
+  { key: 'blog',      label: 'Blog post', variants: 1 },
 ];
 
 const ScriptsView = ({ onCastScript } = {}) => {
@@ -18,7 +17,7 @@ const ScriptsView = ({ onCastScript } = {}) => {
   const [clientId, setClientId] = useState(null);
   const [brief, setBrief] = useState(null);
   const [channels, setChannels] = useState(CHANNEL_FALLBACK);
-  const [picked, setPicked] = useState({ podcast: true, instagram: true, linkedin: false, x: false });
+  const [picked, setPicked] = useState({ longform: true, shortform: true, blog: false });
   const [topic, setTopic] = useState('');
   const [extra, setExtra] = useState('');
   const [results, setResults] = useState([]);
@@ -35,7 +34,7 @@ const ScriptsView = ({ onCastScript } = {}) => {
 
   // manual entry
   const [manualOpen, setManualOpen] = useState(false);
-  const [manualChannel, setManualChannel] = useState('podcast');
+  const [manualChannel, setManualChannel] = useState('longform');
   const [manualTopic, setManualTopic] = useState('');
   const [manualBody, setManualBody] = useState('');
 
@@ -208,7 +207,7 @@ const ScriptsView = ({ onCastScript } = {}) => {
                 borderColor: picked[c.key] ? 'var(--accent)' : 'var(--border)',
                 color: picked[c.key] ? 'var(--text)' : 'var(--text-2)'
               }}>
-              {picked[c.key] && <Icon name="check" size={12} style={{ color: 'var(--accent)' }} />} {c.label}
+              {picked[c.key] && <Icon name="check" size={12} style={{ color: 'var(--accent)' }} />} {c.label}{c.variants > 1 ? ` ×${c.variants}` : ''}
             </button>
           ))}
         </div>
@@ -297,7 +296,7 @@ const ScriptsView = ({ onCastScript } = {}) => {
                   {h.model === 'manual' && <span className="mono">manual</span>}
                 </div>
                 <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                  {h.topic ? <strong>{h.topic} · </strong> : null}{h.body}
+                  {h.title ? <strong>{h.title}{h.variant > 1 ? ` (v${h.variant})` : ''} · </strong> : (h.topic ? <strong>{h.topic} · </strong> : null)}{h.body}
                 </div>
                 {(h.approval_status === 'changes_requested' || h.approval_status === 'approved_with_changes') && h.approval_comment && (
                   <div className="mono" style={{ marginTop: 6, padding: '6px 8px', borderRadius: 6, background: 'var(--surface-2)', color: 'var(--text-2)', fontSize: 12, whiteSpace: 'pre-wrap' }}>
@@ -407,6 +406,20 @@ const ResultCard = ({ script, label, onCopy }) => {
           ? <span className="mono" style={{ color: 'var(--ok)' }}>✓ verified</span>
           : <span className="mono" style={{ color: 'var(--gold, #b8852a)' }}>⚠ review</span>}
       </div>
+      {script.title && (
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, lineHeight: 1.25, marginBottom: 6 }}>{script.title}</div>
+      )}
+      {Array.isArray(script.keywords) && script.keywords.length > 0 && (
+        <div className="row" style={{ gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+          {script.keywords.map((k) => <span key={k} className="badge">{k}</span>)}
+        </div>
+      )}
+      {script.description && (
+        <div className="mono" style={{ fontSize: 12, lineHeight: 1.6, color: 'var(--text-3)', marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
+          {script.description}
+          <span style={{ color: 'var(--text-4)' }}> · {script.description.length}/500</span>
+        </div>
+      )}
       <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>{script.body}</div>
       {!clean && (
         <div className="mono" style={{ marginTop: 10, color: 'var(--gold, #b8852a)' }}>

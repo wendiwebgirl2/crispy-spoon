@@ -255,6 +255,7 @@ export const api = {
   listAllInvites: () => vcReq(`/invites`),
   listCredentials: (id) => vcReq(`/clients/${id}/credentials`),
   addCredential: (id, payload) => vcReq(`/clients/${id}/credentials`, { method: "POST", body: JSON.stringify(payload) }),
+  updateCredential: (id, credId, payload) => vcReq(`/clients/${id}/credentials/${credId}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteCredential: (id, credId) => vcReq(`/clients/${id}/credentials/${credId}`, { method: "DELETE" }),
   listAssets: (id) => vcReq(`/clients/${id}/assets`),
   deleteAsset: (id, assetId) => vcReq(`/clients/${id}/assets/${assetId}`, { method: "DELETE" }),
