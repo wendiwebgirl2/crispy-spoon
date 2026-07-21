@@ -4,7 +4,7 @@
 // cast.cuecreative.com Episodes tab.
 
 import React from 'react'
-import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, listRecordings, createAvatarFromRecording } from './api.js'
+import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
 import { clientToken, voice } from './dashboard-api.js'
 import { AvatarTile, Icon, StatusBadge } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
@@ -48,6 +48,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   // refreshCastMeta below. Hooks declared after it change the hook count
   // between renders and blank the page.
   const [buildingTwin, setBuildingTwin] = React.useState(false);
+  const [cloningVoice, setCloningVoice] = React.useState(false);
 
   // Approval state lives in voicecast, keyed on the Railway video id.
   // These hooks must stay above the `if (!clientId) return` early return below:
@@ -534,6 +535,35 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     } finally { setBuildingTwin(false); }
   };
 
+  // The HeyGen voice clone is not what audio casts use - those synthesize
+  // through ElevenLabs voice profiles, a separate list. Without this, an audio
+  // cast falls back to whatever profile happens to be first, which is why a
+  // recording could come back in somebody else's voice.
+  const useRecordingAsVoice = async (sel) => {
+    const recordingId = sel && (sel._recordingId || sel.recording_id);
+    const tok = sel && sel._token;
+    if (!recordingId || !tok) { window.alert('This entry has no recording to clone from.'); return; }
+    setCloningVoice(true);
+    try {
+      const signed = await recordingDownloadUrl(recordingId, tok);
+      const url = signed && (signed.url || signed.download_url || signed);
+      if (!url || typeof url !== 'string') throw new Error('could not get a download link for the recording');
+      const blob = await fetch(url).then((r) => {
+        if (!r.ok) throw new Error('recording download failed: HTTP ' + r.status);
+        return r.blob();
+      });
+      const label = (sel._invite || sel.contact || 'Recording') + ' voice';
+      const file = new File([blob], 'take.webm', { type: blob.type || 'audio/webm' });
+      const created = await voice.createProfile(clientId, label, file);
+      const rows = await voice.profiles(clientId);
+      setVoiceProfiles(Array.isArray(rows) ? rows : []);
+      if (created && created.id != null) setVoiceProfileId(String(created.id));
+      window.alert('Voice profile created. Audio casts for this client will now use it.');
+    } catch (e) {
+      window.alert('Could not clone the voice: ' + e.message);
+    } finally { setCloningVoice(false); }
+  };
+
   const renameCast = async (v) => {
     const next = window.prompt('Rename this cast', v.title || '');
     if (next == null || !next.trim()) return;
@@ -824,6 +854,19 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                 }
                 const sel = selUnbuilt;
                 if (!sel) return null;
+                if (castType === 'audio' && (sel._recordingId || sel.recording_id)) {
+                  return (
+                    <div style={{ marginBottom: 22 }}>
+                      <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginBottom: 8 }}>
+                        Audio casts use an ElevenLabs voice profile, not the HeyGen twin.
+                        Clone this recording to cast in their own voice.
+                      </div>
+                      <button className="btn sm" disabled={cloningVoice} onClick={() => useRecordingAsVoice(sel)}>
+                        <Icon name="mic" size={12} /> {cloningVoice ? 'Cloning…' : 'Use this recording as the voice'}
+                      </button>
+                    </div>
+                  );
+                }
                 return (
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
                     <div style={{ width: 48, height: 48, borderRadius: 'var(--r-sm)', overflow: 'hidden', flexShrink: 0 }}>
