@@ -107,6 +107,12 @@ export function uploadRecording(blob, { token = currentToken(), filename = "take
 }
 
 // List the R2 masters for a token's client (the read-back route).
+// Build a HeyGen twin from an uploaded recording. Nothing in the dashboard
+// called this before, so there was no way to build a twin from the UI at all.
+export function createAvatarFromRecording(token, recordingId, name) {
+  return apiPostJson("/api/avatars/create-from-recording", { token, recording_id: recordingId, name: name || null });
+}
+
 export function listRecordings(token = currentToken()) {
   return apiGet("/api/recordings/" + encodeURIComponent(token));
 }

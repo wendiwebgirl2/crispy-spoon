@@ -4,7 +4,7 @@
 // cast.cuecreative.com Episodes tab.
 
 import React from 'react'
-import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob } from './api.js'
+import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, listRecordings, createAvatarFromRecording } from './api.js'
 import { clientToken, voice } from './dashboard-api.js'
 import { AvatarTile, Icon, StatusBadge } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
@@ -44,6 +44,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   const [clientId, setClientId] = React.useState(null);
   // Local approval state for casts, keyed on the Railway video id.
   const [castMeta, setCastMeta] = React.useState({});
+  // Must stay above the `if (!clientId) return` guard - see the note on
+  // refreshCastMeta below. Hooks declared after it change the hook count
+  // between renders and blank the page.
+  const [buildingTwin, setBuildingTwin] = React.useState(false);
 
   // Approval state lives in voicecast, keyed on the Railway video id.
   // These hooks must stay above the `if (!clientId) return` early return below:
@@ -158,6 +162,36 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
           _invite: (a.invite_token && inviteName[a.invite_token]) || a.name || null,
         });
       }
+      // Recordings whose twin has not been built yet. Without these the Cast
+      // page shows nothing for a client who has recorded but has no avatar -
+      // which is every voice-only take, and every take before its twin exists.
+      try {
+        const builtFrom = new Set(list.map((a) => a.recording_id).filter(Boolean).map(String));
+        const perTokenRecs = await Promise.all(
+          tokens.map((t) => listRecordings(t)
+            .then((r) => (Array.isArray(r) ? r : (r.recordings || [])).map((rec) => ({ ...rec, _token: t })))
+            .catch(() => []))
+        );
+        const recSeen = new Set();
+        for (const rec of perTokenRecs.flat()) {
+          if (!rec || rec.id == null) continue;
+          if (builtFrom.has(String(rec.id))) continue;
+          if (recSeen.has(String(rec.id))) continue;
+          recSeen.add(String(rec.id));
+          list.push({
+            id: 'rec_' + rec.id,
+            _recordingId: rec.id,
+            _unbuilt: true,
+            _token: rec._token || tokens[0] || null,
+            _invite: rec.signed_name || rec.title || 'Recording',
+            contact: rec.signed_name || 'Recording',
+            name: rec.signed_name || 'Recording',
+            status: 'unbuilt',
+            created_at: rec.uploaded_at || rec.created_at || null,
+          });
+        }
+      } catch { /* recordings are additive - never block the avatar list */ }
+
       setAvatars(list);
     } catch { /* no token / no avatars yet */ }
     api.getBrief(id).then(setBrief).catch(() => setBrief(null));
@@ -468,6 +502,20 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     } catch (e) { window.alert('Could not add to planner: ' + e.message); }
   };
 
+  // Build a twin from a recording that does not have one yet.
+  const buildTwin = async (sel) => {
+    if (!sel || !sel._recordingId || !sel._token) return;
+    setBuildingTwin(true);
+    try {
+      const r = await createAvatarFromRecording(sel._token, sel._recordingId, sel._invite || null);
+      if (r && r.ok === false) throw new Error(r.error || 'build failed');
+      window.alert('Twin build started. It will appear as an avatar once HeyGen finishes.');
+      await loadClient(clientId);
+    } catch (e) {
+      window.alert('Could not build the twin: ' + e.message);
+    } finally { setBuildingTwin(false); }
+  };
+
   const renameCast = async (v) => {
     const next = window.prompt('Rename this cast', v.title || '');
     if (next == null || !next.trim()) return;
@@ -729,16 +777,29 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                   }}>
                   <option value="" disabled>Select an avatar…</option>
                   {readyAvatars.map((av) => (
-                    <option key={av.id} value={av.id} disabled={av._voiceOnly && castType !== 'audio'}>
+                    <option key={av.id} value={av.id} disabled={av._voiceOnly && !av._unbuilt && castType !== 'audio'}>
                       {(av._invite || av.contact)
                         + (av.created_at ? ' · ' + String(av.created_at).slice(0, 10) : '')
-                        + (av._voiceOnly ? ' · voice only' : '')}
+                        + (av._unbuilt ? ' · twin not built yet' : (av._voiceOnly ? ' · voice only' : ''))}
                     </option>
                   ))}
                 </select>
               )}
               {avatarId && (() => {
-                const sel = readyAvatars.find((a) => a.id === avatarId);
+                const selUnbuilt = readyAvatars.find((a) => a.id === avatarId);
+                if (selUnbuilt && selUnbuilt._unbuilt) {
+                  return (
+                    <div style={{ marginBottom: 22 }}>
+                      <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginBottom: 8 }}>
+                        This recording has no twin yet. Build one before casting.
+                      </div>
+                      <button className="btn sm" disabled={buildingTwin} onClick={() => buildTwin(selUnbuilt)}>
+                        <Icon name="sparkle" size={12} /> {buildingTwin ? 'Building…' : 'Build twin'}
+                      </button>
+                    </div>
+                  );
+                }
+                const sel = selUnbuilt;
                 if (!sel) return null;
                 return (
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
