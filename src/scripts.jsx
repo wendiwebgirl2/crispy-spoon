@@ -12,6 +12,14 @@ const CHANNEL_FALLBACK = [
   { key: 'blog',      label: 'Blog post', variants: 1 },
 ];
 
+// Length helpers. Module scope so both the batch result cards and the history
+// rows can show them, not just the edit modal. 850 chars/min is the read rate.
+const charCount = (t) => String(t || '').trim().length;
+const readTime = (t) => {
+  const mins = charCount(t) / 850;
+  return mins < 1 ? `${Math.max(1, Math.round(mins * 60))} sec` : `${mins.toFixed(1)} min`;
+};
+
 const ScriptsView = ({ onCastScript } = {}) => {
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(null);
@@ -145,12 +153,6 @@ const ScriptsView = ({ onCastScript } = {}) => {
     } catch (e) { setErr(e.message || 'Revision failed.'); }
     finally { setRevising(false); }
   };
-  const charCount = (t) => String(t || '').trim().length;
-  const readTime = (t) => {
-    const mins = charCount(t) / 850;
-    return mins < 1 ? `${Math.max(1, Math.round(mins * 60))} sec` : `${mins.toFixed(1)} min`;
-  };
-
   const labelFor = (k) => (channels.find(c => c.key === k) || {}).label || k;
 
   // Group history by TOPIC — each topic is a collapsible card you click to open
@@ -263,7 +265,20 @@ const ScriptsView = ({ onCastScript } = {}) => {
           <>
             <div className="label" style={{ marginBottom: 12 }}>THIS BATCH</div>
             <div className="col" style={{ gap: 12, marginBottom: 28 }}>
-              {results.map(s => <ResultCard key={s.id} script={s} label={labelFor(s.channel)} onCopy={() => copy(s.body)} />)}
+              {results.map(s => (
+                <ResultCard key={s.id} script={s} label={labelFor(s.channel)}
+                  onCopy={() => copy(s.body)}
+                  onDownload={() => download(s)}
+                  onEdit={() => openEdit(s)}
+                  onSend={() => sendApproval(s.id)}
+                  onCast={onCastScript ? () => onCastScript(clientId, s.body) : null}
+                  onDelete={() => {
+                    if (window.confirm(`Delete this ${labelFor(s.channel)} script? This can’t be undone.`)) {
+                      setResults((r) => r.filter((x) => x.id !== s.id));
+                      remove(s.id);
+                    }
+                  }} />
+              ))}
             </div>
           </>
         )}
@@ -304,15 +319,18 @@ const ScriptsView = ({ onCastScript } = {}) => {
                   </div>
                 )}
               </div>
-              <div className="row" style={{ gap: 6 }}>
-                <button className="icon-btn" title="Copy" onClick={() => copy(h.body)}><Icon name="doc" size={13} /></button>
-                <button className="icon-btn" title="Download" onClick={() => download(h)}><Icon name="download" size={13} /></button>
-                <button className="icon-btn" title="Edit / review" onClick={() => openEdit(h)}><Icon name="sliders" size={13} /></button>
-                {h.approval_status !== 'approved' && h.approval_status !== 'in_production' && <button className="icon-btn" title="Mark approved" onClick={() => setApproval(h.id, 'approved', 'approved')}><Icon name="check" size={13} /></button>}
-                {(h.approval_status === 'approved' || h.approval_status === 'approved_with_changes') && <button className="icon-btn" title="Mark in production" onClick={() => setApproval(h.id, 'in_production', 'approved')}><Icon name="play" size={13} /></button>}
-                <button className="icon-btn" title="Send for approval" onClick={() => sendApproval(h.id)}><Icon name="send" size={13} /></button>
-                {h.status === 'approved' && onCastScript && <button className="icon-btn" title="Cast this script" onClick={() => onCastScript(clientId, h.body)}><Icon name="sparkle" size={13} /></button>}
-                <button className="icon-btn" title="Delete" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }}><Icon name="close" size={13} /></button>
+              <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginRight: 4 }}>
+                  {charCount(h.body).toLocaleString()} chars · ~{readTime(h.body)} read
+                </span>
+                <button className="btn sm" onClick={() => copy(h.body)}><Icon name="doc" size={12} /> Copy</button>
+                <button className="btn sm" onClick={() => download(h)}><Icon name="download" size={12} /> Download</button>
+                <button className="btn sm" onClick={() => openEdit(h)}><Icon name="sliders" size={12} /> Edit</button>
+                {h.approval_status !== 'approved' && h.approval_status !== 'in_production' && <button className="btn sm" onClick={() => setApproval(h.id, 'approved', 'approved')}><Icon name="check" size={12} /> Mark approved</button>}
+                {(h.approval_status === 'approved' || h.approval_status === 'approved_with_changes') && <button className="btn sm" onClick={() => setApproval(h.id, 'in_production', 'approved')}><Icon name="play" size={12} /> In production</button>}
+                <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> Send for approval</button>
+                {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body)}><Icon name="sparkle" size={12} /> Cast</button>}
+                <button className="btn sm" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Delete</button>
               </div>
             </div>
                 ))}
@@ -395,7 +413,7 @@ const Field = ({ label, value, link }) => (
   </div>
 );
 
-const ResultCard = ({ script, label, onCopy }) => {
+const ResultCard = ({ script, label, onCopy, onDownload, onEdit, onSend, onCast, onDelete }) => {
   const checks = script.checks || { issues: [] };
   const clean = !checks.issues || checks.issues.length === 0;
   return (
@@ -426,8 +444,16 @@ const ResultCard = ({ script, label, onCopy }) => {
           {checks.issues.join(' · ')}
         </div>
       )}
-      <div className="row" style={{ marginTop: 12 }}>
+      <div className="row" style={{ marginTop: 12, gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginRight: 4 }}>
+          {charCount(script.body).toLocaleString()} chars · ~{readTime(script.body)} read
+        </span>
         <button className="btn sm" onClick={onCopy}><Icon name="doc" size={12} /> Copy</button>
+        {onDownload && <button className="btn sm" onClick={onDownload}><Icon name="download" size={12} /> Download</button>}
+        {onEdit && <button className="btn sm" onClick={onEdit}><Icon name="sliders" size={12} /> Edit</button>}
+        {onSend && <button className="btn sm" onClick={onSend}><Icon name="send" size={12} /> Send for approval</button>}
+        {onCast && <button className="btn sm" onClick={onCast}><Icon name="sparkle" size={12} /> Cast</button>}
+        {onDelete && <button className="btn sm" onClick={onDelete} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Delete</button>}
       </div>
     </div>
   );
