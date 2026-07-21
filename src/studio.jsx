@@ -195,14 +195,16 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     loadClient(id);
   };
 
-  // Preload a specific script into the cast window (from "Cast this script").
+  // Open the cast window from elsewhere in the app. Two callers: "Cast this
+  // script" sends a body to preload, and "Cast a script" on the Recordings tab
+  // sends only a clientId. Guarding on body would make the second do nothing at
+  // all, so only a castRequest is required here.
   React.useEffect(() => {
-    if (castRequest && castRequest.body != null) {
-      setStep('render');
-      if (castRequest.clientId != null) selectClientInline(castRequest.clientId);
-      setScript(castRequest.body);
-      if (onCastConsumed) onCastConsumed();
-    }
+    if (!castRequest) return;
+    setStep('render');
+    if (castRequest.clientId != null) selectClientInline(castRequest.clientId);
+    if (castRequest.body != null) setScript(castRequest.body);
+    if (onCastConsumed) onCastConsumed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [castRequest]);
   React.useEffect(() => {
