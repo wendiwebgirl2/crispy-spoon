@@ -187,6 +187,9 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
             contact: rec.signed_name || 'Recording',
             name: rec.signed_name || 'Recording',
             status: 'unbuilt',
+            languages: [],
+            heygen_avatar_id: null,
+            progress: 0,
             created_at: rec.uploaded_at || rec.created_at || null,
           });
         }
@@ -664,7 +667,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                       <AvatarTile avatar={avatar} />
                     </div>
                     <div>
-                      <div style={{ fontSize: 13 }}>{avatar.contact}</div>
+                      <div style={{ fontSize: 13 }}>{avatar ? (avatar.contact || avatar._invite || '') : ''}</div>
                       <div className="mono">{client ? client.name : ''}</div>
                     </div>
                   </div>
@@ -892,7 +895,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
 
               <div className="label" style={{ marginBottom: 10 }}>LANGUAGE</div>
               <div className="row" style={{ gap: 4, marginBottom: 22, flexWrap: 'wrap' }}>
-                {avatar.languages.length ? avatar.languages.map(l => (
+                {(avatar && avatar.languages && avatar.languages.length) ? avatar.languages.map(l => (
                   <button key={l} onClick={() => setLanguage(l)} className="btn sm"
                     style={{
                       background: language === l ? 'var(--surface-2)' : 'transparent',
