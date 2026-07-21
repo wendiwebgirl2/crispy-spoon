@@ -167,11 +167,26 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
       // which is every voice-only take, and every take before its twin exists.
       try {
         const builtFrom = new Set(list.map((a) => a.recording_id).filter(Boolean).map(String));
-        const perTokenRecs = await Promise.all(
+        const results = await Promise.all(
           tokens.map((t) => listRecordings(t)
-            .then((r) => (Array.isArray(r) ? r : (r.recordings || [])).map((rec) => ({ ...rec, _token: t })))
-            .catch(() => []))
+            .then((r) => ({ ok: true, rows: (Array.isArray(r) ? r : (r.recordings || [])).map((rec) => ({ ...rec, _token: t })) }))
+            .catch(() => ({ ok: false, rows: [] })))
         );
+        const perTokenRecs = results.map((r) => r.rows);
+        const allFetchesOk = results.every((r) => r.ok);
+
+        // Deleting a recording does not delete the avatar built from it, so the
+        // twin lingers in the picker pointing at a file that no longer exists.
+        // Drop those - but only when every recordings fetch succeeded, so a
+        // network blip cannot wipe the list.
+        if (allFetchesOk) {
+          const liveRecIds = new Set(perTokenRecs.flat().map((rec) => String(rec.id)));
+          for (let i = list.length - 1; i >= 0; i--) {
+            const a = list[i];
+            if (a.recording_id != null && !liveRecIds.has(String(a.recording_id))) list.splice(i, 1);
+          }
+        }
+
         const recSeen = new Set();
         for (const rec of perTokenRecs.flat()) {
           if (!rec || rec.id == null) continue;
@@ -763,7 +778,12 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
 
             {/* —— right rail: settings —— */}
             <div style={{ borderLeft: '1px solid var(--border)', padding: 'var(--pad)', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-              <div className="label" style={{ marginBottom: 14 }}>{castType === 'audio' ? 'RECORDING' : 'AVATAR'}</div>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <div className="label">{castType === 'audio' ? 'RECORDING' : 'AVATAR'}</div>
+                <button className="btn sm" onClick={() => loadClient(clientId)} title="Reload avatars and recordings">
+                  <Icon name="history" size={12} /> Refresh
+                </button>
+              </div>
               {readyAvatars.length === 0 ? (
                 <div className="mono" style={{ marginBottom: 22, color: 'var(--text-4)' }}>No recordings for this client yet.</div>
               ) : (
