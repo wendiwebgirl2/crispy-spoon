@@ -313,16 +313,16 @@ const ScriptsView = ({ onCastScript } = {}) => {
                 <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                   {h.title ? <strong>{h.title}{h.variant > 1 ? ` (v${h.variant})` : ''} · </strong> : (h.topic ? <strong>{h.topic} · </strong> : null)}{h.body}
                 </div>
+                <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 6 }}>
+                  {charCount(h.body).toLocaleString()} chars · ~{readTime(h.body)} read
+                </div>
                 {(h.approval_status === 'changes_requested' || h.approval_status === 'approved_with_changes') && h.approval_comment && (
                   <div className="mono" style={{ marginTop: 6, padding: '6px 8px', borderRadius: 6, background: 'var(--surface-2)', color: 'var(--text-2)', fontSize: 12, whiteSpace: 'pre-wrap' }}>
                     <span style={{ color: 'var(--accent)' }}>Client notes:</span> {h.approval_comment}
                   </div>
                 )}
               </div>
-              <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginRight: 4 }}>
-                  {charCount(h.body).toLocaleString()} chars · ~{readTime(h.body)} read
-                </span>
+              <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
                 <button className="btn sm" onClick={() => copy(h.body)}><Icon name="doc" size={12} /> Copy</button>
                 <button className="btn sm" onClick={() => download(h)}><Icon name="download" size={12} /> Download</button>
                 <button className="btn sm" onClick={() => openEdit(h)}><Icon name="sliders" size={12} /> Edit</button>
