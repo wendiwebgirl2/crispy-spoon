@@ -2,11 +2,9 @@ import React from 'react'
 import { Icon } from './shared.jsx'
 import logoLockup from './assets/LOGO-cuecreative.png'
 import { api } from './api.js'
-import { AVATARS, INVITATIONS, GENERATED_VIDEOS } from './data.jsx'
 import { ClientsView } from './clients.jsx'
 import { BriefView } from './brief.jsx'
 import { ClientDetailView } from './client-detail.jsx'
-import { AvatarDetailView } from './avatar-detail.jsx'
 import { InvitationsView } from './invitations.jsx'
 import { PlannerView } from './planner.jsx'
 import { ScriptsView } from './scripts.jsx'
@@ -27,7 +25,6 @@ const NAV = [
 const HEADER_TITLES = {
   clients:         { title: 'Clients',        sub: 'your roster — saved to the live API' },
   brief:           { title: 'Brief',          sub: 'contact + positioning for the selected client' },
-  'avatar-detail': { title: 'Avatar',         sub: 'identity · renders · conversations · brief' },
   invitations:     { title: 'Invitations',    sub: 'notifications sent to clients — live status' },
   planner:         { title: 'Planner',         sub: 'production status + publishing schedule' },
   scripts:         { title: 'Scripts',         sub: 'Claude-generated copy from the client brief' },
@@ -57,33 +54,18 @@ function App() {
       .catch(() => setActiveClientName(''));
   }, [activeClientId]);
   const [detailClient, setDetailClient] = React.useState(null);
-  const [chatAvatarId, setChatAvatarId] = React.useState('av_amelia');
-  const [detailAvatarId, setDetailAvatarId] = React.useState(null);
 
+  // Nav badge counts. null hides the badge (see the countKey guard below).
+  // Previously these were derived from mock fixtures and showed invented
+  // numbers; wire them to real endpoints before switching them back on.
   const counts = {
-    invitations:   INVITATIONS.filter(i => ['sent','opened','started','recording','submitted','consented','training'].includes(i.status)).length,
-    planner:       0,
-    rendering:     GENERATED_VIDEOS.filter(v => v.status === 'rendering' || v.status === 'queued').length,
+    planner:   null,
+    rendering: null,
   };
 
-  const detailAvatar = detailAvatarId ? AVATARS.find(a => a.id === detailAvatarId) : null;
-  const hd = (view === 'avatar-detail' && detailAvatar)
-    ? { title: detailAvatar.contact, sub: detailAvatar.id }
-    : (view === 'client-detail' && detailClient)
+  const hd = (view === 'client-detail' && detailClient)
     ? { title: detailClient.name, sub: 'client workspace' }
     : HEADER_TITLES[view] || HEADER_TITLES.clients;
-
-  const openAvatar = (avatar) => {
-    setDetailAvatarId(avatar.id);
-    setChatAvatarId(avatar.id);
-    setView('avatar-detail');
-  };
-
-  const openChat = (avatar) => {
-    setChatAvatarId(avatar.id);
-    setDetailAvatarId(avatar.id);
-    setView('avatar-detail');
-  };
 
   return (
     <div className="shell">
@@ -178,7 +160,7 @@ function App() {
           <button className="icon-btn" title="Activity"><Icon name="history" size={16} /></button>
         </header>
 
-        <section className="view" key={view + (view === 'avatar-detail' ? ':' + detailAvatarId : '') + (view === 'client-detail' && detailClient ? ':' + detailClient.id : '')}>
+        <section className="view" key={view + (view === 'client-detail' && detailClient ? ':' + detailClient.id : '')}>
           {view === 'clients' && (
             <ClientsView
               activeClientId={activeClientId}
@@ -188,16 +170,6 @@ function App() {
           )}
           {view === 'brief' && <BriefView clientId={activeClientId} />}
           {view === 'client-detail' && <ClientDetailView client={detailClient} onBack={() => setView('clients')} />}
-          {view === 'avatar-detail' && (
-            <AvatarDetailView
-              avatarId={detailAvatarId}
-              onBack={() => setView('clients')}
-              onChat={openChat}
-              onGenerate={(av) => { setChatAvatarId(av.id); setView('studio'); }}
-              onEditBrief={() => setView('settings')}
-              onResend={() => setView('invitations')}
-            />
-          )}
           {view === 'invitations' && <InvitationsView />}
           {view === 'planner' && <PlannerView activeClientId={activeClientId} onCastScript={(clientId, body) => { setCastRequest({ clientId, body }); setView('studio'); }} />}
           {view === 'scripts' && <ScriptsView onCastScript={(clientId, body) => { setCastRequest({ clientId, body }); setView('studio'); }} />}
