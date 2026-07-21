@@ -446,7 +446,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
       </div>
     );
   }
-  const avatar = avatarId ? avatars.find(a => a.id === avatarId) : null;
+  const avatar = (avatarId ? avatars.find(a => a.id === avatarId) : null) || null;
   const typeLabel = (DESTINATIONS[destination].types.find(t => t.id === contentType) || {}).label || '';
 
   if (!avatar) {
@@ -462,7 +462,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
   const wordCount = script.trim().split(/\s+/).filter(Boolean).length;
   const estSeconds = Math.max(5, Math.round(wordCount / 2.5));
   const estCost = (estSeconds * 0.04).toFixed(2);
-  const canGenerate = !generating && !!script.trim() && avatar.status === 'ready';
+  const canGenerate = !generating && !!script.trim() && !!avatar && avatar.status === 'ready' && !avatar._unbuilt;
 
   const reloadQueue = async () => {
     if (!token) return;
@@ -923,9 +923,11 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                   style={{ justifyContent: 'center', opacity: canGenerate ? 1 : 0.5 }}>
                   {generating
                     ? <>Queueing…</>
-                    : (avatar.status === 'ready'
+                    : (avatar && avatar.status === 'ready'
                         ? <><Icon name="sparkle" size={14} /> Generate {typeLabel || 'video'}</>
-                        : <>Avatar still training</>)}
+                        : (avatar && avatar._unbuilt
+                            ? <>Build the twin first</>
+                            : <>Avatar still training</>))}
                 </button>
               ) : (
                 <div className="col" style={{ gap: 8 }}>

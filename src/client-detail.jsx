@@ -204,7 +204,7 @@ function InvitesSection({ clientId }) {
   );
 }
 
-function ClientDetailView({ client, onBack }) {
+function ClientDetailView({ client, onBack, onCastScript }) {
   const [tab, setTab] = useState('brief');
   const [episodeRequest, setEpisodeRequest] = useState(null);
   if (!client) {
@@ -234,7 +234,7 @@ function ClientDetailView({ client, onBack }) {
       </div>
 
       {tab === 'brief' && <BriefView clientId={client.id} />}
-      {tab === 'recordings' && <RecordingsView activeClientId={client.id} onCreateEpisode={(req) => { setEpisodeRequest(req); setTab('episodes'); }} />}
+      {tab === 'recordings' && <RecordingsView activeClientId={client.id} onCreateEpisode={(req) => { setEpisodeRequest(req); setTab('episodes'); }} onCastScript={onCastScript} />}
       {tab === 'scripts' && <ScriptsSection clientId={client.id} />}
       {tab === 'invites' && <InvitesSection clientId={client.id} />}
       {tab === 'episodes' && <EpisodesView activeClientId={client.id} episodeRequest={episodeRequest} onEpisodeRequestConsumed={() => setEpisodeRequest(null)} />}

@@ -169,7 +169,7 @@ function App() {
             />
           )}
           {view === 'brief' && <BriefView clientId={activeClientId} />}
-          {view === 'client-detail' && <ClientDetailView client={detailClient} onBack={() => setView('clients')} />}
+          {view === 'client-detail' && <ClientDetailView client={detailClient} onBack={() => setView('clients')} onCastScript={(clientId) => { setCastRequest({ clientId }); setView('studio'); }} />}
           {view === 'invitations' && <InvitationsView />}
           {view === 'planner' && <PlannerView activeClientId={activeClientId} onCastScript={(clientId, body) => { setCastRequest({ clientId, body }); setView('studio'); }} />}
           {view === 'scripts' && <ScriptsView onCastScript={(clientId, body) => { setCastRequest({ clientId, body }); setView('studio'); }} />}
