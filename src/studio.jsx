@@ -564,6 +564,43 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     } finally { setCloningVoice(false); }
   };
 
+  const [editCast, setEditCast] = React.useState(null);
+  const [editCastTitle, setEditCastTitle] = React.useState('');
+  const [editCastScript, setEditCastScript] = React.useState('');
+  const [editCastAspect, setEditCastAspect] = React.useState('16:9');
+  const [recasting, setRecasting] = React.useState(false);
+  const openEditCast = (v) => {
+    setEditCast(v);
+    setEditCastTitle(v.title || '');
+    setEditCastScript(v.script || '');
+    setEditCastAspect('16:9');
+  };
+  const saveCastEdit = async () => {
+    if (!editCast) return;
+    try {
+      if (editCastTitle.trim() && editCastTitle.trim() !== (editCast.title || '')) {
+        await renameVideo(editCast.id, editCastTitle.trim(), token);
+      }
+      setEditCast(null); await reloadQueue();
+    } catch (e) { alert(e.message || 'Save failed'); }
+  };
+  const recastVideo = async () => {
+    if (!editCast || !editCastScript.trim()) { alert('Script is empty.'); return; }
+    setRecasting(true);
+    try {
+      if (editCastTitle.trim() && editCastTitle.trim() !== (editCast.title || '')) {
+        await renameVideo(editCast.id, editCastTitle.trim(), token).catch(() => {});
+      }
+      await generateVideo(editCastScript.trim(), {
+        token,
+        title: (editCastTitle.trim() || editCast.title || 'Untitled') + ' (recast)',
+        avatarId: editCast.avatar_id || undefined,
+        aspectRatio: editCastAspect,
+      });
+      setEditCast(null); await reloadQueue();
+    } catch (e) { alert(e.message || 'Recast failed'); }
+    finally { setRecasting(false); }
+  };
   const renameCast = async (v) => {
     const next = window.prompt('Rename this cast', v.title || '');
     if (next == null || !next.trim()) return;
@@ -799,13 +836,42 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                   {queue.map(v => (
                     <CastCard key={v.id} video={v} avatars={avatars} meta={castMeta[v.id]}
-                      onRename={() => renameCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} onWaveform={() => downloadWaveform(v)}
+                      onRename={() => renameCast(v)} onEdit={() => openEditCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} onWaveform={() => downloadWaveform(v)}
                       onApprove={() => approveCast(v)} onSend={() => sendCastForReview(v)} onPlanner={() => addCastToPlanner(v)} />
                   ))}
                 </div>
               )}
             </div>
 
+            {editCast && (
+              <div onClick={() => setEditCast(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
+                <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(640px, 96vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="label">EDIT CAST</div>
+                    <button className="btn sm" onClick={() => setEditCast(null)}>Close</button>
+                  </div>
+                  <input value={editCastTitle} onChange={(e) => setEditCastTitle(e.target.value)} placeholder="Cast title"
+                    style={{ padding: 10, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 14 }} />
+                  {editCast.script != null ? (
+                    <textarea value={editCastScript} onChange={(e) => setEditCastScript(e.target.value)}
+                      style={{ flex: 1, minHeight: 260, resize: 'vertical', padding: 12, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 14, lineHeight: 1.6 }} />
+                  ) : (
+                    <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>No script stored for this cast (older render).</div>
+                  )}
+                  <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>{editCastScript.length} characters</div>
+                  <div className="row" style={{ gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Recast format</span>
+                    {['16:9', '9:16', '1:1'].map((a) => (
+                      <button key={a} className={'btn sm' + (editCastAspect === a ? ' primary' : '')} onClick={() => setEditCastAspect(a)}>{a}</button>
+                    ))}
+                  </div>
+                  <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+                    <button className="btn sm" onClick={saveCastEdit}>Save title</button>
+                    <button className="btn primary sm" disabled={recasting || !editCastScript.trim()} onClick={recastVideo}><Icon name="sparkle" size={12} /> {recasting ? 'Recasting…' : 'Recast'}</button>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* —— right rail: settings —— */}
             <div style={{ borderLeft: '1px solid var(--border)', padding: 'var(--pad)', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
               <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -1289,7 +1355,7 @@ const Crumb = ({ label, onClick }) => (
   </button>
 );
 
-const CastCard = ({ video, avatars = [], meta, onRename, onDelete, onDownloadAudio, onWaveform, onApprove, onSend, onPlanner }) => {
+const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDownloadAudio, onWaveform, onApprove, onSend, onPlanner }) => {
   const avatar = (avatars || []).find(a => a.id === video.avatarId) || { id: video.avatarId || 'na', contact: video.title || 'Avatar' };
   const ready = video.status === 'ready' && video.url;
   return (
@@ -1323,7 +1389,7 @@ const CastCard = ({ video, avatars = [], meta, onRename, onDelete, onDownloadAud
           {ready && <a className="btn sm" href={video.url} download target="_blank" rel="noopener noreferrer"><Icon name="download" size={12} /> Video</a>}
           {ready && <button className="btn sm" onClick={onDownloadAudio}><Icon name="mic" size={12} /> Audio</button>}
           {ready && <button className="btn sm" onClick={onWaveform}><Icon name="sliders" size={12} /> Waveform</button>}
-          <button className="btn sm" onClick={onRename}><Icon name="sliders" size={12} /> Edit</button>
+          <button className="btn sm" onClick={onEdit || onRename}><Icon name="sliders" size={12} /> Edit</button>
           <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={onDelete}><Icon name="close" size={12} /> Delete</button>
         </div>
         {ready && (
