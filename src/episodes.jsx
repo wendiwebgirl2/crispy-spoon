@@ -581,7 +581,9 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   }
 
   return (
-    <div className="v-pad fade-in">
+    <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', height: '100%', minHeight: 0 }}>
+      {/* —— center: new episode + open episode workspace —— */}
+      <div style={{ overflow: 'auto', padding: 'var(--pad)' }}>
       {onBackToStudio && <button className="btn sm" style={{ marginBottom: 10 }} onClick={onBackToStudio}><Icon name="arrow-l" size={12} /> Studio</button>}
       <div className="card card-pad" style={{ marginBottom: 14 }}>
         <div className="label" style={{ marginBottom: 10 }}>NEW EPISODE</div>
@@ -603,35 +605,52 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
 
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
 
-      {loading ? (
-        <div className="mono" style={{ color: 'var(--text-3)' }}>Loading episodes…</div>
-      ) : list.length === 0 ? (
-        <div className="mono" style={{ color: 'var(--text-3)' }}>No episodes yet.</div>
+      {openId != null ? (
+        <EpisodeEditor cid={cid} epId={openId} onChange={load} />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 100, marginBottom: 16 }}>
-          {list.map((e) => (
-            <div key={e.id} className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ width: '100%', aspectRatio: '16/9', background: 'var(--surface-2)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {e.hasCover ? <img src={ep.coverUrl(cid, e.id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="play" size={22} style={{ color: 'var(--text-4)' }} />}
-              </div>
-              <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.title}</div>
-                <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
-                  {String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}
-                </div>
-                <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
-                  <button className="btn sm" onClick={() => setOpenId(openId === e.id ? null : e.id)}>{openId === e.id ? 'Close' : 'Open'}</button>
-                  {e.hasOutput && <a className="btn sm" href={ep.videoFileUrl(cid, e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Video</a>}
-                  {e.hasOutput && <a className="btn sm" href={ep.fileUrl(cid, e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Audio</a>}
-                  <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => remove(e.id)}><Icon name="close" size={12} /> Delete</button>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="card card-pad" style={{ borderStyle: 'dashed' }}>
+          <div className="mono" style={{ color: 'var(--text-3)' }}>Select an episode from the list on the right to open it here — or create a new one above.</div>
         </div>
       )}
+      </div>
 
-      {openId != null && <EpisodeEditor cid={cid} epId={openId} onChange={load} />}
+      {/* —— right rail: episodes, most recent first —— */}
+      <div style={{ borderLeft: '1px solid var(--border)', padding: 'var(--pad)', overflow: 'auto' }}>
+        <div className="label" style={{ marginBottom: 10 }}>EPISODES</div>
+        {loading ? (
+          <div className="mono" style={{ color: 'var(--text-3)' }}>Loading…</div>
+        ) : list.length === 0 ? (
+          <div className="mono" style={{ color: 'var(--text-3)' }}>No episodes yet.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {list.map((e) => {
+              const active = openId === e.id;
+              return (
+                <div key={e.id} className="card" onClick={() => setOpenId(active ? null : e.id)}
+                  style={{ padding: 10, cursor: 'pointer', border: '1px solid ' + (active ? 'var(--accent)' : 'var(--border)'), background: active ? 'var(--surface-2)' : 'var(--surface)' }}>
+                  <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+                    <div style={{ width: 48, height: 48, borderRadius: 6, background: 'var(--surface-2)', overflow: 'hidden', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {e.hasCover ? <img src={ep.coverUrl(cid, e.id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="play" size={16} style={{ color: 'var(--text-4)' }} />}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.title}</div>
+                      <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
+                        {String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }} onClick={(ev) => ev.stopPropagation()}>
+                    <button className="btn sm" onClick={() => setOpenId(active ? null : e.id)}>{active ? 'Close' : 'Open'}</button>
+                    {e.hasOutput && <a className="btn sm" href={ep.videoFileUrl(cid, e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Video</a>}
+                    {e.hasOutput && <a className="btn sm" href={ep.fileUrl(cid, e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Audio</a>}
+                    <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => remove(e.id)}><Icon name="close" size={12} /> Delete</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
