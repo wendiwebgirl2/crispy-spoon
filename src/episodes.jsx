@@ -301,6 +301,13 @@ function EpisodeEditor({ cid, epId, onChange }) {
     catch (e) { setErr(e.message || 'Could not attach video.'); } finally { setBusy(null); }
   };
   const [lightbox, setLightbox] = useState(false);
+  const [outroText, setOutroText] = useState('');
+  useEffect(() => { setOutroText(full?.outro_text || ''); }, [full?.outro_text]);
+  const saveOutroText = async () => {
+    setBusy('outro_text'); setErr('');
+    try { await ep.outroText(cid, epId, outroText); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not save outro text.'); } finally { setBusy(null); }
+  };
   const clearSlot = async (slot) => {
     if (!window.confirm('Clear this section?')) return;
     setBusy(slot); setErr('');
@@ -360,7 +367,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
         </div>
         {full.cover_path && (() => {
           const dims = { '1:1': [150, 150], '9:16': [120, 213], '16:9': [213, 120] }[coverAspect] || [150, 150];
-          return <img src={ep.coverUrl(cid, epId) + '?b=' + bust} alt="cover" title="Click to view full size" onClick={() => setLightbox(true)} style={{ cursor: 'zoom-in', width: dims[0], height: dims[1], objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', marginTop: 10 }} />;
+          return <img src={ep.coverUrl(cid, epId) + '?b=' + bust} alt="cover" title="Click to view full size" onClick={() => setLightbox('cover')} style={{ cursor: 'zoom-in', width: dims[0], height: dims[1], objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', marginTop: 10 }} />;
         })()}
         <div className="row" style={{ gap: 6, marginTop: 10, alignItems: 'center' }}>
           <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Aspect</span>
@@ -382,9 +389,9 @@ function EpisodeEditor({ cid, epId, onChange }) {
           <input type="file" accept="image/*" onChange={(e) => doUpload('cover', e.target.files[0])} style={{ fontSize: 12, maxWidth: 220 }} />
         </div>
       </div>
-      {lightbox && full.cover_path && (
+      {lightbox && (
         <div onClick={() => setLightbox(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.8)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 200, cursor: 'zoom-out' }}>
-          <img src={ep.coverUrl(cid, epId) + '?b=' + bust} alt="cover full size" style={{ maxWidth: '92vw', maxHeight: '92vh', borderRadius: 10, border: '1px solid var(--border)' }} />
+          <img src={(lightbox === 'outro' ? ep.outroImageUrl(cid, epId) : ep.coverUrl(cid, epId)) + '?b=' + bust} alt="full size" style={{ maxWidth: '92vw', maxHeight: '92vh', borderRadius: 10, border: '1px solid var(--border)' }} />
         </div>
       )}
 
@@ -430,6 +437,29 @@ function EpisodeEditor({ cid, epId, onChange }) {
       <SlotCard name="body2" label="Main recording — Part 2 (optional)" pathField="body2_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
       <SlotCard name="body3" label="Main recording — Part 3 (optional)" pathField="body3_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
       <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+
+      <div className="card card-pad" style={{ marginBottom: 10 }}>
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Outro card <span className="mono" style={{ color: 'var(--text-4)' }}>(closing image + text, 3 sec at the end)</span></div>
+          <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+            {full.outro_image_path && <button className="btn sm" onClick={() => clearSlot('outro_image')}>Clear</button>}
+            <span className="badge" style={{ color: full.outro_image_path ? 'var(--ok)' : 'var(--text-4)' }}>{full.outro_image_path ? 'set' : 'none'}</span>
+          </div>
+        </div>
+        {full.outro_image_path && (
+          <img src={ep.outroImageUrl(cid, epId) + '?b=' + bust} alt="outro card" title="Click to view full size" onClick={() => setLightbox('outro')} style={{ cursor: 'zoom-in', width: 150, height: 150, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', marginTop: 10 }} />
+        )}
+        <div className="row" style={{ gap: 8, marginTop: 10 }}>
+          <input type="file" accept="image/*" onChange={(e) => doUpload('outro_image', e.target.files[0])} style={{ fontSize: 12, maxWidth: 220 }} />
+        </div>
+        <textarea value={outroText} onChange={(e) => setOutroText(e.target.value)} maxLength={240}
+          placeholder="Optional closing text — line breaks are kept"
+          style={{ ...inputStyle, marginTop: 8, minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }} />
+        <div className="row" style={{ gap: 8, marginTop: 8, alignItems: 'center' }}>
+          <button className="btn sm" onClick={saveOutroText} disabled={busy === 'outro_text'}><Icon name="check" size={12} /> {busy === 'outro_text' ? 'Saving…' : 'Save text'}</button>
+          <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>{outroText.length}/240</span>
+        </div>
+      </div>
 
       <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
         <a className="btn" href={full.output_path ? (full.video_output_path ? ep.videoFileUrl(cid, epId) : ep.fileUrl(cid, epId)) : undefined}
