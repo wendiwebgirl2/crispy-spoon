@@ -55,6 +55,7 @@ export const sched = {
   list: (cid) => get(`/api/clients/${cid}/schedule`),
   add: (cid, body) => post(`/api/clients/${cid}/schedule`, body),
   advance: (cid, sid, status) => put(`/api/clients/${cid}/schedule/${sid}`, { status }),
+  update: (cid, sid, body) => put(`/api/clients/${cid}/schedule/${sid}`, body),
   del: (cid, sid) => del(`/api/clients/${cid}/schedule/${sid}`),
   channels: () => get(`/api/clients/0/scripts/channels`),
   approvedScripts: (cid) => get(`/api/clients/${cid}/scripts`),
