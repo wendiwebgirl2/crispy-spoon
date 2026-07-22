@@ -74,7 +74,7 @@ function Timeline({ items, channels, weekOffset, onEventClick }) {
   );
 }
 
-const PlannerView = ({ activeClientId, onCastScript }) => {
+const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
   const cid = activeClientId;
   const [items, setItems] = useState([]);
   const [channels, setChannels] = useState([]);
@@ -185,6 +185,7 @@ const PlannerView = ({ activeClientId, onCastScript }) => {
 
   return (
     <div className="v-pad fade-in">
+      {onBackToStudio && <button className="btn sm" style={{ marginBottom: 10 }} onClick={onBackToStudio}><Icon name="arrow-l" size={12} /> Studio</button>}
       <div className="card card-pad" style={{ marginBottom: 14 }}>
         <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
           <div className="label">TIMELINE</div>

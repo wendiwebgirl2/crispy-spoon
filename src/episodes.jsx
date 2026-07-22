@@ -502,7 +502,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
   );
 }
 
-function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed }) {
+function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed, onBackToStudio }) {
   const cid = activeClientId;
   const [list, setList] = useState([]);
   const [openId, setOpenId] = useState(null);
@@ -582,6 +582,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
 
   return (
     <div className="v-pad fade-in">
+      {onBackToStudio && <button className="btn sm" style={{ marginBottom: 10 }} onClick={onBackToStudio}><Icon name="arrow-l" size={12} /> Studio</button>}
       <div className="card card-pad" style={{ marginBottom: 14 }}>
         <div className="label" style={{ marginBottom: 10 }}>NEW EPISODE</div>
         <div className="row" style={{ gap: 8 }}>

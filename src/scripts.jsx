@@ -20,7 +20,7 @@ const readTime = (t) => {
   return mins < 1 ? `${Math.max(1, Math.round(mins * 60))} sec` : `${mins.toFixed(1)} min`;
 };
 
-const ScriptsView = ({ onCastScript } = {}) => {
+const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStudio } = {}) => {
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(null);
   const [brief, setBrief] = useState(null);
@@ -50,7 +50,7 @@ const ScriptsView = ({ onCastScript } = {}) => {
 
   useEffect(() => {
     api.listClients()
-      .then(cs => { setClients(cs || []); if (cs && cs.length) setClientId(cs[0].id); })
+      .then(cs => { setClients(cs || []); if (cs && cs.length) setClientId(activeClientId && cs.some((c) => c.id === activeClientId) ? activeClientId : cs[0].id); })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -195,6 +195,7 @@ const ScriptsView = ({ onCastScript } = {}) => {
     <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', height: '100%', minHeight: 0 }}>
       {/* —— center: generator + results + history —— */}
       <div style={{ overflow: 'auto', padding: 'var(--pad)' }}>
+        {onBackToStudio && <button className="btn sm" style={{ marginBottom: 10 }} onClick={onBackToStudio}><Icon name="arrow-l" size={12} /> Studio</button>}
         <div className="label">SCRIPTS · CLAUDE</div>
         <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 34, letterSpacing: '-0.01em', margin: '6px 0 18px' }}>
           Generate <em style={{ color: 'var(--accent)' }}>copy</em> from the brief.
@@ -359,7 +360,7 @@ const ScriptsView = ({ onCastScript } = {}) => {
       {/* —— right rail: client + PAMW source of truth —— */}
       <div style={{ borderLeft: '1px solid var(--border)', padding: 'var(--pad)', overflow: 'auto' }}>
         <div className="label" style={{ marginBottom: 10 }}>CLIENT</div>
-        <select value={clientId || ''} onChange={(e) => setClientId(Number(e.target.value) || e.target.value)}
+        <select value={clientId || ''} onChange={(e) => { const v = Number(e.target.value) || e.target.value; setClientId(v); onSelectClient && onSelectClient(v); }}
           className="textarea" style={{ minHeight: 0, height: 40, fontSize: 14, marginBottom: 22, width: '100%' }}>
           {clients.map(c => <option key={c.id} value={c.id}>{c.name || c.companyName || `Client ${c.id}`}</option>)}
         </select>

@@ -38,7 +38,7 @@ function Thumb({ url, icon = 'cam', size = 52 }) {
   return <div style={box}><Icon name={icon} size={20} style={{ color: 'var(--text-4)' }} /></div>;
 }
 
-function RecordingsView({ activeClientId, onCreateEpisode, onCastScript }) {
+function RecordingsView({ activeClientId, onCreateEpisode, onCastScript, onBackToStudio }) {
   const [recordings, setRecordings] = useState([]);
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -237,6 +237,7 @@ function RecordingsView({ activeClientId, onCreateEpisode, onCastScript }) {
   return (
     <div className="v-pad fade-in">
       <input ref={refaceInput} type="file" accept="image/*" onChange={onRefaceFile} style={{ display: 'none' }} />
+      {onBackToStudio && <button className="btn sm" style={{ marginBottom: 10 }} onClick={onBackToStudio}><Icon name="arrow-l" size={12} /> Studio</button>}
       <div className="label">RECORDINGS LIVE {scopeLabel}</div>
       <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, lineHeight: 1.1, margin: '6px 0 4px' }}>
         The <em>masters</em>, and what they became.
