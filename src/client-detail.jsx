@@ -43,7 +43,10 @@ function ScriptsSection({ clientId }) {
           <div className="row" style={{ gap: 10, alignItems: 'center' }}>
             <span className="badge">{s.channel || 'script'}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{s.topic || 'Untitled'}</div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{s.title || s.topic || 'Untitled'}</div>
+              {s.description && (
+                <div className="mono" style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text-3)', marginTop: 3 }}>{s.description}</div>
+              )}
               <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
                 {fmtDate(s.created_at)}{s.model ? ` · ${s.model}` : ''}{s.status ? ` · ${s.status}` : ''}
               </div>

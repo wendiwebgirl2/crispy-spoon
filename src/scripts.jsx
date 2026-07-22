@@ -36,6 +36,8 @@ const ScriptsView = ({ onCastScript } = {}) => {
   const [editing, setEditing] = useState(null);
   const [expandedTopic, setExpandedTopic] = useState(null);
   const [editBody, setEditBody] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
   const [revisePrompt, setRevisePrompt] = useState('');
   const [revising, setRevising] = useState(false);
   const [reviseNote, setReviseNote] = useState('');
@@ -126,10 +128,10 @@ const ScriptsView = ({ onCastScript } = {}) => {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch { /* noop */ }
   };
-  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setRevisePrompt(''); setReviseNote(''); setErr(''); };
+  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setEditTitle(h.title || ''); setEditDesc(h.description || ''); setRevisePrompt(''); setReviseNote(''); setErr(''); };
   const saveEdit = async () => {
     try {
-      const payload = { body: editBody };
+      const payload = { body: editBody, title: editTitle, description: editDesc };
       if (editing && (editing.approval_status === 'changes_requested' || editing.approval_status === 'approved_with_changes')) {
         payload.approval_status = 'changes_completed';
       }
@@ -313,6 +315,12 @@ const ScriptsView = ({ onCastScript } = {}) => {
                 <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                   {h.title ? <strong>{h.title}{h.variant > 1 ? ` (v${h.variant})` : ''} · </strong> : (h.topic ? <strong>{h.topic} · </strong> : null)}{h.body}
                 </div>
+                {h.description && (
+                  <div className="mono" style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text-3)', marginTop: 6 }}>
+                    {h.description}
+                    <span style={{ color: 'var(--text-4)' }}> · {h.description.length}/500</span>
+                  </div>
+                )}
                 <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 6 }}>
                   {charCount(h.body).toLocaleString()} chars · ~{readTime(h.body)} read
                 </div>
@@ -374,6 +382,12 @@ const ScriptsView = ({ onCastScript } = {}) => {
               <div className="label">EDIT SCRIPT{editing.topic ? ' · ' + editing.topic : ''}</div>
               <button className="icon-btn" title="Close" onClick={() => setEditing(null)}><Icon name="close" size={14} /></button>
             </div>
+            <input className="textarea" value={editTitle} onChange={(e) => setEditTitle(e.target.value)}
+              placeholder="Title" style={{ minHeight: 0, height: 40, fontSize: 15 }} />
+            <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} maxLength={500}
+              placeholder="Description (max 500 characters)"
+              style={{ minHeight: 64, resize: 'vertical', padding: 12, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, lineHeight: 1.5 }} />
+            <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginTop: -6 }}>{editDesc.length}/500</div>
             <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)}
               style={{ flex: 1, minHeight: 340, resize: 'vertical', padding: 14, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 15, lineHeight: 1.6 }} />
             <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>
