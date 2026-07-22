@@ -8,6 +8,7 @@ import { ClientDetailView } from './client-detail.jsx'
 import { InvitationsView } from './invitations.jsx'
 import { PlannerView } from './planner.jsx'
 import { ScriptsView } from './scripts.jsx'
+import { BillingView } from './billing.jsx'
 import StudioView from './studio.jsx'
 import { RecordingsView } from './recordings.jsx'
 import { EpisodesView } from './episodes.jsx'
@@ -42,6 +43,14 @@ function App() {
   const goStudio = () => { setStudioNonce((n) => n + 1); setView('studio'); };
   const [castRequest, setCastRequest] = React.useState(null);
   const [activeClientId, setActiveClientId] = React.useState(null);
+  const [alerts, setAlerts] = React.useState(null);
+  React.useEffect(() => {
+    let live = true;
+    const load = () => api.alerts().then((a) => { if (live) setAlerts(a); }).catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => { live = false; clearInterval(t); };
+  }, [view]);
   const [activeClientName, setActiveClientName] = React.useState('');
   React.useEffect(() => {
     if (!activeClientId) { setActiveClientName(''); return; }
@@ -116,6 +125,26 @@ function App() {
           </button>
         </div>
 
+        {alerts && (
+          <>
+            <div className="side-section" style={{ marginTop: 14 }}>ALERTS</div>
+            <div className="side-nav">
+              {[
+                { k: 'pending', label: 'Pending approval', color: 'var(--accent)' },
+                { k: 'in_production', label: 'In production', color: 'var(--text-2)' },
+                { k: 'approved', label: 'Approved', color: 'var(--ok)' },
+                { k: 'invites_recorded', label: 'Invites recorded', color: 'var(--text-3)' },
+              ].map((a) => (
+                <div key={a.k} className="nav-item" style={{ cursor: 'default' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: a.color, flex: 'none', marginRight: 8 }} />
+                  <span style={{ fontSize: 12 }}>{a.label}</span>
+                  <span className="nav-count" style={{ background: 'transparent', color: a.color, fontWeight: 700 }}>{alerts[a.k] ?? 0}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
         <div className="side-nav" style={{ marginTop: 'auto' }}>
           <button
             className={'nav-item' + (view === 'settings' ? ' active' : '')}
@@ -183,12 +212,7 @@ function App() {
             />
           )}
           {view === 'settings' && <SettingsView />}
-          {view === 'billing' && (
-            <div style={{ margin: '48px auto', maxWidth: 520, textAlign: 'center', color: 'var(--text-3)', lineHeight: 1.6 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-2)', marginBottom: 6 }}>Billing</div>
-              Plans, usage, and invoices are coming soon.
-            </div>
-          )}
+          {view === 'billing' && <BillingView />}
         </section>
       </main>
     </div>

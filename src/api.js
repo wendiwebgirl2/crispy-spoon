@@ -261,6 +261,8 @@ export const api = {
   // Cast approval workflow. Railway owns the cast; voicecast owns whether it
   // has been approved, keyed on the Railway video id.
   listCasts: (id) => vcReq(`/clients/${id}/casts`),
+  alerts: () => vcReq('/alerts'),
+  billingOverview: (qs = '') => vcReq('/billing/overview' + qs),
   setCastApproval: (id, railwayVideoId, status, title) =>
     vcReq(`/clients/${id}/casts/approval`, { method: "POST", body: JSON.stringify({ railwayVideoId, status, title }) }),
   sendCastForReview: (id, railwayVideoId, title, email) =>
