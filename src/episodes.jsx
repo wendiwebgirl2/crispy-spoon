@@ -11,7 +11,7 @@ const inputStyle = {
   boxSizing: 'border-box', width: '100%',
 };
 
-function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = [], avatarVideos = [], onUpload, onSynth, onUseRecording, onUseVideo, onClearVideo }) {
+function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = [], avatarVideos = [], onUpload, onSynth, onUseRecording, onUseVideo, onClearVideo, onClearSlot }) {
   const [recPick, setRecPick] = useState('');
   const [vidPick, setVidPick] = useState('');
   const videoField = name + '_video_path';
@@ -20,7 +20,10 @@ function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = 
     <div className="card card-pad" style={{ marginBottom: 10 }}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontWeight: 600, fontSize: 13 }}>{label}</div>
-        <span className="badge" style={{ color: (isVideo || full[pathField]) ? 'var(--ok)' : 'var(--text-4)' }}>{isVideo ? 'video' : (full[pathField] ? 'audio' : 'empty')}</span>
+        <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+          {(isVideo || full[pathField]) && <button className="btn sm" onClick={() => onClearSlot(name)}>Clear</button>}
+          <span className="badge" style={{ color: (isVideo || full[pathField]) ? 'var(--ok)' : 'var(--text-4)' }}>{isVideo ? 'video' : (full[pathField] ? 'audio' : 'empty')}</span>
+        </div>
       </div>
       <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
         <input type="file" accept="audio/*" onChange={(e) => onUpload(name, e.target.files[0])} style={{ fontSize: 12, maxWidth: 220 }} />
@@ -297,6 +300,13 @@ function EpisodeEditor({ cid, epId, onChange }) {
     try { await ep.useVideo(cid, epId, slot, videoUrl); await refresh(); }
     catch (e) { setErr(e.message || 'Could not attach video.'); } finally { setBusy(null); }
   };
+  const [lightbox, setLightbox] = useState(false);
+  const clearSlot = async (slot) => {
+    if (!window.confirm('Clear this section?')) return;
+    setBusy(slot); setErr('');
+    try { await ep.clearSlot(cid, epId, slot); setBust(Date.now()); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not clear.'); } finally { setBusy(null); }
+  };
   const clearVideo = async (slot) => {
     setBusy(slot); setErr('');
     try { await ep.clearVideo(cid, epId, slot); await refresh(); }
@@ -343,11 +353,14 @@ function EpisodeEditor({ cid, epId, onChange }) {
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 600, fontSize: 13 }}>Cover art</div>
-          <span className="badge" style={{ color: full.cover_path ? 'var(--ok)' : 'var(--text-4)' }}>{full.cover_path ? 'set' : 'none'}</span>
+          <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+            {full.cover_path && <button className="btn sm" onClick={() => clearSlot('cover')}>Clear</button>}
+            <span className="badge" style={{ color: full.cover_path ? 'var(--ok)' : 'var(--text-4)' }}>{full.cover_path ? 'set' : 'none'}</span>
+          </div>
         </div>
         {full.cover_path && (() => {
           const dims = { '1:1': [150, 150], '9:16': [120, 213], '16:9': [213, 120] }[coverAspect] || [150, 150];
-          return <img src={ep.coverUrl(cid, epId) + '?b=' + bust} alt="cover" style={{ width: dims[0], height: dims[1], objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', marginTop: 10 }} />;
+          return <img src={ep.coverUrl(cid, epId) + '?b=' + bust} alt="cover" title="Click to view full size" onClick={() => setLightbox(true)} style={{ cursor: 'zoom-in', width: dims[0], height: dims[1], objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', marginTop: 10 }} />;
         })()}
         <div className="row" style={{ gap: 6, marginTop: 10, alignItems: 'center' }}>
           <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Aspect</span>
@@ -369,11 +382,19 @@ function EpisodeEditor({ cid, epId, onChange }) {
           <input type="file" accept="image/*" onChange={(e) => doUpload('cover', e.target.files[0])} style={{ fontSize: 12, maxWidth: 220 }} />
         </div>
       </div>
+      {lightbox && full.cover_path && (
+        <div onClick={() => setLightbox(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.8)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 200, cursor: 'zoom-out' }}>
+          <img src={ep.coverUrl(cid, epId) + '?b=' + bust} alt="cover full size" style={{ maxWidth: '92vw', maxHeight: '92vh', borderRadius: 10, border: '1px solid var(--border)' }} />
+        </div>
+      )}
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 600, fontSize: 13 }}>Intro music <span className="mono" style={{ color: 'var(--text-4)' }}>(plays first)</span></div>
-          <span className="badge" style={{ color: full.intro_music_path ? 'var(--ok)' : 'var(--text-4)' }}>{full.intro_music_path ? 'set' : 'none'}</span>
+          <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+            {full.intro_music_path && <button className="btn sm" onClick={() => clearSlot('intro_music')}>Clear</button>}
+            <span className="badge" style={{ color: full.intro_music_path ? 'var(--ok)' : 'var(--text-4)' }}>{full.intro_music_path ? 'set' : 'none'}</span>
+          </div>
         </div>
         <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
           <input value={introMusicPrompt} onChange={(e) => setIntroMusicPrompt(e.target.value)} placeholder="Describe intro sting" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
@@ -383,12 +404,15 @@ function EpisodeEditor({ cid, epId, onChange }) {
         {full.intro_music_path && <audio controls src={ep.slotUrl(cid, epId, 'intro_music') + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />}
       </div>
 
-      <SlotCard name="intro" label="Intro (VO)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
+      <SlotCard name="intro" label="Intro (VO)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 600, fontSize: 13 }}>Music</div>
-          <span className="badge" style={{ color: full.music_path ? 'var(--ok)' : 'var(--text-4)' }}>{full.music_path ? ('set (' + (full.music_mode || 'segment') + ')') : 'none'}</span>
+          <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+            {full.music_path && <button className="btn sm" onClick={() => clearSlot('music')}>Clear</button>}
+            <span className="badge" style={{ color: full.music_path ? 'var(--ok)' : 'var(--text-4)' }}>{full.music_path ? ('set (' + (full.music_mode || 'segment') + ')') : 'none'}</span>
+          </div>
         </div>
         <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
           <select value={musicMode} onChange={(e) => setMusicMode(e.target.value)} style={{ ...inputStyle, width: 240 }}>
@@ -402,10 +426,10 @@ function EpisodeEditor({ cid, epId, onChange }) {
         {full.music_path && <audio controls src={ep.slotUrl(cid, epId, 'music') + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />}
       </div>
 
-      <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
-      <SlotCard name="body2" label="Main recording — Part 2 (optional)" pathField="body2_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
-      <SlotCard name="body3" label="Main recording — Part 3 (optional)" pathField="body3_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
-      <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} />
+      <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="body2" label="Main recording — Part 2 (optional)" pathField="body2_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="body3" label="Main recording — Part 3 (optional)" pathField="body3_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
 
       <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
         <a className="btn" href={full.output_path ? (full.video_output_path ? ep.videoFileUrl(cid, epId) : ep.fileUrl(cid, epId)) : undefined}

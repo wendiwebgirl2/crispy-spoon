@@ -28,6 +28,7 @@ export const ep = {
   stitch: (cid, id) => post(`/api/clients/${cid}/episodes/${id}/stitch`, {}),
   useVideo: (cid, id, slot, videoUrl) => post(`/api/clients/${cid}/episodes/${id}/use-video`, { slot, videoUrl }),
   clearVideo: (cid, id, slot) => post(`/api/clients/${cid}/episodes/${id}/clear-video`, { slot }),
+  clearSlot: (cid, id, slot) => post(`/api/clients/${cid}/episodes/${id}/clear-slot`, { slot }),
   videoFileUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/video`,
   fileUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/file`,
   slotUrl: (cid, id, slot) => `/api/clients/${cid}/episodes/${id}/slot/${slot}`,
