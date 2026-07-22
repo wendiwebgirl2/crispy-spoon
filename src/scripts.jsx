@@ -100,6 +100,11 @@ const ScriptsView = ({ onCastScript } = {}) => {
     try {
       const payload = { approval_status };
       if (status) payload.status = status;
+      if (approval_status === 'approved') {
+        const who = window.prompt('Approved by (name):', '');
+        if (who === null) return; // cancelled
+        if (who.trim()) payload.approval_by = who.trim();
+      }
       await api.updateScript(clientId, sid, payload);
       await refreshHistory();
     } catch (e) { setErr(e.message); }
@@ -304,12 +309,12 @@ const ScriptsView = ({ onCastScript } = {}) => {
               {open && (
               <div className="col" style={{ gap: 8, padding: '0 14px 14px' }}>
                 {g.items.map(h => (
-            <div key={h.id} className="row" style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface)', gap: 12, alignItems: 'flex-start' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
+            <div key={h.id} className="col" style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface)', gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
                 <div className="row" style={{ gap: 8 }}>
                   <span className="badge">{labelFor(h.channel)}</span>
                   {h.status && h.status !== 'draft' && <span className="mono" style={{ color: h.status === 'approved' ? 'var(--ok)' : 'var(--text-4)' }}>{h.status}</span>}
-                  {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: (h.approval_status.startsWith('approved') || h.approval_status === 'in_production') ? 'var(--ok)' : h.approval_status === 'changes_completed' ? 'var(--text-2)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{(APPROVAL_LABEL[h.approval_status] || h.approval_status.replace(/_/g, ' '))}{h.approval_status === 'changes_completed' && h.approval_updated_at ? ' · ' + String(h.approval_updated_at).slice(0, 10) : ''}</span>}
+                  {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: (h.approval_status.startsWith('approved') || h.approval_status === 'in_production') ? 'var(--ok)' : h.approval_status === 'changes_completed' ? 'var(--text-2)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{(APPROVAL_LABEL[h.approval_status] || h.approval_status.replace(/_/g, ' '))}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production') && h.approval_by ? ' · by ' + h.approval_by : ''}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production' || h.approval_status === 'changes_completed') && h.approval_updated_at ? ' · ' + String(h.approval_updated_at).slice(0, 10) : ''}</span>}
                   {h.model === 'manual' && <span className="mono">manual</span>}
                 </div>
                 <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
@@ -330,7 +335,7 @@ const ScriptsView = ({ onCastScript } = {}) => {
                   </div>
                 )}
               </div>
-              <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
+              <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
                 <button className="btn sm" onClick={() => copy(h.body)}><Icon name="doc" size={12} /> Copy</button>
                 <button className="btn sm" onClick={() => download(h)}><Icon name="download" size={12} /> Download</button>
                 <button className="btn sm" onClick={() => openEdit(h)}><Icon name="sliders" size={12} /> Edit</button>
