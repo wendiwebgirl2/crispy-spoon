@@ -66,6 +66,11 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
 
   React.useEffect(() => { refreshCastMeta(); }, [refreshCastMeta]);
   const [castType, setCastType] = React.useState('video');   // 'video' (HeyGen) | 'audio' (ElevenLabs)
+  const [editCast, setEditCast] = React.useState(null);
+  const [editCastTitle, setEditCastTitle] = React.useState('');
+  const [editCastScript, setEditCastScript] = React.useState('');
+  const [editCastAspect, setEditCastAspect] = React.useState('16:9');
+  const [recasting, setRecasting] = React.useState(false);
   const [voiceProfiles, setVoiceProfiles] = React.useState([]);
   const [voiceProfileId, setVoiceProfileId] = React.useState('');
   const [audioOutputs, setAudioOutputs] = React.useState([]);
@@ -564,11 +569,6 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
     } finally { setCloningVoice(false); }
   };
 
-  const [editCast, setEditCast] = React.useState(null);
-  const [editCastTitle, setEditCastTitle] = React.useState('');
-  const [editCastScript, setEditCastScript] = React.useState('');
-  const [editCastAspect, setEditCastAspect] = React.useState('16:9');
-  const [recasting, setRecasting] = React.useState(false);
   const openEditCast = (v) => {
     setEditCast(v);
     setEditCastTitle(v.title || '');
