@@ -207,7 +207,7 @@ function InvitesSection({ clientId }) {
   );
 }
 
-function ClientDetailView({ client, onBack, onCastScript }) {
+function ClientDetailView({ client, onBack, onOpenStudio, onCastScript }) {
   const [tab, setTab] = useState('brief');
   const [episodeRequest, setEpisodeRequest] = useState(null);
   if (!client) {
@@ -234,6 +234,11 @@ function ClientDetailView({ client, onBack, onCastScript }) {
             <Icon name={t.icon} size={13} /> {t.label}
           </button>
         ))}
+        {onOpenStudio && (
+          <button className="btn sm" style={{ marginLeft: 'auto', borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => onOpenStudio(client.id)}>
+            <Icon name="sparkle" size={13} /> Studio
+          </button>
+        )}
       </div>
 
       {tab === 'brief' && <BriefView clientId={client.id} />}

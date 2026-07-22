@@ -38,7 +38,7 @@ const STEPS = [
   { id: 'type',        n: 3, label: 'Type' },
 ];
 
-const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
+const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, onSelectClient }) => {
   // —— decision flow ——
   const [step, setStep] = React.useState('home');   // home | assets | client | destination | type | render
   const [clientId, setClientId] = React.useState(null);
@@ -322,7 +322,16 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed }) => {
         <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, letterSpacing: '-0.01em', margin: '18px 0 4px' }}>
           <em style={{ color: 'var(--accent)' }}>Studio</em>
         </h1>
-        <div className="mono" style={{ marginBottom: 24 }}>Everything for producing an episode &mdash; pick where you want to work.</div>
+        <div className="mono" style={{ marginBottom: 14 }}>Everything for producing an episode &mdash; pick where you want to work.</div>
+        <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 24 }}>
+          <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>Client</span>
+          <select value={activeClientId || ''} onChange={(e) => onSelectClient && onSelectClient(Number(e.target.value) || null)}
+            style={{ padding: '7px 10px', borderRadius: 'var(--r-sm)', border: '1px solid ' + (activeClientId ? 'var(--border)' : 'var(--accent)'), background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, minWidth: 220 }}>
+            <option value="">Which client…?</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {!activeClientId && <span className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>Pick a client so every studio page opens ready to work.</span>}
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--gap)' }}>
           {cards.map(c => (
             <button key={c.id} className="card card-pad" onClick={c.go}
