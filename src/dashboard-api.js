@@ -39,6 +39,8 @@ export const ep = {
   sendClient: (cid, id, email) => post(`/api/clients/${cid}/episodes/${id}/send-client`, email ? { email } : {}),
   coverUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/cover`,
   voiceOutputs: (cid) => get(`/api/clients/${cid}/voice/outputs`),
+  setMeta: (cid, id, body) => put(`/api/clients/${cid}/episodes/${id}/meta`, body),
+  publish: (cid, id, platforms, scheduleId) => post(`/api/clients/${cid}/episodes/${id}/publish`, { platforms, scheduleId }),
 };
 
 // ElevenLabs voice synthesis (audio-only casting — cheaper than a HeyGen video).

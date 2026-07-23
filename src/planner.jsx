@@ -1,20 +1,30 @@
 import React, { useState, useEffect } from 'react'
 import { Icon } from './shared.jsx'
-import { sched } from './dashboard-api.js'
+import { sched, ep as epApi } from './dashboard-api.js'
 
 const CHAN_COLORS = {
   longform: '#fbb033', shortform: '#d6608f', blog: '#4a90d6', episode: '#6bbf8a',
   podcast: '#fbb033', instagram: '#d6608f', linkedin: '#4a90d6', x: '#6bbf8a',
+  youtube: '#c94a4a', facebook: '#4a6fd6',
   default: '#b09a8d',
 };
+const SOCIAL_CHANNELS = [
+  { key: 'youtube', label: 'YouTube' },
+  { key: 'facebook', label: 'Facebook' },
+  { key: 'instagram', label: 'Instagram' },
+];
 const EXTRA_COLORS = ['#c96f4a', '#8a7ad6', '#4ab8a8', '#d6c04a'];
 const colorFallback = (k) => EXTRA_COLORS[String(k).split('').reduce((a, c) => a + c.charCodeAt(0), 0) % EXTRA_COLORS.length];
 const colorOf = (k) => CHAN_COLORS[k] || colorFallback(k);
 
 const inputStyle = { background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontFamily: 'var(--f-mono)', fontSize: 13, padding: '9px 11px', boxSizing: 'border-box', width: '100%' };
 
-function PlanCard({ item, onAdvance, onDel, onSchedule }) {
-  const next = { draft: 'scheduled', scheduled: 'delivered' }[item.status];
+function PlanCard({ item, onAdvance, onDel, onSchedule, onPublish, publishing }) {
+  const isEpisodeSocial = item.episode_id && SOCIAL_CHANNELS.some((c) => c.key === item.channel);
+  const busy = publishing && publishing.has(item.id);
+  let meta = null;
+  if (item.publish_meta) { try { meta = JSON.parse(item.publish_meta); } catch { /* ignore */ } }
+
   return (
     <div className="card card-pad" style={{ background: 'var(--surface-2)' }}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
@@ -24,11 +34,23 @@ function PlanCard({ item, onAdvance, onDel, onSchedule }) {
       {item.channel_name && <div className="mono" style={{ color: 'var(--text-4)', marginTop: 4 }}>↳ {item.channel_name}</div>}
       <div className="mono" style={{ color: 'var(--text-4)', marginTop: 2 }}>{item.scheduled_for ? '🗓 ' + item.scheduled_for : 'no date set'}</div>
       {item.script_body && <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6, maxHeight: 70, overflow: 'hidden' }}>{item.script_body.slice(0, 160)}…</div>}
-      {item.status === 'draft' && <button className="btn sm primary" style={{ marginTop: 8 }} onClick={() => onSchedule(item)}><Icon name="history" size={12} /> Schedule</button>}
-      {item.status === 'scheduled' && (
-        <div className="row" style={{ gap: 6, marginTop: 8 }}>
-          <button className="btn sm" onClick={() => onSchedule(item)}>Reschedule</button>
-          <button className="btn sm primary" onClick={() => onAdvance(item.id, 'delivered')}>Mark delivered</button>
+      {isEpisodeSocial && item.episode_has_video === false && (
+        <div className="mono" style={{ color: 'var(--accent)', marginTop: 6, fontSize: 12 }}>No video on this episode yet — stitch it first.</div>
+      )}
+      {meta && meta.ok === false && (
+        <div className="mono" style={{ color: 'var(--accent)', marginTop: 6, fontSize: 12 }}>Last attempt failed: {meta.error}</div>
+      )}
+      {item.status !== 'delivered' && (
+        <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+          {item.status === 'draft' && <button className="btn sm" onClick={() => onSchedule(item)}><Icon name="history" size={12} /> Schedule</button>}
+          {item.status === 'scheduled' && <button className="btn sm" onClick={() => onSchedule(item)}>Reschedule</button>}
+          {isEpisodeSocial ? (
+            <button className="btn sm primary" disabled={busy || item.episode_has_video === false} onClick={() => onPublish(item)}>
+              {busy ? 'Publishing…' : <><Icon name="check" size={12} /> Publish now</>}
+            </button>
+          ) : (
+            item.status === 'scheduled' && <button className="btn sm primary" onClick={() => onAdvance(item.id, 'delivered')}>Mark delivered</button>
+          )}
         </div>
       )}
       {item.status === 'delivered' && <span className="badge" style={{ color: 'var(--ok)', marginTop: 8, display: 'inline-block' }}>✓ delivered</span>}
@@ -79,6 +101,8 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
   const [items, setItems] = useState([]);
   const [channels, setChannels] = useState([]);
   const [approved, setApproved] = useState([]);
+  const [episodes, setEpisodes] = useState([]);
+  const [publishing, setPublishing] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [weekOffset, setWeekOffset] = useState(0);
@@ -106,13 +130,16 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
       sched.list(cid).catch(() => []),
       sched.channels().catch(() => []),
       sched.approvedScripts(cid).catch(() => []),
-    ]).then(([it, ch, sc]) => {
+      epApi.list(cid).catch(() => []),
+    ]).then(([it, ch, sc, eps]) => {
       setItems(Array.isArray(it) ? it : (it.items || []));
       const chans = Array.isArray(ch) ? ch : [];
       setChannels(chans);
       setChannel((prev) => prev || (chans[0] ? chans[0].key : ''));
       const scr = Array.isArray(sc) ? sc : (sc.scripts || []);
       setApproved(scr.filter((s) => s.status === 'approved'));
+      const epsArr = Array.isArray(eps) ? eps : (eps.episodes || []);
+      setEpisodes(epsArr.filter((e) => e.hasOutput));
     }).catch((e) => setErr(e.message || 'Could not load planner.')).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, [cid]);
@@ -134,6 +161,35 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
   };
   const advance = async (id, status) => { try { await sched.advance(cid, id, status); load(); } catch (e) { setErr(e.message); } };
   const del = async (id) => { if (!window.confirm('Remove from planner?')) return; try { await sched.del(cid, id); load(); } catch (e) { setErr(e.message); } };
+
+  // Episode-based distribution: podcast feed is a plain include/exclude flag
+  // on the episode (it's already live automatically); social channels get a
+  // schedule row so they show up in the Draft/Scheduled/Delivered columns
+  // and the timeline, same as script-based posts.
+  const toggleFeed = async (episode) => {
+    try { await epApi.setMeta(cid, episode.id, { feedInclude: !episode.feedInclude }); load(); }
+    catch (e) { setErr(e.message); }
+  };
+  const scheduleForEpisodeChannel = (episode, channel) => items.find((i) => i.episode_id === episode.id && i.channel === channel);
+  const toggleChannel = async (episode, channel) => {
+    const existing = scheduleForEpisodeChannel(episode, channel);
+    try {
+      if (existing) {
+        if (existing.status === 'delivered' && !window.confirm('Already published — remove from planner anyway?')) return;
+        await sched.del(cid, existing.id);
+      } else {
+        await sched.add(cid, { channel, title: episode.title, episodeId: episode.id });
+      }
+      load();
+    } catch (e) { setErr(e.message); }
+  };
+  const publishItem = async (item) => {
+    setPublishing((prev) => new Set(prev).add(item.id));
+    try { await epApi.publish(cid, item.episode_id, [item.channel], item.id); }
+    catch { /* server already recorded the error in publish_meta */ }
+    setPublishing((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
+    load();
+  };
 
   const splitWhen = (v) => {
     const m = String(v || '').replace('T', ' ').match(/^(\d{4}-\d{2}-\d{2})[ ]?(\d{2}:\d{2})?/);
@@ -197,6 +253,33 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
         </div>
         <Timeline items={items} channels={channels} weekOffset={weekOffset} onEventClick={openDetail} />
       </div>
+      {episodes.length > 0 && (
+        <div className="card card-pad" style={{ marginBottom: 14 }}>
+          <div className="label" style={{ marginBottom: 10 }}>EPISODES READY TO DISTRIBUTE <span style={{ color: 'var(--text-4)' }}>({episodes.length})</span></div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+            {episodes.map((epi) => (
+              <div key={epi.id} className="card" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{epi.title}</div>
+                <label className="row" style={{ gap: 6, alignItems: 'center', fontSize: 12 }}>
+                  <input type="checkbox" checked={!!epi.feedInclude} onChange={() => toggleFeed(epi)} />
+                  <span className="mono">Podcast feed {epi.feedInclude ? '(live)' : '(excluded)'}</span>
+                </label>
+                {SOCIAL_CHANNELS.map((c) => {
+                  const existing = scheduleForEpisodeChannel(epi, c.key);
+                  return (
+                    <label key={c.key} className="row" style={{ gap: 6, alignItems: 'center', fontSize: 12, opacity: epi.hasVideo ? 1 : 0.5 }}>
+                      <input type="checkbox" disabled={!epi.hasVideo} checked={!!existing} onChange={() => toggleChannel(epi, c.key)} />
+                      <span style={{ width: 9, height: 9, borderRadius: 2, background: colorOf(c.key), flex: 'none' }} />
+                      <span className="mono">{c.label}{existing ? ' — ' + existing.status : ''}</span>
+                    </label>
+                  );
+                })}
+                {!epi.hasVideo && <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>No video output — social channels need one.</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {approved.length > 0 && (
         <div className="card card-pad" style={{ marginBottom: 14 }}>
           <div className="label" style={{ marginBottom: 10 }}>READY TO DISTRIBUTE <span style={{ color: 'var(--text-4)' }}>({approved.length})</span></div>
@@ -249,7 +332,7 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
             <div className="label" style={{ marginBottom: 10 }}>{lbl} <span style={{ color: 'var(--text-4)' }}>({byStatus(st).length})</span></div>
             <div className="col" style={{ gap: 8 }}>
               {byStatus(st).length === 0 ? <div className="mono" style={{ color: 'var(--text-4)' }}>Nothing here.</div>
-                : byStatus(st).map((i) => <PlanCard key={i.id} item={i} onAdvance={advance} onDel={del} onSchedule={openSchedule} />)}
+                : byStatus(st).map((i) => <PlanCard key={i.id} item={i} onAdvance={advance} onDel={del} onSchedule={openSchedule} onPublish={publishItem} publishing={publishing} />)}
             </div>
           </div>
         ))}
