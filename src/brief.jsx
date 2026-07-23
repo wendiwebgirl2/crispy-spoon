@@ -131,6 +131,114 @@ function DistributionCard({ clientId }) {
   );
 }
 
+// Show-level metadata for the self-hosted podcast RSS feed (title, author,
+// category, etc). The feed URL itself is read-only here — it's generated
+// server-side (token-scoped, no login) the first time this loads.
+function PodcastFeedCard({ clientId }) {
+  const [feed, setFeed] = useState(null);
+  const [err, setErr] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const load = () => api.getPodcastFeed(clientId).then(setFeed).catch((e) => setErr(e.message || 'Could not load podcast feed settings.'));
+  useEffect(() => { setFeed(null); setErr(''); if (clientId) load(); }, [clientId]);
+
+  const set = (k, v) => { setFeed((f) => ({ ...f, [k]: v })); setSaved(false); };
+  const save = async () => {
+    setSaving(true); setErr(''); setSaved(false);
+    try {
+      const updated = await api.putPodcastFeed(clientId, {
+        title: feed.title, description: feed.description, author: feed.author, ownerEmail: feed.owner_email,
+        category: feed.category, subcategory: feed.subcategory, explicit: feed.explicit, language: feed.language,
+      });
+      setFeed(updated); setSaved(true);
+    } catch (e) { setErr(e.message || 'Could not save.'); } finally { setSaving(false); }
+  };
+  const copyUrl = () => {
+    if (!feed?.feedUrl) return;
+    navigator.clipboard?.writeText(feed.feedUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  };
+
+  const inp = { background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontFamily: 'var(--f-mono)', fontSize: 13, padding: '8px 10px', boxSizing: 'border-box', width: '100%' };
+  if (!feed) return <div className="card card-pad" style={{ flex: '1 1 320px' }}><div className="label">PODCAST FEED</div>{err && <div className="mono" style={{ color: 'var(--accent)', marginTop: 8 }}>{err}</div>}</div>;
+
+  return (
+    <div className="card card-pad" style={{ flex: '1 1 320px' }}>
+      <div className="label" style={{ marginBottom: 12 }}>PODCAST FEED · Apple / Spotify submit this URL once</div>
+      {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 8 }}>{err}</div>}
+      <div className="row" style={{ gap: 6, marginBottom: 10 }}>
+        <input readOnly value={feed.feedUrl || ''} style={{ ...inp, color: 'var(--text-3)' }} onFocus={(e) => e.target.select()} />
+        <button className="btn sm" onClick={copyUrl}>{copied ? 'Copied' : 'Copy'}</button>
+      </div>
+      <div className="col" style={{ gap: 8 }}>
+        <input placeholder="Show title" value={feed.title ?? ''} onChange={(e) => set('title', e.target.value)} style={inp} />
+        <textarea placeholder="Show description" value={feed.description ?? ''} onChange={(e) => set('description', e.target.value)} rows={3} style={{ ...inp, resize: 'vertical' }} />
+        <input placeholder="Author / host name" value={feed.author ?? ''} onChange={(e) => set('author', e.target.value)} style={inp} />
+        <input placeholder="Owner email (iTunes contact)" value={feed.owner_email ?? ''} onChange={(e) => set('owner_email', e.target.value)} style={inp} />
+        <div className="row" style={{ gap: 8 }}>
+          <input placeholder="Category (e.g. Business)" value={feed.category ?? ''} onChange={(e) => set('category', e.target.value)} style={inp} />
+          <input placeholder="Subcategory (optional)" value={feed.subcategory ?? ''} onChange={(e) => set('subcategory', e.target.value)} style={inp} />
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          <select value={feed.explicit || 'no'} onChange={(e) => set('explicit', e.target.value)} style={{ ...inp, width: 140 }}>
+            <option value="no">Not explicit</option>
+            <option value="yes">Explicit</option>
+          </select>
+          <input placeholder="Language (e.g. en-us)" value={feed.language ?? ''} onChange={(e) => set('language', e.target.value)} style={inp} />
+        </div>
+        <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+          <button className="btn sm primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save feed settings'}</button>
+          {saved && <span className="mono" style={{ color: 'var(--ok)' }}>✓ saved</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Which Upload-Post profile (created in their dashboard, holds this client's
+// connected YouTube/Facebook/Instagram) to publish through, plus the
+// Facebook Page id Upload-Post requires explicitly for Facebook posts.
+function SocialDistributionCard({ clientId }) {
+  const [dist, setDist] = useState(null);
+  const [err, setErr] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const load = () => api.getDistribution(clientId).then(setDist).catch((e) => setErr(e.message || 'Could not load distribution settings.'));
+  useEffect(() => { setDist(null); setErr(''); if (clientId) load(); }, [clientId]);
+
+  const set = (k, v) => { setDist((d) => ({ ...d, [k]: v })); setSaved(false); };
+  const save = async () => {
+    setSaving(true); setErr(''); setSaved(false);
+    try {
+      const updated = await api.putDistribution(clientId, { uploadPostProfile: dist.upload_post_profile, facebookPageId: dist.facebook_page_id });
+      setDist(updated); setSaved(true);
+    } catch (e) { setErr(e.message || 'Could not save.'); } finally { setSaving(false); }
+  };
+
+  const inp = { background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontFamily: 'var(--f-mono)', fontSize: 13, padding: '8px 10px', boxSizing: 'border-box', width: '100%' };
+  if (!dist) return <div className="card card-pad" style={{ flex: '1 1 320px' }}><div className="label">SOCIAL DISTRIBUTION</div>{err && <div className="mono" style={{ color: 'var(--accent)', marginTop: 8 }}>{err}</div>}</div>;
+
+  return (
+    <div className="card card-pad" style={{ flex: '1 1 320px' }}>
+      <div className="label" style={{ marginBottom: 12 }}>SOCIAL DISTRIBUTION · YouTube / Facebook / Instagram via Upload-Post</div>
+      <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginBottom: 10 }}>
+        Connect this client's accounts once at app.upload-post.com/manage-users, then enter the profile name you gave it there.
+      </div>
+      {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 8 }}>{err}</div>}
+      <div className="col" style={{ gap: 8 }}>
+        <input placeholder="Upload-Post profile name" value={dist.upload_post_profile ?? ''} onChange={(e) => set('upload_post_profile', e.target.value)} style={inp} />
+        <input placeholder="Facebook Page id (required for Facebook posts)" value={dist.facebook_page_id ?? ''} onChange={(e) => set('facebook_page_id', e.target.value)} style={inp} />
+        <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+          <button className="btn sm primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save distribution settings'}</button>
+          {saved && <span className="mono" style={{ color: 'var(--ok)' }}>✓ saved</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Field({ label, value, multiline, onChange }) {
   const base = {
     width: '100%', background: 'var(--surface-2)', color: 'var(--text)',
@@ -542,6 +650,12 @@ function BriefView({ clientId }) {
           ))}
         </div>
         <DistributionCard clientId={clientId} />
+      </div>
+
+      <div className="label" style={{ marginTop: 16, marginBottom: 12 }}>PUBLISHING</div>
+      <div className="row" style={{ gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <PodcastFeedCard clientId={clientId} />
+        <SocialDistributionCard clientId={clientId} />
       </div>
 
       <div className="card card-pad" style={{ marginTop: 16 }}>

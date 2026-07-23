@@ -286,6 +286,10 @@ export const api = {
     return res.json();
   },
   revealCredential: (id, credId) => vcReq(`/clients/${id}/credentials/${credId}/reveal`),
+  getPodcastFeed: (id) => vcReq(`/clients/${id}/podcast-feed`),
+  putPodcastFeed: (id, payload) => vcReq(`/clients/${id}/podcast-feed`, { method: "PUT", body: JSON.stringify(payload) }),
+  getDistribution: (id) => vcReq(`/clients/${id}/distribution`),
+  putDistribution: (id, payload) => vcReq(`/clients/${id}/distribution`, { method: "PUT", body: JSON.stringify(payload) }),
   createInvite: (id, payload) => vcReq(`/clients/${id}/invites`, { method: "POST", body: JSON.stringify(payload) }),
   deleteInvite: (clientId, inviteId) => vcReq(`/clients/${clientId}/invites/${inviteId}`, { method: "DELETE" }),
   channels: (id) => vcReq(`/clients/${id}/scripts/channels`),
