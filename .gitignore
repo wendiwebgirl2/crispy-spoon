@@ -6,3 +6,9 @@ dist
 .env
 .env.*
 Cue WebRanger Passwords.xlsx
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
