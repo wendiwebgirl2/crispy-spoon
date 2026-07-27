@@ -676,6 +676,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       setQueue(v.videos || []);
     } catch (e) {
       console.error('generate failed:', e.message);
+      alert(e.message || 'Cast failed — the video could not be generated.');
     }
     setGenerating(false);
   };
