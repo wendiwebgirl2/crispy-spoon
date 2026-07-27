@@ -214,9 +214,10 @@ function RecordingsView({ activeClientId, onCreateEpisode, onCastScript, onBackT
     }
   };
 
-  // Send the client straight to the Cast page. Previously these were "Create
-  // episode" buttons wired to onCreateEpisode, which App never passed - so they
-  // did nothing at all when clicked.
+  // Avatar clips are already-cast videos, so their primary action is stitching
+  // into an episode (makeEpisodeFromClip), not casting again. R2 Masters are
+  // raw, not-yet-cast recordings, so castFromRecording (send to the Cast page)
+  // still applies there.
   const castFromRecording = () => {
     if (!onCastScript || activeClientId == null) return;
     onCastScript(activeClientId);
@@ -277,7 +278,9 @@ function RecordingsView({ activeClientId, onCreateEpisode, onCastScript, onBackT
                   {v.status === 'ready' && v.url && (
                     <a className="btn sm" href={v.url} target="_blank" rel="noreferrer"><Icon name="download" size={13} /> Download</a>
                   )}
-                  <button className="btn sm" onClick={castFromRecording}><Icon name="sparkle" size={13} /> Cast a script</button>
+                  {v.status === 'ready' && v.url && (
+                    <button className="btn sm" onClick={() => makeEpisodeFromClip(v)}><Icon name="studio" size={13} /> Stitch to episode</button>
+                  )}
                   <button className={'btn sm' + (open ? ' primary' : '')} onClick={() => openDetail(v)}><Icon name="sliders" size={13} /> {open ? 'Close' : 'Edit'}</button>
                   <button className="btn sm" style={{ color: 'var(--accent)' }} disabled={delBusy === v.id} onClick={() => removeClip(v)}><Icon name="close" size={13} /> {delBusy === v.id ? '…' : 'Delete'}</button>
                 </div>

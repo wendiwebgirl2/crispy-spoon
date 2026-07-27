@@ -20,6 +20,18 @@ const readTime = (t) => {
   return mins < 1 ? `${Math.max(1, Math.round(mins * 60))} sec` : `${mins.toFixed(1)} min`;
 };
 
+// Compact type prefix so scripts on the same topic can be told apart in any
+// listing — shortform variants number themselves (SF1/SF2/SF3), longform and
+// blog don't need to. Duplicated in client-detail.jsx and episodes.jsx (no
+// shared module between these views) — change one, change all three.
+const typePrefix = (channel, variant) => {
+  if (channel === 'shortform') return 'SF' + (variant || 1);
+  if (channel === 'longform') return 'LF';
+  if (channel === 'blog') return 'Blog';
+  return (channel || '—').slice(0, 2).toUpperCase();
+};
+const castTitleFor = (s) => `${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || 'Untitled'}`;
+
 const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStudio } = {}) => {
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(null);
@@ -279,7 +291,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   onDownload={() => download(s)}
                   onEdit={() => openEdit(s)}
                   onSend={() => sendApproval(s.id)}
-                  onCast={onCastScript ? () => onCastScript(clientId, s.body) : null}
+                  onCast={onCastScript ? () => onCastScript(clientId, s.body, castTitleFor(s)) : null}
                   onDelete={() => {
                     if (window.confirm(`Delete this ${labelFor(s.channel)} script? This can’t be undone.`)) {
                       setResults((r) => r.filter((x) => x.id !== s.id));
@@ -319,7 +331,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   {h.model === 'manual' && <span className="mono">manual</span>}
                 </div>
                 <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                  {h.title ? <strong>{h.title}{h.variant > 1 ? ` (v${h.variant})` : ''} · </strong> : (h.topic ? <strong>{h.topic} · </strong> : null)}{h.body}
+                  <strong>{typePrefix(h.channel, h.variant)}: {(h.title && h.title.trim()) || (h.topic && h.topic.trim()) || 'Untitled'} · </strong>{h.body}
                 </div>
                 {h.description && (
                   <div className="mono" style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text-3)', marginTop: 6 }}>
@@ -343,7 +355,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 {h.approval_status !== 'approved' && h.approval_status !== 'in_production' && <button className="btn sm" onClick={() => setApproval(h.id, 'approved', 'approved')}><Icon name="check" size={12} /> Mark approved</button>}
                 {(h.approval_status === 'approved' || h.approval_status === 'approved_with_changes') && <button className="btn sm" onClick={() => setApproval(h.id, 'in_production', 'approved')}><Icon name="play" size={12} /> In production</button>}
                 <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> Send for approval</button>
-                {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body)}><Icon name="sparkle" size={12} /> Cast</button>}
+                {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body, castTitleFor(h))}><Icon name="sparkle" size={12} /> Cast</button>}
                 <button className="btn sm" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Delete</button>
               </div>
             </div>
@@ -444,9 +456,10 @@ const ResultCard = ({ script, label, onCopy, onDownload, onEdit, onSend, onCast,
           ? <span className="mono" style={{ color: 'var(--ok)' }}>✓ verified</span>
           : <span className="mono" style={{ color: 'var(--gold, #b8852a)' }}>⚠ review</span>}
       </div>
-      {script.title && (
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, lineHeight: 1.25, marginBottom: 6 }}>{script.title}</div>
-      )}
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, lineHeight: 1.25, marginBottom: 6 }}>
+        <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)' }}>{typePrefix(script.channel, script.variant)}: </span>
+        {(script.title && script.title.trim()) || (script.topic && script.topic.trim()) || 'Untitled'}
+      </div>
       {Array.isArray(script.keywords) && script.keywords.length > 0 && (
         <div className="row" style={{ gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
           {script.keywords.map((k) => <span key={k} className="badge">{k}</span>)}

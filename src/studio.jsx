@@ -83,6 +83,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   // —— render step (video) ——
   const [avatarId, setAvatarId] = React.useState(null);
   const [script, setScript] = React.useState(DEFAULT_SCRIPT);
+  const [castTitle, setCastTitle] = React.useState('');
   const [scene, setScene] = React.useState('studio');
   const [language, setLanguage] = React.useState('EN');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
@@ -262,6 +263,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     setStep('render');
     if (castRequest.clientId != null) selectClientInline(castRequest.clientId);
     if (castRequest.body != null) setScript(castRequest.body);
+    if (castRequest.title != null) setCastTitle(castRequest.title);
     if (onCastConsumed) onCastConsumed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [castRequest]);
@@ -671,7 +673,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     if (!script.trim() || !token) return;
     setGenerating(true);
     try {
-      await generateVideo(script, { token, title: script.slice(0, 60), avatarId, caption, background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null, aspectRatio, backgroundAssetId });
+      await generateVideo(script, { token, title: castTitle.trim() || script.slice(0, 60), avatarId, caption, background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null, aspectRatio, backgroundAssetId });
       const v = await listVideos(token).catch(() => ({ videos: [] }));
       setQueue(v.videos || []);
     } catch (e) {
@@ -795,6 +797,18 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* cast title */}
+              <div style={{ marginBottom: 16 }}>
+                <span className="label">CAST TITLE</span>
+                <input
+                  className="textarea"
+                  value={castTitle}
+                  onChange={(e) => setCastTitle(e.target.value)}
+                  placeholder="Carried over from the script — edit if you like"
+                  style={{ minHeight: 0, height: 40, fontSize: 14, marginTop: 8 }}
+                />
               </div>
 
               {/* script editor */}

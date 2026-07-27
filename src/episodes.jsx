@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Icon } from './shared.jsx'
 import { ep, video, rec, clientToken, sched } from './dashboard-api.js'
 import { api, episodeWaveformBlob } from './api.js'
@@ -9,6 +9,15 @@ const inputStyle = {
   border: '1px solid var(--border)', borderRadius: 'var(--r-sm)',
   fontFamily: 'var(--f-mono)', fontSize: 13, padding: '9px 11px',
   boxSizing: 'border-box', width: '100%',
+};
+
+// Duplicated from scripts.jsx / client-detail.jsx (no shared module between
+// these views) — change one, change all three.
+const typePrefix = (channel, variant) => {
+  if (channel === 'shortform') return 'SF' + (variant || 1);
+  if (channel === 'longform') return 'LF';
+  if (channel === 'blog') return 'Blog';
+  return (channel || '—').slice(0, 2).toUpperCase();
 };
 
 function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = [], avatarVideos = [], onUpload, onSynth, onUseRecording, onUseVideo, onClearVideo, onClearSlot }) {
@@ -117,72 +126,6 @@ function YourAvatars({ cid }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function VideoCard({ cid, title }) {
-  const [token, setToken] = useState(null);
-  const [tokenErr, setTokenErr] = useState('');
-  const [script, setScript] = useState('');
-  const [videos, setVideos] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const pollRef = useRef(null);
-
-  useEffect(() => {
-    let alive = true;
-    clientToken(cid).then((t) => { if (alive) { setToken(t); if (!t) setTokenErr('No invite/token for this client yet — create an invite first.'); } });
-    return () => { alive = false; if (pollRef.current) clearInterval(pollRef.current); };
-  }, [cid]);
-
-  const poll = (tok) => {
-    const t = tok || token;
-    if (!t) return;
-    if (pollRef.current) clearInterval(pollRef.current);
-    const tick = () => video.list(t).then((d) => {
-      const vids = d.videos || [];
-      setVideos(vids);
-      if (!vids.some((v) => v.status !== 'ready' && v.status !== 'failed')) { clearInterval(pollRef.current); pollRef.current = null; }
-    }).catch(() => {});
-    tick();
-    pollRef.current = setInterval(tick, 4000);
-  };
-
-  useEffect(() => { if (token) poll(token); }, [token]);
-
-  const generate = async () => {
-    if (!script.trim()) { setErr('Enter a script for the avatar.'); return; }
-    if (!token) { setErr('No client token — create an invite first.'); return; }
-    setBusy(true); setErr('');
-    try { await video.generate(token, script.trim(), title || 'Episode'); poll(token); }
-    catch (e) { setErr(e.message); } finally { setBusy(false); }
-  };
-
-  return (
-    <div className="card card-pad" style={{ marginTop: 14 }}>
-      <div style={{ fontWeight: 600, fontSize: 13 }}>Video version <span className="mono" style={{ color: 'var(--text-4)' }}>HeyGen avatar (stock)</span></div>
-      {tokenErr && <div className="mono" style={{ color: 'var(--text-3)', marginTop: 8 }}>{tokenErr}</div>}
-      <textarea value={script} onChange={(e) => setScript(e.target.value)} placeholder="Script for the avatar to speak…" style={{ ...inputStyle, minHeight: 80, marginTop: 8, fontFamily: 'var(--f-sans)' }} />
-      <div className="row" style={{ gap: 8, marginTop: 8 }}>
-        <button className="btn primary" onClick={generate} disabled={busy || !token}><Icon name="sparkle" size={13} /> {busy ? 'Sending…' : 'Generate video'}</button>
-        <button className="btn sm" onClick={() => poll(token)} disabled={!token}>Refresh</button>
-      </div>
-      {err && <div className="mono" style={{ color: 'var(--accent)', marginTop: 8 }}>{err}</div>}
-      <div className="col" style={{ gap: 8, marginTop: 10 }}>
-        {videos.length === 0 ? (
-          <div className="mono" style={{ color: 'var(--text-4)' }}>No videos yet.</div>
-        ) : videos.map((v) => (
-          <div key={v.id} className="card card-pad">
-            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>{(v.title || v.script || '').slice(0, 80)}</div>
-              <span className="badge" style={{ color: v.status === 'ready' ? 'var(--ok)' : (v.status === 'failed' ? 'var(--accent)' : 'var(--text-2)') }}>{v.status === 'ready' ? 'ready' : (v.status === 'failed' ? 'failed' : 'rendering')}</span>
-            </div>
-            {v.status === 'ready' && v.url && <video controls src={v.url} style={{ width: '100%', marginTop: 8, borderRadius: 8, background: '#000' }} />}
-            {v.status === 'failed' && v.failure_reason && <div className="mono" style={{ color: 'var(--text-3)', marginTop: 6 }}>{v.failure_reason}</div>}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -480,7 +423,8 @@ function EpisodeEditor({ cid, epId, onChange }) {
           {full.approval_status === 'approved' && <span className="badge" style={{ color: 'var(--ok)', marginLeft: 6 }}>approved</span>}
           {full.approval_status === 'changes_requested' && <span className="badge" style={{ color: 'var(--accent)', marginLeft: 6 }}>changes requested</span>}
           {full.video_output_path && (
-            <video controls src={ep.videoFileUrl(cid, epId) + '?b=' + bust} style={{ width: '100%', marginTop: 8, borderRadius: 8, background: '#000' }} />
+            <video controls src={ep.videoFileUrl(cid, epId) + '?b=' + bust}
+              style={{ display: 'block', width: '100%', maxWidth: 480, maxHeight: '70vh', objectFit: 'contain', marginTop: 8, borderRadius: 8, background: '#000' }} />
           )}
           <audio controls src={ep.fileUrl(cid, epId) + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />
           <div className="row" style={{ gap: 8, marginTop: 8 }}>
@@ -496,8 +440,32 @@ function EpisodeEditor({ cid, epId, onChange }) {
         </div>
       )}
 
-      <VideoCard cid={cid} title={full.title} />
       <YourAvatars cid={cid} />
+    </div>
+  );
+}
+
+function EpRow({ cid, e, active, onOpen, onRemove }) {
+  return (
+    <div className="card" onClick={onOpen}
+      style={{ padding: 10, cursor: 'pointer', border: '1px solid ' + (active ? 'var(--accent)' : 'var(--border)'), background: active ? 'var(--surface-2)' : 'var(--surface)' }}>
+      <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+        <div style={{ width: 48, height: 48, borderRadius: 6, background: 'var(--surface-2)', overflow: 'hidden', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {e.hasCover ? <img src={ep.coverUrl(cid, e.id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="play" size={16} style={{ color: 'var(--text-4)' }} />}
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.title}</div>
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
+            {String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}
+          </div>
+        </div>
+      </div>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }} onClick={(ev) => ev.stopPropagation()}>
+        <button className="btn sm" onClick={onOpen}>{active ? 'Close' : 'Open'}</button>
+        {e.hasOutput && <a className="btn sm" href={ep.videoFileUrl(cid, e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Video</a>}
+        {e.hasOutput && <a className="btn sm" href={ep.fileUrl(cid, e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Audio</a>}
+        <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={onRemove}><Icon name="close" size={12} /> Delete</button>
+      </div>
     </div>
   );
 }
@@ -505,10 +473,13 @@ function EpisodeEditor({ cid, epId, onChange }) {
 function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed, onBackToStudio }) {
   const cid = activeClientId;
   const [list, setList] = useState([]);
+  const [schedule, setSchedule] = useState([]);
+  const [showArchive, setShowArchive] = useState(false);
   const [openId, setOpenId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [newTitle, setNewTitle] = useState('');
+  const [newTopic, setNewTopic] = useState('');
   const [creating, setCreating] = useState(false);
   const [approvedScripts, setApprovedScripts] = useState([]);
   useEffect(() => {
@@ -524,7 +495,10 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   const load = () => {
     if (cid == null) { setLoading(false); return Promise.resolve(); }
     setLoading(true); setErr('');
-    return ep.list(cid).then((r) => setList(Array.isArray(r) ? r : (r.episodes || [])))
+    return Promise.all([
+      ep.list(cid).then((r) => setList(Array.isArray(r) ? r : (r.episodes || []))),
+      sched.list(cid).then((r) => setSchedule(Array.isArray(r) ? r : (r.schedule || []))).catch(() => setSchedule([])),
+    ])
       .catch((e) => setErr(e.message || 'Could not load episodes.')).finally(() => setLoading(false));
   };
   useEffect(() => { setOpenId(null); load(); }, [cid]);
@@ -560,7 +534,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   const create = async () => {
     if (!newTitle.trim()) { setErr('Title needed'); return; }
     setCreating(true); setErr('');
-    try { const e = await ep.create(cid, newTitle.trim()); setNewTitle(''); await load(); setOpenId(e.id); }
+    try { const e = await ep.create(cid, newTitle.trim(), newTopic.trim() || undefined); setNewTitle(''); setNewTopic(''); await load(); setOpenId(e.id); }
     catch (e) { setErr(e.message || 'Could not create episode.'); } finally { setCreating(false); }
   };
   const remove = async (id) => {
@@ -568,6 +542,44 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
     try { await ep.del(cid, id); if (openId === id) setOpenId(null); await load(); }
     catch (e) { setErr(e.message || 'Could not delete.'); }
   };
+
+  // An episode is "past" once every schedule row planned for it (it can have
+  // more than one — e.g. one per distribution channel) has a scheduled_for in
+  // the past. No schedule rows at all, or any row still in the future or
+  // undated, means it isn't past yet.
+  const now = Date.now();
+  const isEpisodePast = (epId) => {
+    const rows = schedule.filter((s) => s.episode_id === epId);
+    if (!rows.length) return false;
+    return rows.every((s) => s.scheduled_for && new Date(s.scheduled_for).getTime() <= now);
+  };
+
+  // Group by topic. Episodes with no topic (started from a raw clip, or a
+  // manually-typed title with no script picked) never auto-archive — there's
+  // no topic to retire them under.
+  const { activeList, archivedGroups } = React.useMemo(() => {
+    const groups = new Map();
+    const untouched = [];
+    for (const e of list) {
+      const t = (e.topic && e.topic.trim()) || '';
+      if (!t) { untouched.push(e); continue; }
+      const key = t.toLowerCase();
+      if (!groups.has(key)) groups.set(key, { topic: t, items: [] });
+      groups.get(key).items.push(e);
+    }
+    const active = [...untouched];
+    const archived = [];
+    for (const g of groups.values()) {
+      if (g.items.length > 0 && g.items.every((e) => isEpisodePast(e.id))) {
+        archived.push(g);
+      } else {
+        active.push(...g.items);
+      }
+    }
+    active.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    return { activeList: active, archivedGroups: archived };
+    // eslint-disable-next-line
+  }, [list, schedule]);
 
   if (cid == null) {
     return (
@@ -589,12 +601,17 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
         <div className="label" style={{ marginBottom: 10 }}>NEW EPISODE</div>
         <div className="row" style={{ gap: 8 }}>
           {approvedScripts.length > 0 && (
-            <select value="" onChange={(e) => { if (e.target.value) setNewTitle(e.target.value); }}
-              style={{ ...inputStyle, maxWidth: 240 }}>
+            <select value="" onChange={(e) => {
+              const s = approvedScripts.find((x) => String(x.id) === e.target.value);
+              if (!s) return;
+              const label = `${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || ('Script ' + s.id)}`;
+              setNewTitle(label);
+              setNewTopic((s.topic && s.topic.trim()) || '');
+            }} style={{ ...inputStyle, maxWidth: 240 }}>
               <option value="">Approved scripts…</option>
               {approvedScripts.map((s) => {
-                const t = (s.topic && s.topic.trim()) || (s.body || '').slice(0, 40) || ('Script ' + s.id);
-                return <option key={s.id} value={t}>{t}</option>;
+                const label = `${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || ('Script ' + s.id)}`;
+                return <option key={s.id} value={s.id}>{label}</option>;
               })}
             </select>
           )}
@@ -621,33 +638,38 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
           <div className="mono" style={{ color: 'var(--text-3)' }}>Loading…</div>
         ) : list.length === 0 ? (
           <div className="mono" style={{ color: 'var(--text-3)' }}>No episodes yet.</div>
+        ) : activeList.length === 0 ? (
+          <div className="mono" style={{ color: 'var(--text-3)' }}>No active episodes — see Archive below.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {list.map((e) => {
-              const active = openId === e.id;
-              return (
-                <div key={e.id} className="card" onClick={() => setOpenId(active ? null : e.id)}
-                  style={{ padding: 10, cursor: 'pointer', border: '1px solid ' + (active ? 'var(--accent)' : 'var(--border)'), background: active ? 'var(--surface-2)' : 'var(--surface)' }}>
-                  <div className="row" style={{ gap: 10, alignItems: 'center' }}>
-                    <div style={{ width: 48, height: 48, borderRadius: 6, background: 'var(--surface-2)', overflow: 'hidden', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {e.hasCover ? <img src={ep.coverUrl(cid, e.id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="play" size={16} style={{ color: 'var(--text-4)' }} />}
-                    </div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.title}</div>
-                      <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
-                        {String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}
-                      </div>
+            {activeList.map((e) => (
+              <EpRow key={e.id} cid={cid} e={e} active={openId === e.id}
+                onOpen={() => setOpenId(openId === e.id ? null : e.id)} onRemove={() => remove(e.id)} />
+            ))}
+          </div>
+        )}
+
+        {archivedGroups.length > 0 && (
+          <div style={{ marginTop: 22 }}>
+            <button className="btn sm" onClick={() => setShowArchive((v) => !v)} style={{ width: '100%', justifyContent: 'space-between' }}>
+              <span>Archive / Past episodes ({archivedGroups.reduce((n, g) => n + g.items.length, 0)})</span>
+              <Icon name="arrow-r" size={12} style={{ transform: showArchive ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+            </button>
+            {showArchive && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 10 }}>
+                {archivedGroups.map((g) => (
+                  <div key={g.topic.toLowerCase()}>
+                    <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginBottom: 6, textTransform: 'uppercase' }}>{g.topic}</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {g.items.map((e) => (
+                        <EpRow key={e.id} cid={cid} e={e} active={openId === e.id}
+                          onOpen={() => setOpenId(openId === e.id ? null : e.id)} onRemove={() => remove(e.id)} />
+                      ))}
                     </div>
                   </div>
-                  <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }} onClick={(ev) => ev.stopPropagation()}>
-                    <button className="btn sm" onClick={() => setOpenId(active ? null : e.id)}>{active ? 'Close' : 'Open'}</button>
-                    {e.hasOutput && <a className="btn sm" href={ep.videoFileUrl(cid, e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Video</a>}
-                    {e.hasOutput && <a className="btn sm" href={ep.fileUrl(cid, e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Audio</a>}
-                    <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => remove(e.id)}><Icon name="close" size={12} /> Delete</button>
-                  </div>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

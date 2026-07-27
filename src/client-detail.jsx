@@ -18,6 +18,15 @@ function fmtDate(s) {
   return String(s).slice(0, 10);
 }
 
+// Duplicated from scripts.jsx (no shared module between these views) —
+// change one, change both.
+const typePrefix = (channel, variant) => {
+  if (channel === 'shortform') return 'SF' + (variant || 1);
+  if (channel === 'longform') return 'LF';
+  if (channel === 'blog') return 'Blog';
+  return (channel || '—').slice(0, 2).toUpperCase();
+};
+
 function ScriptsSection({ clientId }) {
   const [scripts, setScripts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,9 +50,11 @@ function ScriptsSection({ clientId }) {
       {scripts.map((s) => (
         <div key={s.id} className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div className="row" style={{ gap: 10, alignItems: 'center' }}>
-            <span className="badge">{s.channel || 'script'}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{s.title || s.topic || 'Untitled'}</div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>
+                <span className="mono" style={{ color: 'var(--text-4)', fontWeight: 400 }}>{typePrefix(s.channel, s.variant)}: </span>
+                {(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || 'Untitled'}
+              </div>
               {s.description && (
                 <div className="mono" style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text-3)', marginTop: 3 }}>{s.description}</div>
               )}
