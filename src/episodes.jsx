@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Icon } from './shared.jsx'
 import { ep, video, rec, clientToken, sched } from './dashboard-api.js'
-import { api, episodeWaveformBlob } from './api.js'
+import { api, episodeWaveformStart, episodeWaveformStatus, episodeWaveformFileUrl } from './api.js'
 import { LookPicker } from './brief.jsx'
 
 const inputStyle = {
@@ -138,6 +138,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const [twinVids, setTwinVids] = useState([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
+  const [waveform, setWaveform] = useState({ status: 'none', error: null });
   const [bust, setBust] = useState(Date.now());
   const [coverPrompt, setCoverPrompt] = useState('');
   const [coverProvider, setCoverProvider] = useState('openai');
@@ -180,15 +181,12 @@ function EpisodeEditor({ cid, epId, onChange }) {
     catch (e) { setErr(e.message || 'Could not add to planner.'); }
     finally { setBusy(''); }
   };
-  const downloadWaveform = async () => {
-    setBusy('waveform'); setErr('');
+  const startWaveform = async () => {
+    setErr('');
     try {
-      const blob = await episodeWaveformBlob(cid, epId);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = ((full.title || 'episode').replace(/[^\w-]+/g, '_')).slice(0, 40) + '-waveform.mp4'; a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
-    } catch (e) { setErr(e.message || 'Could not render waveform.'); }
-    finally { setBusy(''); }
+      const r = await episodeWaveformStart(cid, epId);
+      setWaveform({ status: r.status || 'pending', error: null });
+    } catch (e) { setErr(e.message || 'Could not start waveform render.'); }
   };
 
   useEffect(() => {
@@ -203,7 +201,19 @@ function EpisodeEditor({ cid, epId, onChange }) {
         video.list(t).then((d) => setTwinVids(((d && d.videos) || []).filter((v) => v.status === 'ready' && v.url))).catch(() => setTwinVids([]));
       }
     }).catch(() => {});
+    episodeWaveformStatus(cid, epId).then(setWaveform).catch(() => {});
   }, [cid, epId]);
+
+  // Poll while a waveform render is in progress — this can take a while for a
+  // long episode, so it runs as a background job rather than blocking a
+  // single request/connection.
+  useEffect(() => {
+    if (waveform.status !== 'pending') return;
+    const t = setInterval(() => {
+      episodeWaveformStatus(cid, epId).then(setWaveform).catch(() => {});
+    }, 4000);
+    return () => clearInterval(t);
+  }, [waveform.status, cid, epId]);
 
   const doUpload = async (slot, file) => {
     if (!file) return;
@@ -430,7 +440,17 @@ function EpisodeEditor({ cid, epId, onChange }) {
           <div className="row" style={{ gap: 8, marginTop: 8 }}>
             {full.video_output_path && <a className="btn sm" href={ep.videoFileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download video</a>}
             <a className="btn sm" href={ep.fileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download audio</a>
-            <button className="btn sm" disabled={busy === 'waveform'} onClick={downloadWaveform}><Icon name="mic" size={12} /> {busy === 'waveform' ? 'Rendering…' : 'Waveform video'}</button>
+            {waveform.status === 'ready' ? (
+              <>
+                <a className="btn sm" href={episodeWaveformFileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download waveform video</a>
+                <button className="btn sm" onClick={startWaveform}><Icon name="mic" size={12} /> Re-render</button>
+              </>
+            ) : (
+              <button className="btn sm" disabled={waveform.status === 'pending'} onClick={startWaveform}>
+                <Icon name="mic" size={12} /> {waveform.status === 'pending' ? 'Rendering waveform… (can take a few minutes for a long episode)' : 'Waveform video'}
+              </button>
+            )}
+            {waveform.status === 'error' && <span className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>{waveform.error || 'Waveform render failed.'}</span>}
           </div>
           <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
             <button className="btn sm" disabled={busy === 'approve'} onClick={approve}><Icon name="check" size={12} /> {full.approval_status === 'approved' ? 'Approved' : 'Approve'}</button>

@@ -182,20 +182,32 @@ export async function castWaveformBlob(mediaUrl, coverUrl) {
   return resp.blob();
 }
 
-// Render an audiogram video from a produced episode's audio.
-export async function episodeWaveformBlob(cid, epId) {
+// Start a background waveform render (returns immediately — poll episodeWaveformStatus for completion).
+export async function episodeWaveformStart(cid, epId) {
   const resp = await fetch(`/api/clients/${cid}/episodes/${epId}/waveform`, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: "{}",
   });
-  if (!resp.ok) {
-    let msg = "waveform render failed";
-    try { const j = await resp.json(); msg = j.error || msg; } catch { /* ignore */ }
-    throw new Error(msg);
-  }
-  return resp.blob();
+  let data = {};
+  try { data = await resp.json(); } catch { /* ignore */ }
+  if (!resp.ok) throw new Error(data.error || "Could not start waveform render.");
+  return data;
+}
+
+// Poll the background waveform job. Returns { status: 'none'|'pending'|'ready'|'error', error }.
+export async function episodeWaveformStatus(cid, epId) {
+  const resp = await fetch(`/api/clients/${cid}/episodes/${epId}/waveform`, { credentials: "same-origin" });
+  let data = {};
+  try { data = await resp.json(); } catch { /* ignore */ }
+  if (!resp.ok) throw new Error(data.error || "Could not check waveform status.");
+  return data;
+}
+
+// Direct, repeatable download URL for the finished waveform video.
+export function episodeWaveformFileUrl(cid, epId) {
+  return `/api/clients/${cid}/episodes/${epId}/waveform/file`;
 }
 
 // Replace the face image for a recording's avatar and rebuild it (voice kept).
