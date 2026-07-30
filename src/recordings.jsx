@@ -194,7 +194,20 @@ function RecordingsView({ activeClientId, onCreateEpisode, onCastScript, onBackT
     (v.invitation_id == null || a.invitation_id === v.invitation_id)
   ) || null;
 
+  // This is NOT a thumbnail edit — it builds a brand new HeyGen photo avatar
+  // from the image you pick and repoints this client's avatar at it, which
+  // makes the previous avatar's looks unreachable from the look picker. It
+  // used to be labelled "Edit image" with no confirmation, and a stray click
+  // silently replaced a client's avatar. Confirm before spending a HeyGen
+  // avatar build.
   const pickReface = (rec) => {
+    const ok = window.confirm(
+      'Rebuild this client\u2019s avatar image?\n\n'
+      + 'This creates a NEW HeyGen photo avatar from the image you pick and points '
+      + 'this client at it. The current avatar stays in HeyGen but drops out of the '
+      + 'look picker. The cloned voice is kept.\n\nContinue?'
+    );
+    if (!ok) return;
     refaceTarget.current = rec;
     if (refaceInput.current) { refaceInput.current.value = ''; refaceInput.current.click(); }
   };
@@ -376,7 +389,7 @@ function RecordingsView({ activeClientId, onCreateEpisode, onCastScript, onBackT
                   </button>
                   <button className="btn sm" onClick={() => downloadMaster(rec)} disabled={urlBusy === rec.id}><Icon name="download" size={13} /> Download</button>
                   <button className="btn sm" onClick={castFromRecording}><Icon name="sparkle" size={13} /> Cast a script</button>
-                  <button className="btn sm" onClick={() => pickReface(rec)} disabled={refaceBusy === rec.id}><Icon name="cam" size={13} /> {refaceBusy === rec.id ? 'Rebuilding…' : 'Edit image'}</button>
+                  <button className="btn sm" onClick={() => pickReface(rec)} disabled={refaceBusy === rec.id}><Icon name="cam" size={13} /> {refaceBusy === rec.id ? 'Rebuilding…' : 'Rebuild avatar image'}</button>
                   <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => removeMaster(rec)} disabled={delBusy === rec.id}><Icon name="close" size={13} /> {delBusy === rec.id ? '…' : 'Delete'}</button>
                 </div>
               </div>
