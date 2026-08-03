@@ -139,6 +139,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
   const [waveform, setWaveform] = useState({ status: 'none', error: null });
+  const [stitchJob, setStitchJob] = useState({ status: 'none', error: null });
   const [bust, setBust] = useState(Date.now());
   const [coverPrompt, setCoverPrompt] = useState('');
   const [coverProvider, setCoverProvider] = useState('openai');
@@ -202,6 +203,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
       }
     }).catch(() => {});
     episodeWaveformStatus(cid, epId).then(setWaveform).catch(() => {});
+    ep.stitchStatus(cid, epId).then(setStitchJob).catch(() => {});
   }, [cid, epId]);
 
   // Poll while a waveform render is in progress — this can take a while for a
@@ -214,6 +216,20 @@ function EpisodeEditor({ cid, epId, onChange }) {
     }, 4000);
     return () => clearInterval(t);
   }, [waveform.status, cid, epId]);
+
+  // Same for stitching — a long episode's video encode can take several
+  // minutes, well past any request/proxy timeout, so it also runs as a
+  // background job.
+  useEffect(() => {
+    if (stitchJob.status !== 'pending') return;
+    const t = setInterval(() => {
+      ep.stitchStatus(cid, epId).then((r) => {
+        setStitchJob(r);
+        if (r.status === 'done') { setBust(Date.now()); refresh(); onChange && onChange(); }
+      }).catch(() => {});
+    }, 4000);
+    return () => clearInterval(t);
+  }, [stitchJob.status, cid, epId]);
 
   const doUpload = async (slot, file) => {
     if (!file) return;
@@ -274,9 +290,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
   };
 
   const stitch = async () => {
-    setBusy('stitch'); setErr('');
-    try { await ep.stitch(cid, epId); setBust(Date.now()); await refresh(); onChange && onChange(); }
-    catch (e) { setErr(e.message); } finally { setBusy(''); }
+    setErr('');
+    try {
+      const r = await ep.stitch(cid, epId);
+      setStitchJob({ status: r.status || 'pending', error: null });
+    } catch (e) { setErr(e.message); }
   };
 
   if (!full) return <div className="mono" style={{ color: 'var(--text-3)' }}>Loading episode…</div>;
@@ -421,10 +439,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
           style={{ opacity: full.output_path ? 1 : 0.5, pointerEvents: full.output_path ? 'auto' : 'none' }}>
           <Icon name="play" size={13} /> Preview finished episode
         </a>
-        <button className="btn primary" onClick={stitch} disabled={busy === 'stitch' || !full.body_path}>
-          <Icon name="sparkle" size={13} /> {busy === 'stitch' ? 'Stitching…' : 'Stitch into finished episode'}
+        <button className="btn primary" onClick={stitch} disabled={stitchJob.status === 'pending' || !full.body_path}>
+          <Icon name="sparkle" size={13} /> {stitchJob.status === 'pending' ? 'Stitching… (can take a few minutes for a long episode)' : 'Stitch into finished episode'}
         </button>
       </div>
+      {stitchJob.status === 'error' && <div className="mono" style={{ color: 'var(--accent)', marginTop: 6 }}>{stitchJob.error || 'Stitch failed.'}</div>}
       {!full.body_path && <div className="mono" style={{ color: 'var(--text-4)', marginTop: 6 }}>Set a body recording before stitching.</div>}
 
       {full.output_path && (

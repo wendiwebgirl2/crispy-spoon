@@ -26,6 +26,7 @@ export const ep = {
   musicMode: (cid, id, mode) => put(`/api/clients/${cid}/episodes/${id}/music/mode`, { mode }),
   genIntroMusic: (cid, id, prompt) => post(`/api/clients/${cid}/episodes/${id}/intro-music/generate`, { prompt }),
   stitch: (cid, id) => post(`/api/clients/${cid}/episodes/${id}/stitch`, {}),
+  stitchStatus: (cid, id) => get(`/api/clients/${cid}/episodes/${id}/stitch`),
   useVideo: (cid, id, slot, videoUrl) => post(`/api/clients/${cid}/episodes/${id}/use-video`, { slot, videoUrl }),
   clearVideo: (cid, id, slot) => post(`/api/clients/${cid}/episodes/${id}/clear-video`, { slot }),
   clearSlot: (cid, id, slot) => post(`/api/clients/${cid}/episodes/${id}/clear-slot`, { slot }),
