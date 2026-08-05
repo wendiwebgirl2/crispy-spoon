@@ -219,7 +219,31 @@ const StatusBadge = ({ status, progress }) => {
 };
 
 
+// Current operator identity. Today this is a one-time locally-stored name
+// (prompted on first use); when admin/editor/client auth lands, point
+// getOperatorName() at the authenticated user instead — call sites won't change.
+const OPERATOR_KEY = 'cuecast_operator_name';
+function getOperatorName() {
+  try { return localStorage.getItem(OPERATOR_KEY) || ''; } catch { return ''; }
+}
+function setOperatorName(name) {
+  try { localStorage.setItem(OPERATOR_KEY, String(name || '').trim()); } catch { /* ignore */ }
+}
+// Return the operator name, prompting once if it isn't set yet. Returns '' if
+// the person cancels.
+function ensureOperatorName() {
+  let n = getOperatorName();
+  if (!n) {
+    n = (window.prompt('Your name (for internal verification records):') || '').trim();
+    if (n) setOperatorName(n);
+  }
+  return n;
+}
+
 export {
+  getOperatorName,
+  setOperatorName,
+  ensureOperatorName,
   Icon,
   CueLogo,
   Wordmark,

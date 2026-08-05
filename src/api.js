@@ -265,6 +265,7 @@ export const api = {
   deleteClient: (id) => vcReq(`/clients/${id}`, { method: "DELETE" }),
   getBrief: (id) => vcReq(`/clients/${id}/brief`),
   putBrief: (id, payload) => vcReq(`/clients/${id}/brief`, { method: "PUT", body: JSON.stringify(payload) }),
+  verifyBriefQA: (id, name) => vcReq(`/clients/${id}/brief/qa`, { method: "PUT", body: JSON.stringify({ name }) }),
   listTopics: (id) => vcReq(`/clients/${id}/topics`),
   addTopic: (id, text, jobNumber) => vcReq(`/clients/${id}/topics`, { method: "POST", body: JSON.stringify({ text, job_number: jobNumber || null }) }),
   updateTopic: (id, tid, text, jobNumber) => vcReq(`/clients/${id}/topics/${tid}`, { method: "PUT", body: JSON.stringify(jobNumber === undefined ? { text } : { text, job_number: jobNumber || null }) }),

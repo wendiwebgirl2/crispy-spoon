@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { api } from './api.js'
-import { Icon } from './shared.jsx'
+import { Icon, ensureOperatorName } from './shared.jsx'
 
 // Live Brief editor for the selected client. Contact fields (phone/address/
 // mobile/website) are the source of truth the Scripts tab injects verbatim;
@@ -13,6 +13,7 @@ const CONTACT = [
   ['mobile', 'Mobile', false],
   ['website', 'Website', false],
   ['blog_url', 'Blog link', false],
+  ['transistor_url', 'Transistor podcast link', false],
   ['address', 'Address', true],
 ];
 const REPO = [
@@ -623,6 +624,19 @@ function BriefView({ clientId, onSendTopicToScripts }) {
     }
   };
 
+  const verifyQA = async () => {
+    const name = ensureOperatorName();
+    if (!name) return;
+    setErr('');
+    try { const b = await api.verifyBriefQA(clientId, name); setForm(b || {}); }
+    catch (e) { setErr(e.message || 'Could not record verification.'); }
+  };
+  const clearQA = async () => {
+    setErr('');
+    try { const b = await api.verifyBriefQA(clientId, ''); setForm(b || {}); }
+    catch (e) { setErr(e.message || 'Could not clear verification.'); }
+  };
+
   if (clientId == null) {
     return (
       <div className="v-pad">
@@ -653,6 +667,25 @@ function BriefView({ clientId, onSendTopicToScripts }) {
             {saving ? 'Saving…' : 'Save brief'}
           </button>
         </div>
+      </div>
+
+      <div className="card card-pad" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', borderColor: form.qa_verified_at ? 'var(--ok)' : 'var(--border)' }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div className="label" style={{ marginBottom: 4 }}>INTERNAL QUALITY CHECK</div>
+          {form.qa_verified_at ? (
+            <div className="mono" style={{ fontSize: 13, color: 'var(--text-2)' }}>
+              I have reviewed the information for this client and verified it for accuracy.
+              <div style={{ color: 'var(--ok)', marginTop: 4 }}>✓ {form.qa_verified_by} · {String(form.qa_verified_at).slice(0, 16).replace('T', ' ')}</div>
+            </div>
+          ) : (
+            <div className="mono" style={{ fontSize: 13, color: 'var(--text-3)' }}>
+              Not yet verified. Confirm you have reviewed this client's information for accuracy.
+            </div>
+          )}
+        </div>
+        {form.qa_verified_at
+          ? <button className="btn sm" onClick={clearQA}>Clear</button>
+          : <button className="btn primary sm" onClick={verifyQA}><Icon name="check" size={13} /> I have reviewed &amp; verified</button>}
       </div>
 
       {err && (
