@@ -85,6 +85,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [script, setScript] = React.useState(DEFAULT_SCRIPT);
   const [castTitle, setCastTitle] = React.useState('');
   const [castJobNumber, setCastJobNumber] = React.useState('');
+  const [castScriptId, setCastScriptId] = React.useState(null);
   const [scene, setScene] = React.useState('studio');
   const [language, setLanguage] = React.useState('EN');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
@@ -266,6 +267,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     if (castRequest.body != null) setScript(castRequest.body);
     if (castRequest.title != null) setCastTitle(castRequest.title);
     setCastJobNumber(castRequest.jobNumber || '');
+    setCastScriptId(castRequest.scriptId || null);
     if (onCastConsumed) onCastConsumed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [castRequest]);
@@ -513,6 +515,13 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     } catch (e) { window.alert('Could not approve: ' + e.message); }
   };
 
+  const verifyCastChanges = async (v) => {
+    try {
+      await api.setCastApproval(clientId, v.id, 'changes_completed', v.title || null);
+      await refreshCastMeta();
+    } catch (e) { window.alert('Could not mark changes verified: ' + e.message); }
+  };
+
   const sendCastForReview = async (v) => {
     const to = window.prompt('Send this cast for review to which email?\n(Leave blank to use the brief approval contact.)', '');
     if (to === null) return;
@@ -681,11 +690,11 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       setQueue(v.videos || []);
       // Register the job number on the newly created cast's local mirror so it
       // carries forward to approvals, episodes, and the planner.
-      if (castJobNumber.trim()) {
+      if (castJobNumber.trim() || castScriptId) {
         const fresh = (v.videos || []).find((x) => !before.has(x.id));
         if (fresh) {
           try {
-            await api.castUpsert(clientId, fresh.id, castTitle.trim() || undefined, castJobNumber.trim());
+            await api.castUpsert(clientId, fresh.id, castTitle.trim() || undefined, castJobNumber.trim() || undefined, castScriptId);
             const rows = await api.listCasts(clientId).catch(() => []);
             const byId = {};
             (Array.isArray(rows) ? rows : []).forEach((c) => { byId[c.railway_video_id] = c; });
@@ -878,7 +887,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   {queue.map(v => (
                     <CastCard key={v.id} video={v} avatars={avatars} meta={castMeta[v.id]}
                       onRename={() => renameCast(v)} onEdit={() => openEditCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} onWaveform={() => downloadWaveform(v)}
-                      onApprove={() => approveCast(v)} onSend={() => sendCastForReview(v)} onPlanner={() => addCastToPlanner(v)} />
+                      onApprove={() => approveCast(v)} onVerifyChanges={() => verifyCastChanges(v)} onSend={() => sendCastForReview(v)} onPlanner={() => addCastToPlanner(v)} />
                   ))}
                 </div>
               )}
@@ -1396,7 +1405,7 @@ const Crumb = ({ label, onClick }) => (
   </button>
 );
 
-const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDownloadAudio, onWaveform, onApprove, onSend, onPlanner }) => {
+const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDownloadAudio, onWaveform, onApprove, onVerifyChanges, onSend, onPlanner }) => {
   const avatar = (avatars || []).find(a => a.id === video.avatarId) || { id: video.avatarId || 'na', contact: video.title || 'Avatar' };
   const ready = video.status === 'ready' && video.url;
   return (
@@ -1423,6 +1432,13 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
         <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
           {video.createdAt || (video.created_at ? String(video.created_at).slice(0, 10) : '')} · {ready ? 'ready' : (video.status || 'rendering')}
         </div>
+        {meta && (meta.approval_sent_at || meta.approval_approved_at || meta.changes_verified_at) && (
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
+            {meta.approval_sent_at ? 'sent ' + String(meta.approval_sent_at).slice(0, 10) : ''}
+            {meta.approval_approved_at ? (meta.approval_sent_at ? ' · ' : '') + 'approved ' + String(meta.approval_approved_at).slice(0, 10) : ''}
+            {meta.changes_verified_at ? ((meta.approval_sent_at || meta.approval_approved_at) ? ' · ' : '') + 'verified ' + String(meta.changes_verified_at).slice(0, 10) : ''}
+          </div>
+        )}
         {video.status === 'rendering' && (
           <div style={{ height: 3, background: 'var(--surface-2)', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ width: `${video.progress || 0}%`, height: '100%', background: 'var(--accent)', transition: 'width 200ms linear' }} />
@@ -1438,6 +1454,9 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
         </div>
         {ready && (
           <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            {onVerifyChanges && (meta || {}).approval_status === 'changes_requested' && (
+              <button className="btn sm" onClick={onVerifyChanges} style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}><Icon name="check" size={12} /> Changes verified</button>
+            )}
             {onApprove && (meta || {}).approval_status !== 'approved' && (
               <button className="btn sm" onClick={onApprove}><Icon name="check" size={12} /> Approve</button>
             )}

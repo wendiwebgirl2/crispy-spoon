@@ -35,7 +35,42 @@ const HEADER_TITLES = {
   onboarding:      { title: 'On-site record',  sub: 'record an avatar in person, no email needed' },
   settings:        { title: 'Settings',        sub: 'workspace · branding · integrations' },
   billing:         { title: 'Billing',         sub: 'plans, usage, and invoices' },
+  changes:         { title: 'Client changes',  sub: 'requested changes across every client — newest first' },
 };
+
+// Requested-changes inbox. Each row links straight to the item's home view.
+function ChangesView({ onOpen }) {
+  const [rows, setRows] = React.useState(null);
+  React.useEffect(() => { api.listChanges().then((r) => setRows(Array.isArray(r) ? r : [])).catch(() => setRows([])); }, []);
+  const TYPE_VIEW = { script: 'scripts', cast: 'studio', episode: 'episodes' };
+  if (rows === null) return <div className="v-pad fade-in"><div className="mono">Loading…</div></div>;
+  if (!rows.length) return <div className="v-pad fade-in"><div className="mono" style={{ color: 'var(--text-3)' }}>No open change requests — nothing from clients right now.</div></div>;
+  return (
+    <div className="fade-in" style={{ padding: 'var(--pad)', display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 760 }}>
+      {rows.map((r) => (
+        <div key={r.type + '-' + r.id} className="card" style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="badge">{r.type}</span>
+            {r.job_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {r.job_number}</span>}
+            <span style={{ fontWeight: 600, fontSize: 13 }}>{r.title || r.topic || (r.type + ' ' + r.id)}</span>
+            <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)' }}>{r.client_name}</span>
+            <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)', marginLeft: 'auto' }}>{r.approval_updated_at ? String(r.approval_updated_at).slice(0, 10) : ''}</span>
+          </div>
+          {r.approval_comment && (
+            <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
+              <span style={{ color: 'var(--accent)' }}>Client notes:</span> {r.approval_comment}{r.approval_by ? ' — ' + r.approval_by : ''}
+            </div>
+          )}
+          <div>
+            <button className="btn sm" onClick={() => onOpen(r.client_id, TYPE_VIEW[r.type] || 'clients')}>
+              Open in {TYPE_VIEW[r.type] || 'dashboard'} →
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function App() {
   const [view, setView] = React.useState('clients');
@@ -132,12 +167,14 @@ function App() {
             <div className="side-section" style={{ marginTop: 14 }}>ALERTS</div>
             <div className="side-nav">
               {[
+                { k: 'changes', label: 'Changes from client', color: 'var(--warn)', go: () => setView('changes') },
                 { k: 'pending', label: 'Pending approval', color: 'var(--accent)' },
                 { k: 'in_production', label: 'In production', color: 'var(--text-2)' },
                 { k: 'approved', label: 'Approved', color: 'var(--ok)' },
                 { k: 'invites_recorded', label: 'Invites recorded', color: 'var(--text-3)' },
               ].map((a) => (
-                <div key={a.k} className="nav-item" style={{ cursor: 'default' }}>
+                <div key={a.k} className={'nav-item' + (a.go && view === 'changes' && a.k === 'changes' ? ' active' : '')}
+                  onClick={a.go} style={{ cursor: a.go ? 'pointer' : 'default' }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: a.color, flex: 'none', marginRight: 8 }} />
                   <span style={{ fontSize: 12 }}>{a.label}</span>
                   <span className="nav-count" style={{ background: 'transparent', color: a.color, fontWeight: 700 }}>{alerts[a.k] ?? 0}</span>
@@ -200,13 +237,13 @@ function App() {
             />
           )}
           {view === 'brief' && <BriefView clientId={activeClientId} onSendTopicToScripts={(t) => { setScriptTopicRequest(t); setView('scripts'); }} />}
-          {view === 'client-detail' && <ClientDetailView client={detailClient} onBack={() => setView('clients')} onOpenStudio={(clientId) => { setActiveClientId(clientId); goStudio(); }} onCastScript={(clientId, body, title, jobNumber) => { setCastRequest({ clientId, body, title, jobNumber }); setView('studio'); }} />}
+          {view === 'client-detail' && <ClientDetailView client={detailClient} onBack={() => setView('clients')} onOpenStudio={(clientId) => { setActiveClientId(clientId); goStudio(); }} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
           {view === 'invitations' && <InvitationsView />}
-          {view === 'planner' && <PlannerView activeClientId={activeClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber) => { setCastRequest({ clientId, body, title, jobNumber }); setView('studio'); }} />}
-          {view === 'scripts' && <ScriptsView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} topicRequest={scriptTopicRequest} onTopicConsumed={() => setScriptTopicRequest(null)} onCastScript={(clientId, body, title, jobNumber) => { setCastRequest({ clientId, body, title, jobNumber }); setView('studio'); }} />}
+          {view === 'planner' && <PlannerView activeClientId={activeClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
+          {view === 'scripts' && <ScriptsView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} topicRequest={scriptTopicRequest} onTopicConsumed={() => setScriptTopicRequest(null)} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
           {view === 'studio' && <StudioView key={studioNonce} onNavigate={setView} castRequest={castRequest} onCastConsumed={() => setCastRequest(null)} activeClientId={activeClientId} onSelectClient={setActiveClientId} />}
           {view === 'episodes' && <EpisodesView activeClientId={activeClientId} onBackToStudio={goStudio} episodeRequest={episodeRequest} onEpisodeRequestConsumed={() => setEpisodeRequest(null)} />}
-          {view === 'recordings' && <RecordingsView activeClientId={activeClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber) => { setCastRequest({ clientId, body, title, jobNumber }); setView('studio'); }} onCreateEpisode={(req) => { setEpisodeRequest(req); setView('episodes'); }} />}
+          {view === 'recordings' && <RecordingsView activeClientId={activeClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} onCreateEpisode={(req) => { setEpisodeRequest(req); setView('episodes'); }} />}
           {view === 'onboarding' && (
             <OnboardingView
               onDone={() => setView('clients')}
@@ -214,6 +251,7 @@ function App() {
             />
           )}
           {view === 'settings' && <SettingsView />}
+          {view === 'changes' && <ChangesView onOpen={(clientId, targetView) => { setActiveClientId(clientId); setView(targetView); }} />}
           {view === 'billing' && <BillingView />}
         </section>
       </main>

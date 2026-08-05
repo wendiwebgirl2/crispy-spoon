@@ -15,7 +15,7 @@ const postForm = (p, form) => fetch(p, { method: 'POST', body: form }).then(j);
 
 export const ep = {
   list: (cid) => get(`/api/clients/${cid}/episodes`),
-  create: (cid, title, topic, jobNumber) => post(`/api/clients/${cid}/episodes`, { title, topic, job_number: jobNumber || null }),
+  create: (cid, title, topic, jobNumber, scriptId) => post(`/api/clients/${cid}/episodes`, { title, topic, job_number: jobNumber || null, script_id: scriptId || null }),
   full: (cid, id) => get(`/api/clients/${cid}/episodes/${id}/full`),
   del: (cid, id) => del(`/api/clients/${cid}/episodes/${id}`),
   upload: (cid, id, slot, file) => { const f = new FormData(); f.append('slot', slot); f.append('file', file); return postForm(`/api/clients/${cid}/episodes/${id}/upload`, f); },

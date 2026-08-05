@@ -180,7 +180,8 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       await refreshHistory();
     } catch (e) { setErr(e.message); }
   };
-  const APPROVAL_LABEL = { pending: 'pending approval', changes_requested: 'changes added', changes_completed: 'changes completed', approved: 'approved', approved_with_changes: 'approved w/ changes', in_production: 'in production' };
+  const APPROVAL_LABEL = { pending: 'pending approval', changes_requested: 'changes added', changes_completed: 'changes verified', approved: 'approved', approved_with_changes: 'approved w/ changes', in_production: 'in production' };
+  const PRODUCTION_LABEL = { casting: 'production – casting', episode: 'production – episode', ready_to_distribute: 'ready to distribute', scheduled: 'scheduled to post' };
   const remove  = async (sid) => { try { await api.deleteScript(clientId, sid); await refreshHistory(); } catch (e) { setErr(e.message); } };
   const sendApproval = async (sid) => {
     setErr('');
@@ -366,7 +367,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   onDownload={() => download(s)}
                   onEdit={() => openEdit(s)}
                   onSend={() => sendApproval(s.id)}
-                  onCast={onCastScript ? () => onCastScript(clientId, s.body, castTitleFor(s), s.job_number) : null}
+                  onCast={onCastScript ? () => onCastScript(clientId, s.body, castTitleFor(s), s.job_number, s.id) : null}
                   onDelete={() => {
                     if (window.confirm(`Delete this ${labelFor(s.channel)} script? This can’t be undone.`)) {
                       setResults((r) => r.filter((x) => x.id !== s.id));
@@ -416,7 +417,15 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   <span className="badge" style={chBadgeStyle(h.channel)}>{labelFor(h.channel)}</span>
                   {h.job_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {h.job_number}</span>}
                   {h.status && h.status !== 'draft' && <span className="mono" style={{ color: h.status === 'approved' ? 'var(--ok)' : 'var(--text-4)' }}>{h.status}</span>}
-                  {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: (h.approval_status.startsWith('approved') || h.approval_status === 'in_production') ? 'var(--ok)' : h.approval_status === 'changes_completed' ? 'var(--text-2)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{(APPROVAL_LABEL[h.approval_status] || h.approval_status.replace(/_/g, ' '))}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production') && h.approval_by ? ' · by ' + h.approval_by : ''}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production' || h.approval_status === 'changes_completed') && h.approval_updated_at ? ' · ' + String(h.approval_updated_at).slice(0, 10) : ''}</span>}
+                  {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: (h.approval_status.startsWith('approved') || h.approval_status === 'in_production') ? 'var(--ok)' : h.approval_status === 'changes_completed' ? 'var(--text-2)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{(APPROVAL_LABEL[h.approval_status] || h.approval_status.replace(/_/g, ' '))}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production') && h.approval_by ? ' · by ' + h.approval_by : ''}</span>}
+                  {h.production_status && PRODUCTION_LABEL[h.production_status] && <span className="mono" style={{ color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', fontSize: 11 }}>{PRODUCTION_LABEL[h.production_status]}</span>}
+                  {(h.approval_sent_at || h.approval_approved_at || h.changes_verified_at) && (
+                    <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>
+                      {h.approval_sent_at ? 'sent ' + String(h.approval_sent_at).slice(0, 10) : ''}
+                      {h.approval_approved_at ? (h.approval_sent_at ? ' · ' : '') + 'approved ' + String(h.approval_approved_at).slice(0, 10) : ''}
+                      {h.changes_verified_at ? ((h.approval_sent_at || h.approval_approved_at) ? ' · ' : '') + 'verified ' + String(h.changes_verified_at).slice(0, 10) : ''}
+                    </span>
+                  )}
                   {h.model === 'manual' && <span className="mono">manual</span>}
                 </div>
                 <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
@@ -445,8 +454,9 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 {h.approval_status !== 'approved' && h.approval_status !== 'in_production' && <button className="btn sm" onClick={() => setApproval(h.id, 'approved', 'approved')}><Icon name="check" size={12} /> Mark approved</button>}
                 {h.approval_status === 'approved' && <button className="btn sm" onClick={() => undoApproval(h.id)}><Icon name="arrow-l" size={12} /> Undo approve</button>}
                 {(h.approval_status === 'approved' || h.approval_status === 'approved_with_changes') && <button className="btn sm" onClick={() => setApproval(h.id, 'in_production', 'approved')}><Icon name="play" size={12} /> In production</button>}
-                <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> Send for approval</button>
-                {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body, castTitleFor(h), h.job_number)}><Icon name="sparkle" size={12} /> Cast</button>}
+                {h.approval_status === 'changes_requested' && <button className="btn sm" onClick={() => setApproval(h.id, 'changes_completed')} style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}><Icon name="check" size={12} /> Changes verified</button>}
+                <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> {h.approval_status === 'changes_completed' ? 'Resend for approval' : 'Send for approval'}</button>
+                {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body, castTitleFor(h), h.job_number, h.id)}><Icon name="sparkle" size={12} /> Cast</button>}
                 <button className="btn sm" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Delete</button>
               </div>
             </div>

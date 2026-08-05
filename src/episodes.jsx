@@ -165,6 +165,12 @@ function EpisodeEditor({ cid, epId, onChange }) {
     catch (e) { setErr(e.message || 'Could not approve.'); }
     finally { setBusy(''); }
   };
+  const verifyChanges = async () => {
+    setBusy('verify'); setErr('');
+    try { await ep.approve(cid, epId, 'changes_completed'); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not mark changes verified.'); }
+    finally { setBusy(''); }
+  };
   const sendToClient = async () => {
     setBusy('send'); setErr('');
     try {
@@ -451,6 +457,14 @@ function EpisodeEditor({ cid, epId, onChange }) {
           <span className="badge" style={{ color: 'var(--ok)' }}>✓ produced</span>
           {full.approval_status === 'approved' && <span className="badge" style={{ color: 'var(--ok)', marginLeft: 6 }}>approved</span>}
           {full.approval_status === 'changes_requested' && <span className="badge" style={{ color: 'var(--accent)', marginLeft: 6 }}>changes requested</span>}
+          {full.approval_status === 'changes_completed' && <span className="badge" style={{ color: 'var(--warn)', marginLeft: 6 }}>changes verified</span>}
+          {(full.approval_sent_at || full.approval_approved_at || full.changes_verified_at) && (
+            <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 4 }}>
+              {full.approval_sent_at ? 'sent ' + String(full.approval_sent_at).slice(0, 10) : ''}
+              {full.approval_approved_at ? (full.approval_sent_at ? ' · ' : '') + 'approved ' + String(full.approval_approved_at).slice(0, 10) : ''}
+              {full.changes_verified_at ? ((full.approval_sent_at || full.approval_approved_at) ? ' · ' : '') + 'verified ' + String(full.changes_verified_at).slice(0, 10) : ''}
+            </div>
+          )}
           {full.video_output_path && (
             <video controls src={ep.videoFileUrl(cid, epId) + '?b=' + bust}
               style={{ display: 'block', width: '100%', maxWidth: 480, maxHeight: '70vh', objectFit: 'contain', marginTop: 8, borderRadius: 8, background: '#000' }} />
@@ -473,7 +487,10 @@ function EpisodeEditor({ cid, epId, onChange }) {
           </div>
           <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
             <button className="btn sm" disabled={busy === 'approve'} onClick={approve}><Icon name="check" size={12} /> {full.approval_status === 'approved' ? 'Approved' : 'Approve'}</button>
-            <button className="btn sm" disabled={busy === 'send'} onClick={sendToClient}><Icon name="send" size={12} /> {busy === 'send' ? 'Sending…' : 'Send to client'}</button>
+            {full.approval_status === 'changes_requested' && (
+              <button className="btn sm" disabled={busy === 'verify'} onClick={verifyChanges} style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}><Icon name="check" size={12} /> Changes verified</button>
+            )}
+            <button className="btn sm" disabled={busy === 'send'} onClick={sendToClient}><Icon name="send" size={12} /> {busy === 'send' ? 'Sending…' : (full.approval_status === 'changes_completed' ? 'Resend to client' : 'Send to client')}</button>
             <button className="btn sm" disabled={busy === 'planner'} onClick={addToPlanner}><Icon name="history" size={12} /> Add to planner</button>
           </div>
         </div>
@@ -523,6 +540,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   const [newTitle, setNewTitle] = useState('');
   const [newTopic, setNewTopic] = useState('');
   const [newJob, setNewJob] = useState('');
+  const [newScriptId, setNewScriptId] = useState(null);
   const [creating, setCreating] = useState(false);
   const [approvedScripts, setApprovedScripts] = useState([]);
   useEffect(() => {
@@ -577,7 +595,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   const create = async () => {
     if (!newTitle.trim()) { setErr('Title needed'); return; }
     setCreating(true); setErr('');
-    try { const e = await ep.create(cid, newTitle.trim(), newTopic.trim() || undefined, newJob.trim() || undefined); setNewTitle(''); setNewTopic(''); setNewJob(''); await load(); setOpenId(e.id); }
+    try { const e = await ep.create(cid, newTitle.trim(), newTopic.trim() || undefined, newJob.trim() || undefined, newScriptId); setNewTitle(''); setNewTopic(''); setNewJob(''); setNewScriptId(null); await load(); setOpenId(e.id); }
     catch (e) { setErr(e.message || 'Could not create episode.'); } finally { setCreating(false); }
   };
   const remove = async (id) => {
@@ -651,6 +669,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
               setNewTitle(label);
               setNewTopic((s.topic && s.topic.trim()) || '');
               setNewJob(s.job_number || '');
+              setNewScriptId(s.id);
             }} style={{ ...inputStyle, maxWidth: 240 }}>
               <option value="">Approved scripts…</option>
               {approvedScripts.map((s) => {
