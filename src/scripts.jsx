@@ -37,6 +37,9 @@ const castTitleFor = (s) => `${typePrefix(s.channel, s.variant)}: ${(s.title && 
 // Per-channel accent colors so longform / shortform / blog cards are
 // distinguishable at a glance. Applied to badges and a left card stripe.
 const CHANNEL_COLOR = { longform: '#2e5f8f', shortform: '#b8852a', tvradio: '#8a4a8f', blog: '#5d8c3a' };
+// Channels that carry social hashtags. Keep in sync with `social: true` in
+// voicecast/src/scripts/channels.js.
+const SOCIAL_CHANNELS = new Set(['shortform', 'tvradio']);
 const chColor = (ch) => CHANNEL_COLOR[ch] || 'var(--text-4)';
 const chBadgeStyle = (ch) => ({ color: chColor(ch), borderColor: chColor(ch), background: 'color-mix(in srgb, ' + chColor(ch) + ' 10%, white)' });
 const chStripe = (ch) => ({ borderLeft: '3px solid ' + chColor(ch) });
@@ -459,7 +462,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                     <span style={{ color: 'var(--text-4)' }}> · {h.description.length}/500</span>
                   </div>
                 )}
-                {h.hashtags && (
+                {h.hashtags && SOCIAL_CHANNELS.has(h.channel) && (
                   <div className="mono" style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--accent)', marginTop: 4 }}>{h.hashtags}</div>
                 )}
                 <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 6 }}>
@@ -552,9 +555,11 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
               placeholder="Description (max 500 characters)"
               style={{ minHeight: 64, resize: 'vertical', padding: 12, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, lineHeight: 1.5 }} />
             <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginTop: -6 }}>{editDesc.length}/500</div>
-            <input className="textarea" value={editHashtags} onChange={(e) => setEditHashtags(e.target.value)}
-              placeholder="Social hashtags — e.g. #podcast #marketing #smallbusiness"
-              style={{ minHeight: 0, height: 40, fontSize: 13, fontFamily: 'var(--f-mono)' }} />
+            {editing && SOCIAL_CHANNELS.has(editing.channel) && (
+              <input className="textarea" value={editHashtags} onChange={(e) => setEditHashtags(e.target.value)}
+                placeholder="Social hashtags — e.g. #podcast #marketing #smallbusiness"
+                style={{ minHeight: 0, height: 40, fontSize: 13, fontFamily: 'var(--f-mono)' }} />
+            )}
             <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)}
               style={{ flex: 1, minHeight: 340, resize: 'vertical', padding: 14, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 15, lineHeight: 1.6 }} />
             <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>
@@ -621,7 +626,7 @@ const ResultCard = ({ script, label, onCopy, onDownload, onEdit, onSend, onCast,
           <span style={{ color: 'var(--text-4)' }}> · {script.description.length}/500</span>
         </div>
       )}
-      {script.hashtags && (
+      {script.hashtags && SOCIAL_CHANNELS.has(script.channel) && (
         <div className="mono" style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--accent)', marginBottom: 10 }}>{Array.isArray(script.hashtags) ? script.hashtags.join(' ') : script.hashtags}</div>
       )}
       <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>{script.body}</div>
