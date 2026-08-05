@@ -493,6 +493,9 @@ function TopicsSection({ clientId, onSendTopicToScripts }) {
   const [adding, setAdding] = useState('');
   const [addingJob, setAddingJob] = useState('');
   const [editing, setEditing] = useState(null);   // { id, text, job_number }
+  // Inline send-to-script panel: pick channels + optional content direction
+  // before the topic hands off to the script writer.
+  const [sending, setSending] = useState(null);   // { id, channels: {longform,shortform,blog}, extra }
   const [err, setErr] = useState('');
 
   const load = () => api.listTopics(clientId).then((r) => setTopics(Array.isArray(r) ? r : [])).catch(() => setTopics([]));
@@ -513,12 +516,19 @@ function TopicsSection({ clientId, onSendTopicToScripts }) {
   };
   const copy = (text) => { try { navigator.clipboard.writeText(text); } catch { /* ignore */ } };
 
-  // Hand the topic to the script writer (Scripts view) with the topic field
-  // preloaded. The queue entry is removed there, after a generation succeeds.
+  // Hand the topic to the script writer (Scripts view) with topic, channels,
+  // and direction preloaded. The queue entry is removed there, after a
+  // generation succeeds.
   const sendToScript = (topic) => {
     setErr('');
-    if (onSendTopicToScripts) onSendTopicToScripts({ id: topic.id, text: topic.text, job_number: topic.job_number || '' });
-    else setErr('Script writer navigation unavailable.');
+    if (!onSendTopicToScripts) { setErr('Script writer navigation unavailable.'); return; }
+    const chans = Object.entries(sending?.channels || {}).filter(([, v]) => v).map(([k]) => k);
+    onSendTopicToScripts({
+      id: topic.id, text: topic.text, job_number: topic.job_number || '',
+      channels: chans.length ? chans : undefined,
+      extra: (sending?.extra || '').trim() || undefined,
+    });
+    setSending(null);
   };
 
   return (
@@ -548,10 +558,31 @@ function TopicsSection({ clientId, onSendTopicToScripts }) {
                   <div style={{ flex: 1, fontSize: 14, minWidth: 160 }}>{t.text}{t.job_number ? <span className="mono" style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {t.job_number}</span> : null}</div>
                   <button className="btn sm" onClick={() => copy(t.text)}><Icon name="doc" size={13} /> Copy</button>
                   <button className="btn sm" onClick={() => setEditing({ id: t.id, text: t.text, job_number: t.job_number || '' })}><Icon name="sliders" size={13} /> Edit</button>
-                  <button className="btn sm" onClick={() => sendToScript(t)}><Icon name="send" size={13} /> Send to script</button>
+                  <button className="btn sm" onClick={() => setSending(sending?.id === t.id ? null : { id: t.id, channels: { longform: true, shortform: true, blog: false }, extra: '' })}><Icon name="send" size={13} /> Send to script</button>
                   <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => remove(t.id)}><Icon name="close" size={13} /> Delete</button>
                 </>
               )}
+              {sending?.id === t.id && !editing && (
+              <div className="row" style={{ flex: '1 1 100%', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface)', marginTop: 6 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div className="label" style={{ fontSize: 10 }}>CHANNELS</div>
+                  {[['longform', 'Longform (LF)'], ['shortform', 'Shortform (SF ×3)'], ['blog', 'Blog']].map(([k, lab]) => (
+                    <label key={k} className="mono" style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={!!sending.channels[k]}
+                        onChange={() => setSending({ ...sending, channels: { ...sending.channels, [k]: !sending.channels[k] } })} />
+                      {lab}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div className="label" style={{ fontSize: 10 }}>CONTENT DIRECTION (optional)</div>
+                  <textarea value={sending.extra} onChange={(e) => setSending({ ...sending, extra: e.target.value })}
+                    placeholder="Any angle, offer, or detail to steer this batch…"
+                    style={{ ...inp, minHeight: 54, resize: 'vertical', fontFamily: 'inherit' }} />
+                </div>
+                <button className="btn primary sm" style={{ alignSelf: 'flex-end' }} onClick={() => sendToScript(t)}><Icon name="send" size={13} /> Send</button>
+              </div>
+            )}
             </div>
           ))}
         </div>

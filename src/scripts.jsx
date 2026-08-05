@@ -95,6 +95,10 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     if (!topicRequest) return;
     setTopic(topicRequest.text || '');
     setJobNumber(topicRequest.job_number || '');
+    if (Array.isArray(topicRequest.channels) && topicRequest.channels.length) {
+      setPicked({ longform: topicRequest.channels.includes('longform'), shortform: topicRequest.channels.includes('shortform'), blog: topicRequest.channels.includes('blog') });
+    }
+    if (topicRequest.extra != null) setExtra(topicRequest.extra);
     setPendingTopicId(topicRequest.id ?? null);
     if (onTopicConsumed) onTopicConsumed();
   }, [topicRequest]);
