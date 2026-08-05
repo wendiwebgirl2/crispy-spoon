@@ -20,18 +20,21 @@ const typePrefix = (channel, variant) => {
   return (channel || '—').slice(0, 2).toUpperCase();
 };
 
-function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = [], avatarVideos = [], briefAssets = [], onUseAsset, onUpload, onSynth, onUseRecording, onUseVideo, onClearVideo, onClearSlot }) {
+function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = [], avatarVideos = [], briefAssets = [], imageAssets = [], onUseAsset, onStillSec, onUpload, onSynth, onUseRecording, onUseVideo, onClearVideo, onClearSlot }) {
   const [recPick, setRecPick] = useState('');
   const [vidPick, setVidPick] = useState('');
   const videoField = name + '_video_path';
   const isVideo = !!full[videoField];
+  const stillField = name + '_still_path';
+  const hasStill = !!full[stillField];
+  const [stillSecs, setStillSecs] = useState(full[name + '_still_sec'] || 5);
   return (
     <div className="card card-pad" style={{ marginBottom: 10 }}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontWeight: 600, fontSize: 13 }}>{label}</div>
         <div className="row" style={{ gap: 6, alignItems: 'center' }}>
-          {(isVideo || full[pathField]) && <button className="btn sm" onClick={() => onClearSlot(name)}>Clear</button>}
-          <span className="badge" style={{ color: (isVideo || full[pathField]) ? 'var(--ok)' : 'var(--text-4)' }}>{isVideo ? 'video' : (full[pathField] ? 'audio' : 'empty')}</span>
+          {(isVideo || full[pathField] || hasStill) && <button className="btn sm" onClick={() => onClearSlot(name)}>Clear</button>}
+          <span className="badge" style={{ color: (isVideo || full[pathField] || hasStill) ? 'var(--ok)' : 'var(--text-4)' }}>{isVideo ? 'video' : (full[pathField] ? (hasStill ? 'audio + image' : 'audio') : (hasStill ? 'image' : 'empty'))}</span>
         </div>
       </div>
       <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
@@ -41,6 +44,24 @@ function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = 
             <option value="">Brief asset…</option>
             {briefAssets.map((a) => <option key={a.id} value={a.id}>{(a.kind ? a.kind + ' · ' : '') + (a.filename || ('asset ' + a.id))}</option>)}
           </select>
+        )}
+        <span className="mono" style={{ color: 'var(--text-4)' }}>image:</span>
+        <input type="file" accept="image/*" onChange={(e) => onUpload(name + '_still', e.target.files[0])} style={{ fontSize: 12, maxWidth: 200 }} />
+        {onUseAsset && imageAssets.length > 0 && (
+          <select value="" onChange={(e) => { if (e.target.value) onUseAsset(Number(e.target.value), name + '_still'); }} style={{ ...inputStyle, width: 170 }}>
+            <option value="">Image asset…</option>
+            {imageAssets.map((a) => <option key={a.id} value={a.id}>{(a.kind ? a.kind + ' · ' : '') + (a.filename || ('asset ' + a.id))}</option>)}
+          </select>
+        )}
+        {hasStill && !isVideo && !full[pathField] && onStillSec && (
+          <label className="mono" style={{ fontSize: 12, display: 'flex', gap: 5, alignItems: 'center' }}>
+            hold
+            <input type="number" min="1" max="600" value={stillSecs}
+              onChange={(e) => setStillSecs(e.target.value)}
+              onBlur={() => onStillSec(name, Number(stillSecs) || 5)}
+              style={{ ...inputStyle, width: 64 }} />
+            sec
+          </label>
         )}
         {audioOpts.length > 0 && (
           <>
@@ -298,6 +319,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
     try { await ep.outroText(cid, epId, outroText); await refresh(); }
     catch (e) { setErr(e.message || 'Could not save outro text.'); } finally { setBusy(null); }
   };
+  const setStillSec = async (slot, seconds) => {
+    setErr('');
+    try { await ep.stillSec(cid, epId, slot, seconds); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not set image duration.'); }
+  };
   const clearSlot = async (slot) => {
     if (!window.confirm('Clear this section?')) return;
     setBusy(slot); setErr('');
@@ -413,7 +439,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
         {full.intro_music_path && <audio controls src={ep.slotUrl(cid, epId, 'intro_music') + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />}
       </div>
 
-      <SlotCard name="intro" label="Intro (VO)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} onUseAsset={applyAsset} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="intro" label="Intro (VO)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} imageAssets={imageAssets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -441,10 +467,10 @@ function EpisodeEditor({ cid, epId, onChange }) {
         {full.music_path && <audio controls src={ep.slotUrl(cid, epId, 'music') + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />}
       </div>
 
-      <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} onUseAsset={applyAsset} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
-      <SlotCard name="body2" label="Main recording — Part 2 (optional)" pathField="body2_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} onUseAsset={applyAsset} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
-      <SlotCard name="body3" label="Main recording — Part 3 (optional)" pathField="body3_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} onUseAsset={applyAsset} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
-      <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} onUseAsset={applyAsset} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} imageAssets={imageAssets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="body2" label="Main recording — Part 2 (optional)" pathField="body2_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} imageAssets={imageAssets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="body3" label="Main recording — Part 3 (optional)" pathField="body3_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} imageAssets={imageAssets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} imageAssets={imageAssets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>

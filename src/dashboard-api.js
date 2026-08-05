@@ -20,6 +20,7 @@ export const ep = {
   del: (cid, id) => del(`/api/clients/${cid}/episodes/${id}`),
   upload: (cid, id, slot, file) => { const f = new FormData(); f.append('slot', slot); f.append('file', file); return postForm(`/api/clients/${cid}/episodes/${id}/upload`, f); },
   useAudio: (cid, id, slot, audioOutputId) => post(`/api/clients/${cid}/episodes/${id}/use-audio`, { slot, audioOutputId }),
+  stillSec: (cid, id, slot, seconds) => put(`/api/clients/${cid}/episodes/${id}/still-sec`, { slot, seconds }),
   useRecording: (cid, id, slot, recordingId, token) => post(`/api/clients/${cid}/episodes/${id}/use-recording`, { slot, recordingId, token }),
   genCover: (cid, id, body) => post(`/api/clients/${cid}/episodes/${id}/cover/generate`, body),
   genMusic: (cid, id, body) => post(`/api/clients/${cid}/episodes/${id}/music/generate`, body),
