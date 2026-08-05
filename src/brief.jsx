@@ -236,6 +236,74 @@ function SocialDistributionCard({ clientId }) {
           <button className="btn sm primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save distribution settings'}</button>
           {saved && <span className="mono" style={{ color: 'var(--ok)' }}>✓ saved</span>}
         </div>
+        <HashtagManager clientId={clientId} />
+      </div>
+    </div>
+  );
+}
+
+// Reusable social hashtag list on the Brief. Add tags one at a time or generate
+// a suggested set, delete any, and save — social scripts read from this list.
+function HashtagManager({ clientId }) {
+  const [tags, setTags] = useState([]);
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    if (clientId == null) return;
+    api.getBrief(clientId)
+      .then((b) => setTags(String(b?.social_hashtags || '').split(/\s+/).filter(Boolean)))
+      .catch(() => {});
+  }, [clientId]);
+
+  const norm = (t) => { t = t.trim(); if (!t) return ''; return t.startsWith('#') ? t : '#' + t; };
+  const add = () => {
+    const parts = input.split(/[\s,]+/).map(norm).filter(Boolean);
+    if (!parts.length) return;
+    setTags((prev) => [...new Set([...prev, ...parts])]);
+    setInput(''); setSaved(false);
+  };
+  const del = (t) => { setTags((prev) => prev.filter((x) => x !== t)); setSaved(false); };
+  const generate = async () => {
+    setBusy('gen'); setErr('');
+    try { const r = await api.suggestHashtags(clientId); setTags((prev) => [...new Set([...prev, ...(r.hashtags || [])])]); setSaved(false); }
+    catch (e) { setErr(e.message || 'Could not generate hashtags.'); }
+    finally { setBusy(''); }
+  };
+  const save = async () => {
+    setBusy('save'); setErr('');
+    try { await api.putBrief(clientId, { social_hashtags: tags.join(' ') }); setSaved(true); }
+    catch (e) { setErr(e.message || 'Could not save hashtags.'); }
+    finally { setBusy(''); }
+  };
+
+  const inp = { flex: 1, minWidth: 160, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontFamily: 'var(--f-mono)', fontSize: 13, padding: '10px 12px', boxSizing: 'border-box' };
+  return (
+    <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+      <div className="label" style={{ marginBottom: 8 }}>SOCIAL HASHTAGS · applied to social scripts</div>
+      {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 8 }}>{err}</div>}
+      <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder="Add a hashtag…" style={inp} />
+        <button className="btn sm" onClick={add}><Icon name="plus" size={13} /> Add</button>
+        <button className="btn sm" onClick={generate} disabled={busy === 'gen'}><Icon name="sparkle" size={13} /> {busy === 'gen' ? 'Generating…' : 'Generate list'}</button>
+      </div>
+      {tags.length > 0 ? (
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {tags.map((t) => (
+            <span key={t} className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--accent)' }}>
+              {t}
+              <span role="button" onClick={() => del(t)} title="Remove" style={{ cursor: 'pointer', fontWeight: 700, opacity: 0.7 }}>×</span>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginBottom: 10 }}>No hashtags yet — add some or generate a list.</div>
+      )}
+      <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+        <button className="btn sm primary" onClick={save} disabled={busy === 'save'}>{busy === 'save' ? 'Saving…' : 'Save hashtags'}</button>
+        {saved && <span className="mono" style={{ color: 'var(--ok)' }}>✓ saved</span>}
       </div>
     </div>
   );
