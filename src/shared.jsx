@@ -219,6 +219,54 @@ const StatusBadge = ({ status, progress }) => {
 };
 
 
+// Download a file, prompting the person for the save location when the browser
+// supports the File System Access API (Chromium). Elsewhere it falls back to a
+// normal download (the browser's own "ask where to save" setting then applies).
+// suggestedName drives the default filename in the picker.
+async function downloadWithPrompt(url, suggestedName) {
+  const name = suggestedName || (url.split('/').pop() || 'download');
+  if (window.showSaveFilePicker) {
+    try {
+      const res = await fetch(url, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      const handle = await window.showSaveFilePicker({ suggestedName: name });
+      const w = await handle.createWritable();
+      await w.write(blob);
+      await w.close();
+      return;
+    } catch (e) {
+      // User cancelled the picker — do nothing, don't fall through to a download.
+      if (e && e.name === 'AbortError') return;
+      // Any other failure (e.g. fetch/CORS): fall back to a plain download below.
+    }
+  }
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.rel = 'noreferrer';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// Same prompt behaviour for an already-in-memory Blob (e.g. a client-side
+// rendered waveform or extracted audio).
+async function saveBlobWithPrompt(blob, suggestedName) {
+  const name = suggestedName || 'download';
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({ suggestedName: name });
+      const w = await handle.createWritable();
+      await w.write(blob);
+      await w.close();
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
 // Current operator identity. Today this is a one-time locally-stored name
 // (prompted on first use); when admin/editor/client auth lands, point
 // getOperatorName() at the authenticated user instead — call sites won't change.
@@ -241,6 +289,8 @@ function ensureOperatorName() {
 }
 
 export {
+  downloadWithPrompt,
+  saveBlobWithPrompt,
   getOperatorName,
   setOperatorName,
   ensureOperatorName,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Icon } from './shared.jsx'
+import { Icon, downloadWithPrompt } from './shared.jsx'
 import { ep, video, rec, clientToken, sched } from './dashboard-api.js'
 import { api, episodeWaveformStart, episodeWaveformStatus, episodeWaveformFileUrl } from './api.js'
 import { LookPicker } from './brief.jsx'
@@ -535,11 +535,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
           )}
           <audio controls src={ep.fileUrl(cid, epId) + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />
           <div className="row" style={{ gap: 8, marginTop: 8 }}>
-            {full.video_output_path && <a className="btn sm" href={ep.videoFileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download video</a>}
-            <a className="btn sm" href={ep.fileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download audio</a>
+            {full.video_output_path && <button className="btn sm" onClick={() => downloadWithPrompt(ep.videoFileUrl(cid, epId), (full.title || 'episode').replace(/[^\w-]+/g, '_') + '.mp4')}><Icon name="download" size={12} /> Download video</button>}
+            <button className="btn sm" onClick={() => downloadWithPrompt(ep.fileUrl(cid, epId), (full.title || 'episode').replace(/[^\w-]+/g, '_') + '.mp3')}><Icon name="download" size={12} /> Download audio</button>
             {waveform.status === 'ready' ? (
               <>
-                <a className="btn sm" href={episodeWaveformFileUrl(cid, epId)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download waveform video</a>
+                <button className="btn sm" onClick={() => downloadWithPrompt(episodeWaveformFileUrl(cid, epId), (full.title || 'episode').replace(/[^\w-]+/g, '_') + '-waveform.mp4')}><Icon name="download" size={12} /> Download waveform video</button>
                 <button className="btn sm" onClick={startWaveform}><Icon name="mic" size={12} /> Re-render</button>
               </>
             ) : (
@@ -585,8 +585,8 @@ function EpRow({ cid, e, active, onOpen, onRemove }) {
       </div>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }} onClick={(ev) => ev.stopPropagation()}>
         <button className="btn sm" onClick={onOpen}>{active ? 'Close' : 'Open'}</button>
-        {e.hasOutput && <a className="btn sm" href={ep.videoFileUrl(cid, e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Video</a>}
-        {e.hasOutput && <a className="btn sm" href={ep.fileUrl(cid, e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Audio</a>}
+        {e.hasOutput && <button className="btn sm" onClick={() => downloadWithPrompt(ep.videoFileUrl(cid, e.id), (e.title || 'episode').replace(/[^\w-]+/g, '_') + '.mp4')}><Icon name="download" size={12} /> Video</button>}
+        {e.hasOutput && <button className="btn sm" onClick={() => downloadWithPrompt(ep.fileUrl(cid, e.id), (e.title || 'episode').replace(/[^\w-]+/g, '_') + '.mp3')}><Icon name="download" size={12} /> Audio</button>}
         <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={onRemove}><Icon name="close" size={12} /> Delete</button>
       </div>
     </div>

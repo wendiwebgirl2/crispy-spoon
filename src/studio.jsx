@@ -6,7 +6,7 @@
 import React from 'react'
 import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
 import { clientToken, voice } from './dashboard-api.js'
-import { AvatarTile, Icon, StatusBadge } from './shared.jsx'
+import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
 import { LookPicker } from './brief.jsx'
 
@@ -636,18 +636,14 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     if (!v.url) return;
     try {
       const blob = await castAudioBlob(v.url);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = ((v.title || 'cast').replace(/[^\w-]+/g, '_')).slice(0, 40) + '.mp3'; a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      await saveBlobWithPrompt(blob, ((v.title || 'cast').replace(/[^\w-]+/g, '_')).slice(0, 40) + '.mp3');
     } catch (e) { alert(e.message || 'Could not extract audio'); }
   };
   const downloadWaveform = async (v) => {
     if (!v.url) return;
     try {
       const blob = await castWaveformBlob(v.url, v.thumbnail_url || '');
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = ((v.title || 'cast').replace(/[^\w-]+/g, '_')).slice(0, 40) + '-waveform.mp4'; a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      await saveBlobWithPrompt(blob, ((v.title || 'cast').replace(/[^\w-]+/g, '_')).slice(0, 40) + '-waveform.mp4');
     } catch (e) { alert(e.message || 'Could not render waveform'); }
   };
 
@@ -874,7 +870,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                         <div style={{ fontSize: 13, marginBottom: 8 }}>{(o.text || '').slice(0, 120) || 'Audio clip'}</div>
                         <audio controls src={voice.outputUrl(clientId, o.id)} style={{ width: '100%' }} />
                         <div className="row" style={{ gap: 6, marginTop: 8 }}>
-                          <a className="btn sm" href={voice.outputUrl(clientId, o.id)} download target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download audio</a>
+                          <button className="btn sm" onClick={() => downloadWithPrompt(voice.outputUrl(clientId, o.id), 'voice-' + o.id + '.mp3')}><Icon name="download" size={12} /> Download audio</button>
                         </div>
                       </div>
                     ))}
