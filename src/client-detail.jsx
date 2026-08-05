@@ -84,6 +84,7 @@ function InvitesSection({ clientId }) {
   const [label, setLabel] = useState('');
   const [days, setDays] = useState(7);
   const [mode, setMode] = useState('video');
+  const [kind, setKind] = useState('record');
   const [creating, setCreating] = useState(false);
   const [note, setNote] = useState('');
 
@@ -120,7 +121,7 @@ function InvitesSection({ clientId }) {
   const create = async () => {
     setCreating(true); setErr('');
     try {
-      const r = await api.createInvite(clientId, { clientEmail: email.trim() || null, label: label.trim() || null, days: Number(days) || 7, mode });
+      const r = await api.createInvite(clientId, { clientEmail: email.trim() || null, label: label.trim() || null, days: Number(days) || 7, mode, kind });
       if (r && r.email && r.email.sent) setNote('Invite created and emailed.');
       else if (r && r.email && r.email.skipped) setNote('Invite created. No email address given — use Copy link to send it.');
       else setNote('Invite created, but the email did NOT send: ' + ((r && r.email && r.email.error) || 'unknown error') + ' — use Copy link to send it manually.');
@@ -156,10 +157,16 @@ function InvitesSection({ clientId }) {
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Client email (optional)" style={{ ...inputStyle, width: '100%' }} />
           <div className="row" style={{ gap: 8, alignItems: 'stretch' }}>
             <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label (e.g. CEO avatar)" style={{ ...inputStyle, flex: 1 }} />
-            <select value={mode} onChange={(e) => setMode(e.target.value)} style={{ ...inputStyle, width: 150 }}>
-              <option value="video">Image avatar</option>
-              <option value="voice">Voice only</option>
+            <select value={kind} onChange={(e) => setKind(e.target.value)} style={{ ...inputStyle, width: 190 }}>
+              <option value="record">Record digital twin</option>
+              <option value="onboarding">Onboarding form</option>
             </select>
+            {kind === 'record' && (
+              <select value={mode} onChange={(e) => setMode(e.target.value)} style={{ ...inputStyle, width: 150 }}>
+                <option value="video">Image avatar</option>
+                <option value="voice">Voice only</option>
+              </select>
+            )}
             <select value={days} onChange={(e) => setDays(e.target.value)} style={{ ...inputStyle, width: 90 }}>
               <option value={3}>3 days</option>
               <option value={7}>7 days</option>
@@ -201,8 +208,8 @@ function InvitesSection({ clientId }) {
                   {inv.token} · created {fmtDate(inv.created_at)} · expires {fmtDate(inv.expires_at)}
                 </div>
               </div>
-              <span className="badge">{inv.mode === 'voice' ? 'voice only' : 'image avatar'}</span>
-              <span className="badge">{inv.status || 'pending'}</span>
+              <span className="badge">{inv.kind === 'onboarding' ? 'onboarding' : (inv.mode === 'voice' ? 'voice only' : 'image avatar')}</span>
+              <span className="badge">{inv.status || 'pending'}{inv.sent_at ? ' · sent ' + String(inv.sent_at).slice(0, 10) : ''}</span>
               <button className="btn sm" onClick={() => copyLink(inv.token)}>
                 <Icon name="send" size={13} />
                 {copied === inv.token ? 'Copied' : 'Copy link'}

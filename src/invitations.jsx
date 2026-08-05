@@ -161,6 +161,7 @@ const ComposeView = ({ onClose }) => {
   const [email, setEmail] = useState('');
   const [label, setLabel] = useState('');
   const [days, setDays] = useState(7);
+  const [kind, setKind] = useState('record');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [created, setCreated] = useState(null); // { token }
@@ -186,6 +187,7 @@ const ComposeView = ({ onClose }) => {
         clientEmail: email.trim() || null,
         label: label.trim() || null,
         days: Number(days) || 7,
+        kind,
       });
       setCreated({ token: res?.token, email: res?.email, to: email.trim() });
     } catch (e) {
@@ -252,6 +254,13 @@ const ComposeView = ({ onClose }) => {
           <div style={{ flex: 1 }}>
             <div className="label" style={{ marginBottom: 6 }}>LABEL (optional)</div>
             <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. CEO avatar" style={inputStyle} />
+          </div>
+          <div style={{ width: 190 }}>
+            <div className="label" style={{ marginBottom: 6 }}>SEND</div>
+            <select value={kind} onChange={(e) => setKind(e.target.value)} style={inputStyle}>
+              <option value="record">Record digital twin</option>
+              <option value="onboarding">Onboarding form</option>
+            </select>
           </div>
           <div style={{ width: 120 }}>
             <div className="label" style={{ marginBottom: 6 }}>EXPIRES</div>
