@@ -78,6 +78,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [editBody, setEditBody] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
+  const [editHashtags, setEditHashtags] = useState('');
   const [editJob, setEditJob] = useState('');
   const [revisePrompt, setRevisePrompt] = useState('');
   const [revising, setRevising] = useState(false);
@@ -225,10 +226,10 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch { /* noop */ }
   };
-  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setEditTitle(h.title || ''); setEditDesc(h.description || ''); setEditJob(h.job_number || ''); setRevisePrompt(''); setReviseNote(''); setErr(''); };
+  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setEditTitle(h.title || ''); setEditDesc(h.description || ''); setEditHashtags(h.hashtags || ''); setEditJob(h.job_number || ''); setRevisePrompt(''); setReviseNote(''); setErr(''); };
   const saveEdit = async () => {
     try {
-      const payload = { body: editBody, title: editTitle, description: editDesc, job_number: editJob.trim() || null };
+      const payload = { body: editBody, title: editTitle, description: editDesc, hashtags: editHashtags.trim() || null, job_number: editJob.trim() || null };
       if (editing && (editing.approval_status === 'changes_requested' || editing.approval_status === 'approved_with_changes')) {
         payload.approval_status = 'changes_completed';
       } else if (editing && editBody !== (editing.body || '') &&
@@ -458,6 +459,9 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                     <span style={{ color: 'var(--text-4)' }}> · {h.description.length}/500</span>
                   </div>
                 )}
+                {h.hashtags && (
+                  <div className="mono" style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--accent)', marginTop: 4 }}>{h.hashtags}</div>
+                )}
                 <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 6 }}>
                   {charCount(h.body).toLocaleString()} chars · ~{readTime(h.body)} read
                 </div>
@@ -548,6 +552,9 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
               placeholder="Description (max 500 characters)"
               style={{ minHeight: 64, resize: 'vertical', padding: 12, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, lineHeight: 1.5 }} />
             <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginTop: -6 }}>{editDesc.length}/500</div>
+            <input className="textarea" value={editHashtags} onChange={(e) => setEditHashtags(e.target.value)}
+              placeholder="Social hashtags — e.g. #podcast #marketing #smallbusiness"
+              style={{ minHeight: 0, height: 40, fontSize: 13, fontFamily: 'var(--f-mono)' }} />
             <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)}
               style={{ flex: 1, minHeight: 340, resize: 'vertical', padding: 14, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 15, lineHeight: 1.6 }} />
             <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>
@@ -613,6 +620,9 @@ const ResultCard = ({ script, label, onCopy, onDownload, onEdit, onSend, onCast,
           {script.description}
           <span style={{ color: 'var(--text-4)' }}> · {script.description.length}/500</span>
         </div>
+      )}
+      {script.hashtags && (
+        <div className="mono" style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--accent)', marginBottom: 10 }}>{Array.isArray(script.hashtags) ? script.hashtags.join(' ') : script.hashtags}</div>
       )}
       <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>{script.body}</div>
       {!clean && (
