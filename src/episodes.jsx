@@ -20,7 +20,7 @@ const typePrefix = (channel, variant) => {
   return (channel || '—').slice(0, 2).toUpperCase();
 };
 
-function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = [], avatarVideos = [], onUpload, onSynth, onUseRecording, onUseVideo, onClearVideo, onClearSlot }) {
+function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = [], avatarVideos = [], briefAssets = [], onUseAsset, onUpload, onSynth, onUseRecording, onUseVideo, onClearVideo, onClearSlot }) {
   const [recPick, setRecPick] = useState('');
   const [vidPick, setVidPick] = useState('');
   const videoField = name + '_video_path';
@@ -36,6 +36,12 @@ function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = 
       </div>
       <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
         <input type="file" accept="audio/*" onChange={(e) => onUpload(name, e.target.files[0])} style={{ fontSize: 12, maxWidth: 220 }} />
+        {onUseAsset && briefAssets.length > 0 && (
+          <select value="" onChange={(e) => { if (e.target.value) onUseAsset(Number(e.target.value), name); }} style={{ ...inputStyle, width: 200 }}>
+            <option value="">Brief asset…</option>
+            {briefAssets.map((a) => <option key={a.id} value={a.id}>{(a.kind ? a.kind + ' · ' : '') + (a.filename || ('asset ' + a.id))}</option>)}
+          </select>
+        )}
         {audioOpts.length > 0 && (
           <>
             <span className="mono" style={{ color: 'var(--text-4)' }}>or synth:</span>
@@ -152,6 +158,10 @@ function EpisodeEditor({ cid, epId, onChange }) {
 
   const refresh = () => ep.full(cid, epId).then((f) => { setFull(f); if (f && f.music_mode) setMusicMode(f.music_mode); }).catch((e) => setErr(e.message));
 
+  const isImgAsset = (a) => (a.kind === 'logo' || a.kind === 'background') || /\.(png|jpe?g|webp|gif)$/i.test(a.filename || '');
+  const isAudioAsset = (a) => (a.kind === 'music') || /\.(mp3|wav|m4a|aac|ogg)$/i.test(a.filename || '');
+  const audioAssets = assets.filter(isAudioAsset);
+  const imageAssets = assets.filter(isImgAsset);
   const applyAsset = async (assetId, slot) => {
     setBusy('asset'); setErr('');
     try { await ep.useAsset(cid, epId, assetId, slot); setBust(Date.now()); await refresh(); }
@@ -164,6 +174,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
     try { await ep.approve(cid, epId, 'approved'); await refresh(); }
     catch (e) { setErr(e.message || 'Could not approve.'); }
     finally { setBusy(''); }
+  };
+  const setFormat = async (fmt) => {
+    setErr('');
+    try { await ep.setMeta(cid, epId, { output_format: fmt }); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not set format.'); }
   };
   const verifyChanges = async () => {
     setBusy('verify'); setErr('');
@@ -311,33 +326,37 @@ function EpisodeEditor({ cid, epId, onChange }) {
       <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 22, margin: '0 0 12px' }}>Producing: {full.title}</h2>
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
 
-      {assets.length > 0 && (
-        <div className="card card-pad" style={{ marginBottom: 10 }}>
-          <div className="label" style={{ marginBottom: 8 }}>BRIEF ASSETS · apply to a slot</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {assets.map((a) => {
-              const isImg = (a.kind === 'logo' || a.kind === 'background') || /\.(png|jpe?g|webp|gif)$/i.test(a.filename || '');
-              const isAudio = (a.kind === 'music') || /\.(mp3|wav|m4a|aac|ogg)$/i.test(a.filename || '');
-              return (
-                <div key={a.id} className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span className="badge">{a.kind || 'asset'}</span>
-                  <span className="mono" style={{ flex: 1, minWidth: 120, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.filename || ('asset ' + a.id)}</span>
-                  {isImg && <button className="btn sm" disabled={busy === 'asset'} onClick={() => applyAsset(a.id, 'cover')}>→ Cover</button>}
-                  {isAudio && <>
-                    <button className="btn sm" disabled={busy === 'asset'} onClick={() => applyAsset(a.id, 'intro_music')}>→ Intro music</button>
-                    <button className="btn sm" disabled={busy === 'asset'} onClick={() => applyAsset(a.id, 'music')}>→ Music</button>
-                  </>}
-                </div>
-              );
-            })}
-          </div>
+      {/* Final format first — decides which renders run, so an audiogram never
+          pays for a video render it will not use. */}
+      <div className="card card-pad" style={{ marginBottom: 10 }}>
+        <div className="label" style={{ marginBottom: 8 }}>FINAL FORMAT · choose before stitching</div>
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+          {[['audiogram', 'Audiogram'], ['video', 'Video avatar'], ['audio', 'Audio only']].map(([k, lab]) => (
+            <button key={k} className="btn sm" onClick={() => setFormat(k)}
+              style={{
+                background: (full.output_format || 'video') === k ? 'var(--surface-2)' : 'transparent',
+                borderColor: (full.output_format || 'video') === k ? 'var(--accent)' : 'var(--border)',
+                color: (full.output_format || 'video') === k ? 'var(--text)' : 'var(--text-2)',
+              }}>{lab}</button>
+          ))}
+          <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)', alignSelf: 'center' }}>
+            {(full.output_format || 'video') === 'audiogram' ? 'Stitches audio, then renders the waveform video automatically.'
+              : (full.output_format || 'video') === 'audio' ? 'Stitches the podcast audio only.'
+              : 'Stitches audio and the full avatar video.'}
+          </span>
         </div>
-      )}
+      </div>
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 600, fontSize: 13 }}>Cover art</div>
           <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+            {imageAssets.length > 0 && (
+              <select value="" onChange={(e) => { if (e.target.value) applyAsset(Number(e.target.value), 'cover'); }} style={{ ...inputStyle, width: 170 }}>
+                <option value="">Brief asset…</option>
+                {imageAssets.map((a) => <option key={a.id} value={a.id}>{(a.kind ? a.kind + ' · ' : '') + (a.filename || ('asset ' + a.id))}</option>)}
+              </select>
+            )}
             {full.cover_path && <button className="btn sm" onClick={() => clearSlot('cover')}>Clear</button>}
             <span className="badge" style={{ color: full.cover_path ? 'var(--ok)' : 'var(--text-4)' }}>{full.cover_path ? 'set' : 'none'}</span>
           </div>
@@ -381,6 +400,12 @@ function EpisodeEditor({ cid, epId, onChange }) {
           </div>
         </div>
         <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+          {audioAssets.length > 0 && (
+            <select value="" onChange={(e) => { if (e.target.value) applyAsset(Number(e.target.value), 'intro_music'); }} style={{ ...inputStyle, width: 170 }}>
+              <option value="">Brief asset…</option>
+              {audioAssets.map((a) => <option key={a.id} value={a.id}>{(a.kind ? a.kind + ' · ' : '') + (a.filename || ('asset ' + a.id))}</option>)}
+            </select>
+          )}
           <input value={introMusicPrompt} onChange={(e) => setIntroMusicPrompt(e.target.value)} placeholder="Describe intro sting" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
           <button className="btn sm" onClick={genIntroMusic} disabled={busy === 'intro_music'}><Icon name="sparkle" size={12} /> Generate</button>
           <input type="file" accept="audio/*" onChange={(e) => doUpload('intro_music', e.target.files[0])} style={{ fontSize: 12, maxWidth: 200 }} />
@@ -388,7 +413,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
         {full.intro_music_path && <audio controls src={ep.slotUrl(cid, epId, 'intro_music') + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />}
       </div>
 
-      <SlotCard name="intro" label="Intro (VO)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="intro" label="Intro (VO)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} onUseAsset={applyAsset} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -403,6 +428,12 @@ function EpisodeEditor({ cid, epId, onChange }) {
             <option value="segment">Segment (before body)</option>
             <option value="bed">Bed (under narration)</option>
           </select>
+          {audioAssets.length > 0 && (
+            <select value="" onChange={(e) => { if (e.target.value) applyAsset(Number(e.target.value), 'music'); }} style={{ ...inputStyle, width: 170 }}>
+              <option value="">Brief asset…</option>
+              {audioAssets.map((a) => <option key={a.id} value={a.id}>{(a.kind ? a.kind + ' · ' : '') + (a.filename || ('asset ' + a.id))}</option>)}
+            </select>
+          )}
           <input value={musicPrompt} onChange={(e) => setMusicPrompt(e.target.value)} placeholder="Describe the music — mood, no artist names" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
           <button className="btn sm" onClick={genMusic} disabled={busy === 'music'}><Icon name="sparkle" size={12} /> Generate</button>
           <input type="file" accept="audio/*" onChange={(e) => doUpload('music', e.target.files[0])} style={{ fontSize: 12, maxWidth: 200 }} />
@@ -410,15 +441,21 @@ function EpisodeEditor({ cid, epId, onChange }) {
         {full.music_path && <audio controls src={ep.slotUrl(cid, epId, 'music') + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />}
       </div>
 
-      <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
-      <SlotCard name="body2" label="Main recording — Part 2 (optional)" pathField="body2_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
-      <SlotCard name="body3" label="Main recording — Part 3 (optional)" pathField="body3_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
-      <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} onUseAsset={applyAsset} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="body2" label="Main recording — Part 2 (optional)" pathField="body2_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} onUseAsset={applyAsset} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="body3" label="Main recording — Part 3 (optional)" pathField="body3_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} onUseAsset={applyAsset} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} briefAssets={audioAssets} onUseAsset={applyAsset} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 600, fontSize: 13 }}>Outro card <span className="mono" style={{ color: 'var(--text-4)' }}>(closing image + text, 3 sec at the end)</span></div>
           <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+            {imageAssets.length > 0 && (
+              <select value="" onChange={(e) => { if (e.target.value) applyAsset(Number(e.target.value), 'outro_image'); }} style={{ ...inputStyle, width: 170 }}>
+                <option value="">Brief asset…</option>
+                {imageAssets.map((a) => <option key={a.id} value={a.id}>{(a.kind ? a.kind + ' · ' : '') + (a.filename || ('asset ' + a.id))}</option>)}
+              </select>
+            )}
             {full.outro_image_path && <button className="btn sm" onClick={() => clearSlot('outro_image')}>Clear</button>}
             <span className="badge" style={{ color: full.outro_image_path ? 'var(--ok)' : 'var(--text-4)' }}>{full.outro_image_path ? 'set' : 'none'}</span>
           </div>

@@ -6,6 +6,7 @@ import { Icon } from './shared.jsx'
 // mobile/website) are the source of truth the Scripts tab injects verbatim;
 // the repository fields (positioning/audience/tone/notes) steer the copy.
 const CONTACT = [
+  ['client_code', 'Client code (used in download filenames, e.g. ACME)', false],
   ['email', 'Email', false],
   ['approval_email', 'Approval contact email', false],
   ['phone', 'Phone', false],
