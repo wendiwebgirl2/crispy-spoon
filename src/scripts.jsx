@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { api } from './api.js'
-import { Icon } from './shared.jsx'
+import { Icon, ensureOperatorName } from './shared.jsx'
 
 const CHANNEL_FALLBACK = [
   { key: 'longform',  label: 'Longform (5–7 min)', variants: 1 },
@@ -125,7 +125,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     try { const s = await api.listScripts(clientId); setHistory(s || []); } catch { /* noop */ }
   };
 
-  const generate = async () => {
+  const generate = async (qaBypassBy) => {
     if (!clientId || chosen.length === 0) return;
     setBusy(true); setErr('');
     try {
@@ -134,6 +134,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         channels: chosen,
         extra: extra.trim() || undefined,
         job_number: jobNumber.trim() || undefined,
+        qa_bypass_by: qaBypassBy || undefined,
       });
       setResults(out.scripts || []);
       if (pendingTopicId != null) {
@@ -141,7 +142,20 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         setPendingTopicId(null);
       }
       await refreshHistory();
-    } catch (e) { setErr(e.message); }
+    } catch (e) {
+      // The brief isn't QA-verified — warn, and if the operator proceeds,
+      // record who bypassed it and retry.
+      if (e.message === 'brief_not_verified') {
+        const ok = window.confirm("This client's brief has NOT been verified for accuracy.\n\nProceed with script generation anyway? Your name will be recorded on these scripts as having bypassed the verification check.");
+        if (ok) {
+          const who = ensureOperatorName();
+          if (who) { setBusy(false); return generate(who); }
+        }
+        setErr('Generation cancelled — brief not verified.');
+      } else {
+        setErr(e.message);
+      }
+    }
     finally { setBusy(false); }
   };
 
@@ -326,7 +340,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
           style={{ minHeight: 70, fontSize: 14, marginBottom: 14 }} />
 
         <div className="row" style={{ gap: 10, marginBottom: 28 }}>
-          <button className="btn primary lg" onClick={generate} disabled={busy || !chosen.length}
+          <button className="btn primary lg" onClick={() => generate()} disabled={busy || !chosen.length}
             style={{ opacity: (busy || !chosen.length) ? 0.5 : 1 }}>
             {busy ? <>Generating…</> : <><Icon name="sparkle" size={14} /> Generate {chosen.length || ''} script{chosen.length === 1 ? '' : 's'}</>}
           </button>
@@ -423,6 +437,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   {h.status && h.status !== 'draft' && <span className="mono" style={{ color: h.status === 'approved' ? 'var(--ok)' : 'var(--text-4)' }}>{h.status}</span>}
                   {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: (h.approval_status.startsWith('approved') || h.approval_status === 'in_production') ? 'var(--ok)' : h.approval_status === 'changes_completed' ? 'var(--text-2)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{(APPROVAL_LABEL[h.approval_status] || h.approval_status.replace(/_/g, ' '))}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production') && h.approval_by ? ' · by ' + h.approval_by : ''}</span>}
                   {h.production_status && PRODUCTION_LABEL[h.production_status] && <span className="mono" style={{ color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', fontSize: 11 }}>{PRODUCTION_LABEL[h.production_status]}</span>}
+                  {h.qa_bypassed_by && <span className="mono" title="Created while the client brief was unverified" style={{ color: 'var(--warn)', border: '1px solid var(--warn)', borderRadius: 4, padding: '1px 5px', fontSize: 11 }}>⚠ brief unverified · bypassed by {h.qa_bypassed_by}</span>}
                   {(h.approval_sent_at || h.approval_approved_at || h.changes_verified_at) && (
                     <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>
                       {h.approval_sent_at ? 'sent ' + String(h.approval_sent_at).slice(0, 10) : ''}
