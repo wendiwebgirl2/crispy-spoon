@@ -32,6 +32,30 @@ const typePrefix = (channel, variant) => {
 };
 const castTitleFor = (s) => `${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || 'Untitled'}`;
 
+// Per-channel accent colors so longform / shortform / blog cards are
+// distinguishable at a glance. Applied to badges and a left card stripe.
+const CHANNEL_COLOR = { longform: '#2e5f8f', shortform: '#b8852a', blog: '#5d8c3a' };
+const chColor = (ch) => CHANNEL_COLOR[ch] || 'var(--text-4)';
+const chBadgeStyle = (ch) => ({ color: chColor(ch), borderColor: chColor(ch), background: 'color-mix(in srgb, ' + chColor(ch) + ' 10%, white)' });
+const chStripe = (ch) => ({ borderLeft: '3px solid ' + chColor(ch) });
+
+// Print a script in a clean proofing layout via a print window.
+const printScript = (h, label) => {
+  const esc = (t) => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const w = window.open('', '_blank', 'width=760,height=900');
+  if (!w) return;
+  w.document.write(`<!doctype html><html><head><title>${esc(h.title || h.topic || 'Script')}</title>
+    <style>body{font-family:Georgia,serif;max-width:640px;margin:40px auto;color:#222;line-height:1.7}
+    .meta{font-family:monospace;font-size:12px;color:#666;border-bottom:1px solid #ccc;padding-bottom:12px;margin-bottom:20px}
+    h1{font-size:22px;margin:0 0 6px} .body{white-space:pre-wrap;font-size:15px}</style></head><body>
+    <h1>${esc(h.title || h.topic || 'Untitled')}</h1>
+    <div class="meta">${esc(label)}${h.variant ? ' · v' + h.variant : ''}${h.topic ? ' · topic: ' + esc(h.topic) : ''} · ${String(h.body || '').length.toLocaleString()} chars${h.created_at ? ' · ' + String(h.created_at).slice(0, 10) : ''}</div>
+    <div class="body">${esc(h.body)}</div></body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 250);
+};
+
 const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStudio, topicRequest, onTopicConsumed } = {}) => {
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(null);
@@ -47,6 +71,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [expandedTopic, setExpandedTopic] = useState(null);
+  const [renamingTopic, setRenamingTopic] = useState(null); // { from, to }
   const [editBody, setEditBody] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
@@ -136,6 +161,21 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       await refreshHistory();
     } catch (e) { setErr(e.message); }
   };
+  // Undo a "Mark approved" — reverts the script to draft / no approval state.
+  const undoApproval = async (sid) => {
+    try {
+      await api.updateScript(clientId, sid, { approval_status: 'none', status: 'draft', approval_by: '' });
+      await refreshHistory();
+    } catch (e) { setErr(e.message); }
+  };
+  const saveTopicRename = async () => {
+    if (!renamingTopic || !renamingTopic.to.trim() || renamingTopic.to.trim() === renamingTopic.from) { setRenamingTopic(null); return; }
+    try {
+      await api.renameScriptTopic(clientId, renamingTopic.from, renamingTopic.to.trim());
+      setRenamingTopic(null); setExpandedTopic(null);
+      await refreshHistory();
+    } catch (e) { setErr(e.message); }
+  };
   const APPROVAL_LABEL = { pending: 'pending approval', changes_requested: 'changes added', changes_completed: 'changes completed', approved: 'approved', approved_with_changes: 'approved w/ changes', in_production: 'in production' };
   const remove  = async (sid) => { try { await api.deleteScript(clientId, sid); await refreshHistory(); } catch (e) { setErr(e.message); } };
   const sendApproval = async (sid) => {
@@ -166,6 +206,12 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       const payload = { body: editBody, title: editTitle, description: editDesc };
       if (editing && (editing.approval_status === 'changes_requested' || editing.approval_status === 'approved_with_changes')) {
         payload.approval_status = 'changes_completed';
+      } else if (editing && editBody !== (editing.body || '') &&
+                 (editing.approval_status === 'approved' || editing.approval_status === 'in_production' || editing.status === 'approved')) {
+        // The spoken copy changed after approval — approval no longer stands.
+        payload.approval_status = 'none';
+        payload.status = 'draft';
+        payload.approval_by = '';
       }
       await api.updateScript(clientId, editing.id, payload);
       setEditing(null); await refreshHistory();
@@ -331,16 +377,29 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
               <button onClick={() => setExpandedTopic(open ? null : g.key)}
                 style={{ width: '100%', display: 'flex', gap: 10, alignItems: 'center', padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text)' }}>
                 <Icon name="arrow-r" size={13} style={{ color: 'var(--text-4)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
-                <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{g.topic}</span>
+                <span style={{ fontSize: 14, fontWeight: 600, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {g.topic}
+                  <span style={{ display: 'inline-flex', gap: 3 }}>
+                    {[...new Set(g.items.map((i) => i.channel))].map((ch) => (
+                      <span key={ch} title={labelFor(ch)} style={{ width: 8, height: 8, borderRadius: 4, background: chColor(ch), display: 'inline-block' }} />
+                    ))}
+                  </span>
+                  {g.key !== 'untitled' && (
+                    <span className="icon-btn" title="Rename topic group" role="button"
+                      onClick={(e) => { e.stopPropagation(); setRenamingTopic({ from: g.topic, to: g.topic }); }}>
+                      <Icon name="sliders" size={12} />
+                    </span>
+                  )}
+                </span>
                 <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>{g.date ? String(g.date).slice(0, 10) : ''} · {g.items.length} {g.items.length === 1 ? 'script' : 'scripts'}</span>
               </button>
               {open && (
               <div className="col" style={{ gap: 8, padding: '0 14px 14px' }}>
                 {g.items.map(h => (
-            <div key={h.id} className="col" style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface)', gap: 10 }}>
+            <div key={h.id} className="col" style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface)', gap: 10, ...chStripe(h.channel) }}>
               <div style={{ minWidth: 0 }}>
                 <div className="row" style={{ gap: 8 }}>
-                  <span className="badge">{labelFor(h.channel)}</span>
+                  <span className="badge" style={chBadgeStyle(h.channel)}>{labelFor(h.channel)}</span>
                   {h.status && h.status !== 'draft' && <span className="mono" style={{ color: h.status === 'approved' ? 'var(--ok)' : 'var(--text-4)' }}>{h.status}</span>}
                   {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: (h.approval_status.startsWith('approved') || h.approval_status === 'in_production') ? 'var(--ok)' : h.approval_status === 'changes_completed' ? 'var(--text-2)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{(APPROVAL_LABEL[h.approval_status] || h.approval_status.replace(/_/g, ' '))}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production') && h.approval_by ? ' · by ' + h.approval_by : ''}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production' || h.approval_status === 'changes_completed') && h.approval_updated_at ? ' · ' + String(h.approval_updated_at).slice(0, 10) : ''}</span>}
                   {h.model === 'manual' && <span className="mono">manual</span>}
@@ -367,7 +426,9 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 <button className="btn sm" onClick={() => copy(h.body)}><Icon name="doc" size={12} /> Copy</button>
                 <button className="btn sm" onClick={() => download(h)}><Icon name="download" size={12} /> Download</button>
                 <button className="btn sm" onClick={() => openEdit(h)}><Icon name="sliders" size={12} /> Edit</button>
+                <button className="btn sm" onClick={() => printScript(h, labelFor(h.channel))}><Icon name="doc" size={12} /> Print</button>
                 {h.approval_status !== 'approved' && h.approval_status !== 'in_production' && <button className="btn sm" onClick={() => setApproval(h.id, 'approved', 'approved')}><Icon name="check" size={12} /> Mark approved</button>}
+                {h.approval_status === 'approved' && <button className="btn sm" onClick={() => undoApproval(h.id)}><Icon name="arrow-l" size={12} /> Undo approve</button>}
                 {(h.approval_status === 'approved' || h.approval_status === 'approved_with_changes') && <button className="btn sm" onClick={() => setApproval(h.id, 'in_production', 'approved')}><Icon name="play" size={12} /> In production</button>}
                 <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> Send for approval</button>
                 {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body, castTitleFor(h))}><Icon name="sparkle" size={12} /> Cast</button>}
@@ -408,6 +469,22 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
           <Field label="Tone"        value={brief?.tone} />
         </div>
       </div>
+      {renamingTopic && (
+        <div onClick={() => setRenamingTopic(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
+          <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(480px, 96vw)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="label">RENAME TOPIC GROUP</div>
+            <input className="textarea" autoFocus value={renamingTopic.to}
+              onChange={(e) => setRenamingTopic({ ...renamingTopic, to: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && saveTopicRename()}
+              style={{ minHeight: 0, height: 40, fontSize: 15 }} />
+            <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>Renames the topic on every script in this group.</div>
+            <div className="row" style={{ justifyContent: 'flex-end', gap: 10 }}>
+              <button className="btn sm" onClick={() => setRenamingTopic(null)}>Cancel</button>
+              <button className="btn primary sm" onClick={saveTopicRename}><Icon name="check" size={13} /> Rename</button>
+            </div>
+          </div>
+        </div>
+      )}
       {editing && (
         <div onClick={() => setEditing(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
           <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(760px, 96vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -464,9 +541,9 @@ const ResultCard = ({ script, label, onCopy, onDownload, onEdit, onSend, onCast,
   const checks = script.checks || { issues: [] };
   const clean = !checks.issues || checks.issues.length === 0;
   return (
-    <div className="card card-pad">
+    <div className="card card-pad" style={chStripe(script.channel)}>
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-        <span className="badge">{label}</span>
+        <span className="badge" style={chBadgeStyle(script.channel)}>{label}</span>
         {clean
           ? <span className="mono" style={{ color: 'var(--ok)' }}>✓ verified</span>
           : <span className="mono" style={{ color: 'var(--gold, #b8852a)' }}>⚠ review</span>}
@@ -493,6 +570,7 @@ const ResultCard = ({ script, label, onCopy, onDownload, onEdit, onSend, onCast,
         </div>
       )}
       <div className="row" style={{ marginTop: 12, gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button className="btn sm" onClick={() => printScript(script, label)}><Icon name="doc" size={12} /> Print</button>
         <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginRight: 4 }}>
           {charCount(script.body).toLocaleString()} chars · ~{readTime(script.body)} read
         </span>
