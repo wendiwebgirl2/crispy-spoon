@@ -9,6 +9,7 @@ import { Icon, ensureOperatorName } from './shared.jsx'
 const CHANNEL_FALLBACK = [
   { key: 'longform',  label: 'Longform (5–7 min)', variants: 1 },
   { key: 'shortform', label: 'Shortform (under 1 min)', variants: 3 },
+  { key: 'tvradio',   label: 'TV / Radio spot', variants: 3 },
   { key: 'blog',      label: 'Blog post', variants: 1 },
 ];
 
@@ -27,6 +28,7 @@ const readTime = (t) => {
 const typePrefix = (channel, variant) => {
   if (channel === 'shortform') return 'SF' + (variant || 1);
   if (channel === 'longform') return 'LF';
+  if (channel === 'tvradio') return 'TV' + (variant || 1);
   if (channel === 'blog') return 'Blog';
   return (channel || '—').slice(0, 2).toUpperCase();
 };
@@ -34,7 +36,7 @@ const castTitleFor = (s) => `${typePrefix(s.channel, s.variant)}: ${(s.title && 
 
 // Per-channel accent colors so longform / shortform / blog cards are
 // distinguishable at a glance. Applied to badges and a left card stripe.
-const CHANNEL_COLOR = { longform: '#2e5f8f', shortform: '#b8852a', blog: '#5d8c3a' };
+const CHANNEL_COLOR = { longform: '#2e5f8f', shortform: '#b8852a', tvradio: '#8a4a8f', blog: '#5d8c3a' };
 const chColor = (ch) => CHANNEL_COLOR[ch] || 'var(--text-4)';
 const chBadgeStyle = (ch) => ({ color: chColor(ch), borderColor: chColor(ch), background: 'color-mix(in srgb, ' + chColor(ch) + ' 10%, white)' });
 const chStripe = (ch) => ({ borderLeft: '3px solid ' + chColor(ch) });
@@ -96,7 +98,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     setTopic(topicRequest.text || '');
     setJobNumber(topicRequest.job_number || '');
     if (Array.isArray(topicRequest.channels) && topicRequest.channels.length) {
-      setPicked({ longform: topicRequest.channels.includes('longform'), shortform: topicRequest.channels.includes('shortform'), blog: topicRequest.channels.includes('blog') });
+      setPicked({ longform: topicRequest.channels.includes('longform'), shortform: topicRequest.channels.includes('shortform'), tvradio: topicRequest.channels.includes('tvradio'), blog: topicRequest.channels.includes('blog') });
     }
     if (topicRequest.extra != null) setExtra(topicRequest.extra);
     setPendingTopicId(topicRequest.id ?? null);

@@ -16,6 +16,7 @@ const inputStyle = {
 const typePrefix = (channel, variant) => {
   if (channel === 'shortform') return 'SF' + (variant || 1);
   if (channel === 'longform') return 'LF';
+  if (channel === 'tvradio') return 'TV' + (variant || 1);
   if (channel === 'blog') return 'Blog';
   return (channel || '—').slice(0, 2).toUpperCase();
 };

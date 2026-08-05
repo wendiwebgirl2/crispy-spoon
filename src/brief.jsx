@@ -559,7 +559,7 @@ function TopicsSection({ clientId, onSendTopicToScripts }) {
                   <div style={{ flex: 1, fontSize: 14, minWidth: 160 }}>{t.text}{t.job_number ? <span className="mono" style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {t.job_number}</span> : null}</div>
                   <button className="btn sm" onClick={() => copy(t.text)}><Icon name="doc" size={13} /> Copy</button>
                   <button className="btn sm" onClick={() => setEditing({ id: t.id, text: t.text, job_number: t.job_number || '' })}><Icon name="sliders" size={13} /> Edit</button>
-                  <button className="btn sm" onClick={() => setSending(sending?.id === t.id ? null : { id: t.id, channels: { longform: true, shortform: true, blog: false }, extra: '' })}><Icon name="send" size={13} /> Send to script</button>
+                  <button className="btn sm" onClick={() => setSending(sending?.id === t.id ? null : { id: t.id, channels: { longform: true, shortform: true, tvradio: false, blog: false }, extra: '' })}><Icon name="send" size={13} /> Send to script</button>
                   <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => remove(t.id)}><Icon name="close" size={13} /> Delete</button>
                 </>
               )}
@@ -567,7 +567,7 @@ function TopicsSection({ clientId, onSendTopicToScripts }) {
               <div className="row" style={{ flex: '1 1 100%', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface)', marginTop: 6 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <div className="label" style={{ fontSize: 10 }}>CHANNELS</div>
-                  {[['longform', 'Longform (LF)'], ['shortform', 'Shortform (SF ×3)'], ['blog', 'Blog']].map(([k, lab]) => (
+                  {[['longform', 'Longform (LF)'], ['shortform', 'Shortform (SF ×3)'], ['tvradio', 'TV / Radio (×3)'], ['blog', 'Blog']].map(([k, lab]) => (
                     <label key={k} className="mono" style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
                       <input type="checkbox" checked={!!sending.channels[k]}
                         onChange={() => setSending({ ...sending, channels: { ...sending.channels, [k]: !sending.channels[k] } })} />
