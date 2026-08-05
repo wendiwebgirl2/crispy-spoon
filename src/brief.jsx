@@ -487,11 +487,10 @@ function RichText({ value, onChange }) {
   );
 }
 
-function TopicsSection({ clientId }) {
+function TopicsSection({ clientId, onSendTopicToScripts }) {
   const [topics, setTopics] = useState([]);
   const [adding, setAdding] = useState('');
   const [editing, setEditing] = useState(null);   // { id, text }
-  const [busy, setBusy] = useState(null);          // topicId being sent
   const [err, setErr] = useState('');
 
   const load = () => api.listTopics(clientId).then((r) => setTopics(Array.isArray(r) ? r : [])).catch(() => setTopics([]));
@@ -512,23 +511,12 @@ function TopicsSection({ clientId }) {
   };
   const copy = (text) => { try { navigator.clipboard.writeText(text); } catch { /* ignore */ } };
 
-  const sendToScript = async (topic) => {
-    setBusy(topic.id); setErr('');
-    try {
-      let channels = [];
-      try {
-        const creds = await api.listCredentials(clientId);
-        channels = [...new Set((Array.isArray(creds) ? creds : []).map((c) => c.kind).filter(Boolean))];
-      } catch { /* ignore */ }
-      if (!channels.length) channels = ['podcast'];
-      await api.generate(clientId, { topic: topic.text, channels });
-      await api.deleteTopic(clientId, topic.id);   // moved into generation → drop from queue
-      load();
-    } catch (e) {
-      setErr(e.message || 'Could not send to script generation.');
-    } finally {
-      setBusy(null);
-    }
+  // Hand the topic to the script writer (Scripts view) with the topic field
+  // preloaded. The queue entry is removed there, after a generation succeeds.
+  const sendToScript = (topic) => {
+    setErr('');
+    if (onSendTopicToScripts) onSendTopicToScripts({ id: topic.id, text: topic.text });
+    else setErr('Script writer navigation unavailable.');
   };
 
   return (
@@ -556,7 +544,7 @@ function TopicsSection({ clientId }) {
                   <div style={{ flex: 1, fontSize: 14, minWidth: 160 }}>{t.text}</div>
                   <button className="btn sm" onClick={() => copy(t.text)}><Icon name="doc" size={13} /> Copy</button>
                   <button className="btn sm" onClick={() => setEditing({ id: t.id, text: t.text })}><Icon name="sliders" size={13} /> Edit</button>
-                  <button className="btn sm" disabled={busy === t.id} onClick={() => sendToScript(t)}>{busy === t.id ? 'Sending…' : (<><Icon name="send" size={13} /> Send to script</>)}</button>
+                  <button className="btn sm" onClick={() => sendToScript(t)}><Icon name="send" size={13} /> Send to script</button>
                   <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => remove(t.id)}><Icon name="close" size={13} /> Delete</button>
                 </>
               )}
@@ -568,7 +556,7 @@ function TopicsSection({ clientId }) {
   );
 }
 
-function BriefView({ clientId }) {
+function BriefView({ clientId, onSendTopicToScripts }) {
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -678,7 +666,7 @@ function BriefView({ clientId }) {
         ))}
       </div>
 
-      <TopicsSection clientId={clientId} />
+      <TopicsSection clientId={clientId} onSendTopicToScripts={onSendTopicToScripts} />
 
       <AssetsSection clientId={clientId} />
       <AvatarsSection clientId={clientId} />

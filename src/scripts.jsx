@@ -32,7 +32,7 @@ const typePrefix = (channel, variant) => {
 };
 const castTitleFor = (s) => `${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || 'Untitled'}`;
 
-const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStudio } = {}) => {
+const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStudio, topicRequest, onTopicConsumed } = {}) => {
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(null);
   const [brief, setBrief] = useState(null);
@@ -59,6 +59,17 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [manualChannel, setManualChannel] = useState('longform');
   const [manualTopic, setManualTopic] = useState('');
   const [manualBody, setManualBody] = useState('');
+
+  // Topic handed off from the Brief's Topics queue. Preload it into the topic
+  // field and remember its queue id — the queue entry is deleted only after a
+  // generation actually succeeds, so navigating away never loses a topic.
+  const [pendingTopicId, setPendingTopicId] = useState(null);
+  useEffect(() => {
+    if (!topicRequest) return;
+    setTopic(topicRequest.text || '');
+    setPendingTopicId(topicRequest.id ?? null);
+    if (onTopicConsumed) onTopicConsumed();
+  }, [topicRequest]);
 
   useEffect(() => {
     api.listClients()
@@ -92,6 +103,10 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         extra: extra.trim() || undefined,
       });
       setResults(out.scripts || []);
+      if (pendingTopicId != null) {
+        try { await api.deleteTopic(clientId, pendingTopicId); } catch { /* queue entry may already be gone */ }
+        setPendingTopicId(null);
+      }
       await refreshHistory();
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
