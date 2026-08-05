@@ -63,6 +63,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [channels, setChannels] = useState(CHANNEL_FALLBACK);
   const [picked, setPicked] = useState({ longform: true, shortform: true, blog: false });
   const [topic, setTopic] = useState('');
+  const [jobNumber, setJobNumber] = useState('');
   const [extra, setExtra] = useState('');
   const [results, setResults] = useState([]);
   const [history, setHistory] = useState([]);
@@ -75,6 +76,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [editBody, setEditBody] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
+  const [editJob, setEditJob] = useState('');
   const [revisePrompt, setRevisePrompt] = useState('');
   const [revising, setRevising] = useState(false);
   const [reviseNote, setReviseNote] = useState('');
@@ -92,6 +94,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   useEffect(() => {
     if (!topicRequest) return;
     setTopic(topicRequest.text || '');
+    setJobNumber(topicRequest.job_number || '');
     setPendingTopicId(topicRequest.id ?? null);
     if (onTopicConsumed) onTopicConsumed();
   }, [topicRequest]);
@@ -126,6 +129,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         topic: topic.trim(),
         channels: chosen,
         extra: extra.trim() || undefined,
+        job_number: jobNumber.trim() || undefined,
       });
       setResults(out.scripts || []);
       if (pendingTopicId != null) {
@@ -200,10 +204,10 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch { /* noop */ }
   };
-  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setEditTitle(h.title || ''); setEditDesc(h.description || ''); setRevisePrompt(''); setReviseNote(''); setErr(''); };
+  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setEditTitle(h.title || ''); setEditDesc(h.description || ''); setEditJob(h.job_number || ''); setRevisePrompt(''); setReviseNote(''); setErr(''); };
   const saveEdit = async () => {
     try {
-      const payload = { body: editBody, title: editTitle, description: editDesc };
+      const payload = { body: editBody, title: editTitle, description: editDesc, job_number: editJob.trim() || null };
       if (editing && (editing.approval_status === 'changes_requested' || editing.approval_status === 'approved_with_changes')) {
         payload.approval_status = 'changes_completed';
       } else if (editing && editBody !== (editing.body || '') &&
@@ -296,10 +300,20 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         </div>
 
         {/* topic + extra */}
-        <div className="label" style={{ marginBottom: 8 }}>TOPIC</div>
-        <input className="textarea" value={topic} onChange={(e) => setTopic(e.target.value)}
-          placeholder="e.g. why discipline beats motivation"
-          style={{ minHeight: 0, height: 44, fontSize: 15, marginBottom: 12 }} />
+        <div className="row" style={{ gap: 10, marginBottom: 12, alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <div className="label" style={{ marginBottom: 8 }}>TOPIC</div>
+            <input className="textarea" value={topic} onChange={(e) => setTopic(e.target.value)}
+              placeholder="e.g. why discipline beats motivation"
+              style={{ minHeight: 0, height: 44, fontSize: 15, width: '100%' }} />
+          </div>
+          <div style={{ flex: '0 0 130px' }}>
+            <div className="label" style={{ marginBottom: 8 }}>JOB #</div>
+            <input className="textarea" value={jobNumber} onChange={(e) => setJobNumber(e.target.value)}
+              placeholder="e.g. 1042"
+              style={{ minHeight: 0, height: 44, fontSize: 15, width: '100%' }} />
+          </div>
+        </div>
 
         <div className="label" style={{ marginBottom: 8 }}>EXTRA DIRECTION (optional)</div>
         <textarea className="textarea" value={extra} onChange={(e) => setExtra(e.target.value)}
@@ -352,7 +366,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   onDownload={() => download(s)}
                   onEdit={() => openEdit(s)}
                   onSend={() => sendApproval(s.id)}
-                  onCast={onCastScript ? () => onCastScript(clientId, s.body, castTitleFor(s)) : null}
+                  onCast={onCastScript ? () => onCastScript(clientId, s.body, castTitleFor(s), s.job_number) : null}
                   onDelete={() => {
                     if (window.confirm(`Delete this ${labelFor(s.channel)} script? This can’t be undone.`)) {
                       setResults((r) => r.filter((x) => x.id !== s.id));
@@ -400,6 +414,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
               <div style={{ minWidth: 0 }}>
                 <div className="row" style={{ gap: 8 }}>
                   <span className="badge" style={chBadgeStyle(h.channel)}>{labelFor(h.channel)}</span>
+                  {h.job_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {h.job_number}</span>}
                   {h.status && h.status !== 'draft' && <span className="mono" style={{ color: h.status === 'approved' ? 'var(--ok)' : 'var(--text-4)' }}>{h.status}</span>}
                   {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: (h.approval_status.startsWith('approved') || h.approval_status === 'in_production') ? 'var(--ok)' : h.approval_status === 'changes_completed' ? 'var(--text-2)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{(APPROVAL_LABEL[h.approval_status] || h.approval_status.replace(/_/g, ' '))}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production') && h.approval_by ? ' · by ' + h.approval_by : ''}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production' || h.approval_status === 'changes_completed') && h.approval_updated_at ? ' · ' + String(h.approval_updated_at).slice(0, 10) : ''}</span>}
                   {h.model === 'manual' && <span className="mono">manual</span>}
@@ -431,7 +446,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 {h.approval_status === 'approved' && <button className="btn sm" onClick={() => undoApproval(h.id)}><Icon name="arrow-l" size={12} /> Undo approve</button>}
                 {(h.approval_status === 'approved' || h.approval_status === 'approved_with_changes') && <button className="btn sm" onClick={() => setApproval(h.id, 'in_production', 'approved')}><Icon name="play" size={12} /> In production</button>}
                 <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> Send for approval</button>
-                {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body, castTitleFor(h))}><Icon name="sparkle" size={12} /> Cast</button>}
+                {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body, castTitleFor(h), h.job_number)}><Icon name="sparkle" size={12} /> Cast</button>}
                 <button className="btn sm" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Delete</button>
               </div>
             </div>
@@ -492,8 +507,12 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
               <div className="label">EDIT SCRIPT{editing.topic ? ' · ' + editing.topic : ''}</div>
               <button className="icon-btn" title="Close" onClick={() => setEditing(null)}><Icon name="close" size={14} /></button>
             </div>
-            <input className="textarea" value={editTitle} onChange={(e) => setEditTitle(e.target.value)}
-              placeholder="Title" style={{ minHeight: 0, height: 40, fontSize: 15 }} />
+            <div className="row" style={{ gap: 8 }}>
+              <input className="textarea" value={editTitle} onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="Title" style={{ minHeight: 0, height: 40, fontSize: 15, flex: 1 }} />
+              <input className="textarea" value={editJob} onChange={(e) => setEditJob(e.target.value)}
+                placeholder="Job #" style={{ minHeight: 0, height: 40, fontSize: 15, flex: '0 0 110px' }} />
+            </div>
             <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} maxLength={500}
               placeholder="Description (max 500 characters)"
               style={{ minHeight: 64, resize: 'vertical', padding: 12, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, lineHeight: 1.5 }} />
@@ -544,6 +563,7 @@ const ResultCard = ({ script, label, onCopy, onDownload, onEdit, onSend, onCast,
     <div className="card card-pad" style={chStripe(script.channel)}>
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
         <span className="badge" style={chBadgeStyle(script.channel)}>{label}</span>
+        {script.job_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', marginRight: 'auto', marginLeft: 8 }}>Job {script.job_number}</span>}
         {clean
           ? <span className="mono" style={{ color: 'var(--ok)' }}>✓ verified</span>
           : <span className="mono" style={{ color: 'var(--gold, #b8852a)' }}>⚠ review</span>}

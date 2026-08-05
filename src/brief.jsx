@@ -490,7 +490,8 @@ function RichText({ value, onChange }) {
 function TopicsSection({ clientId, onSendTopicToScripts }) {
   const [topics, setTopics] = useState([]);
   const [adding, setAdding] = useState('');
-  const [editing, setEditing] = useState(null);   // { id, text }
+  const [addingJob, setAddingJob] = useState('');
+  const [editing, setEditing] = useState(null);   // { id, text, job_number }
   const [err, setErr] = useState('');
 
   const load = () => api.listTopics(clientId).then((r) => setTopics(Array.isArray(r) ? r : [])).catch(() => setTopics([]));
@@ -500,11 +501,11 @@ function TopicsSection({ clientId, onSendTopicToScripts }) {
 
   const add = async () => {
     const t = adding.trim(); if (!t) return;
-    try { await api.addTopic(clientId, t); setAdding(''); load(); } catch (e) { setErr(e.message || 'Could not add topic.'); }
+    try { await api.addTopic(clientId, t, addingJob.trim() || null); setAdding(''); setAddingJob(''); load(); } catch (e) { setErr(e.message || 'Could not add topic.'); }
   };
   const saveEdit = async () => {
     if (!editing || !editing.text.trim()) return;
-    try { await api.updateTopic(clientId, editing.id, editing.text.trim()); setEditing(null); load(); } catch (e) { setErr(e.message || 'Could not save topic.'); }
+    try { await api.updateTopic(clientId, editing.id, editing.text.trim(), (editing.job_number || '').trim() || null); setEditing(null); load(); } catch (e) { setErr(e.message || 'Could not save topic.'); }
   };
   const remove = async (id) => {
     try { await api.deleteTopic(clientId, id); load(); } catch (e) { setErr(e.message || 'Could not delete topic.'); }
@@ -515,7 +516,7 @@ function TopicsSection({ clientId, onSendTopicToScripts }) {
   // preloaded. The queue entry is removed there, after a generation succeeds.
   const sendToScript = (topic) => {
     setErr('');
-    if (onSendTopicToScripts) onSendTopicToScripts({ id: topic.id, text: topic.text });
+    if (onSendTopicToScripts) onSendTopicToScripts({ id: topic.id, text: topic.text, job_number: topic.job_number || '' });
     else setErr('Script writer navigation unavailable.');
   };
 
@@ -525,6 +526,7 @@ function TopicsSection({ clientId, onSendTopicToScripts }) {
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
       <div className="row" style={{ gap: 8, marginBottom: 14 }}>
         <input value={adding} onChange={(e) => setAdding(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder="New topic…" style={inp} />
+        <input value={addingJob} onChange={(e) => setAddingJob(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder="Job #" style={{ ...inp, flex: '0 0 90px' }} />
         <button className="btn primary sm" onClick={add}><Icon name="plus" size={13} /> Add topic</button>
       </div>
       {topics.length === 0 ? (
@@ -536,14 +538,15 @@ function TopicsSection({ clientId, onSendTopicToScripts }) {
               {editing && editing.id === t.id ? (
                 <>
                   <input value={editing.text} autoFocus onChange={(e) => setEditing({ ...editing, text: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && saveEdit()} style={inp} />
+                  <input value={editing.job_number || ''} onChange={(e) => setEditing({ ...editing, job_number: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && saveEdit()} placeholder="Job #" style={{ ...inp, flex: '0 0 90px' }} />
                   <button className="btn sm" onClick={saveEdit}><Icon name="check" size={13} /> Save</button>
                   <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
                 </>
               ) : (
                 <>
-                  <div style={{ flex: 1, fontSize: 14, minWidth: 160 }}>{t.text}</div>
+                  <div style={{ flex: 1, fontSize: 14, minWidth: 160 }}>{t.text}{t.job_number ? <span className="mono" style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {t.job_number}</span> : null}</div>
                   <button className="btn sm" onClick={() => copy(t.text)}><Icon name="doc" size={13} /> Copy</button>
-                  <button className="btn sm" onClick={() => setEditing({ id: t.id, text: t.text })}><Icon name="sliders" size={13} /> Edit</button>
+                  <button className="btn sm" onClick={() => setEditing({ id: t.id, text: t.text, job_number: t.job_number || '' })}><Icon name="sliders" size={13} /> Edit</button>
                   <button className="btn sm" onClick={() => sendToScript(t)}><Icon name="send" size={13} /> Send to script</button>
                   <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => remove(t.id)}><Icon name="close" size={13} /> Delete</button>
                 </>

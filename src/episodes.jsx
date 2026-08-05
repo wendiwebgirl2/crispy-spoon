@@ -493,7 +493,10 @@ function EpRow({ cid, e, active, onOpen, onRemove }) {
           {e.hasCover ? <img src={ep.coverUrl(cid, e.id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="play" size={16} style={{ color: 'var(--text-4)' }} />}
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.title}</div>
+          <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {e.job_number ? <span className="mono" style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px', marginRight: 5 }}>Job {e.job_number}</span> : null}
+            {e.title}
+          </div>
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
             {String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}
           </div>
@@ -519,6 +522,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   const [err, setErr] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newTopic, setNewTopic] = useState('');
+  const [newJob, setNewJob] = useState('');
   const [creating, setCreating] = useState(false);
   const [approvedScripts, setApprovedScripts] = useState([]);
   useEffect(() => {
@@ -573,7 +577,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   const create = async () => {
     if (!newTitle.trim()) { setErr('Title needed'); return; }
     setCreating(true); setErr('');
-    try { const e = await ep.create(cid, newTitle.trim(), newTopic.trim() || undefined); setNewTitle(''); setNewTopic(''); await load(); setOpenId(e.id); }
+    try { const e = await ep.create(cid, newTitle.trim(), newTopic.trim() || undefined, newJob.trim() || undefined); setNewTitle(''); setNewTopic(''); setNewJob(''); await load(); setOpenId(e.id); }
     catch (e) { setErr(e.message || 'Could not create episode.'); } finally { setCreating(false); }
   };
   const remove = async (id) => {
@@ -646,6 +650,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
               const label = `${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || ('Script ' + s.id)}`;
               setNewTitle(label);
               setNewTopic((s.topic && s.topic.trim()) || '');
+              setNewJob(s.job_number || '');
             }} style={{ ...inputStyle, maxWidth: 240 }}>
               <option value="">Approved scripts…</option>
               {approvedScripts.map((s) => {
@@ -655,6 +660,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
             </select>
           )}
           <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Episode title" style={{ ...inputStyle, flex: 1 }} />
+          <input value={newJob} onChange={(e) => setNewJob(e.target.value)} placeholder="Job #" style={{ ...inputStyle, maxWidth: 90 }} />
           <button className="btn primary" onClick={create} disabled={creating}><Icon name="plus" size={13} /> {creating ? 'Creating…' : 'Create episode'}</button>
         </div>
       </div>

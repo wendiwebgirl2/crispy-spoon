@@ -84,6 +84,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [avatarId, setAvatarId] = React.useState(null);
   const [script, setScript] = React.useState(DEFAULT_SCRIPT);
   const [castTitle, setCastTitle] = React.useState('');
+  const [castJobNumber, setCastJobNumber] = React.useState('');
   const [scene, setScene] = React.useState('studio');
   const [language, setLanguage] = React.useState('EN');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
@@ -264,6 +265,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     if (castRequest.clientId != null) selectClientInline(castRequest.clientId);
     if (castRequest.body != null) setScript(castRequest.body);
     if (castRequest.title != null) setCastTitle(castRequest.title);
+    setCastJobNumber(castRequest.jobNumber || '');
     if (onCastConsumed) onCastConsumed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [castRequest]);
@@ -673,9 +675,24 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     if (!script.trim() || !token) return;
     setGenerating(true);
     try {
+      const before = new Set(queue.map((q) => q.id));
       await generateVideo(script, { token, title: castTitle.trim() || script.slice(0, 60), avatarId, caption, background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null, aspectRatio, backgroundAssetId });
       const v = await listVideos(token).catch(() => ({ videos: [] }));
       setQueue(v.videos || []);
+      // Register the job number on the newly created cast's local mirror so it
+      // carries forward to approvals, episodes, and the planner.
+      if (castJobNumber.trim()) {
+        const fresh = (v.videos || []).find((x) => !before.has(x.id));
+        if (fresh) {
+          try {
+            await api.castUpsert(clientId, fresh.id, castTitle.trim() || undefined, castJobNumber.trim());
+            const rows = await api.listCasts(clientId).catch(() => []);
+            const byId = {};
+            (Array.isArray(rows) ? rows : []).forEach((c) => { byId[c.railway_video_id] = c; });
+            setCastMeta(byId);
+          } catch { /* mirror registration is best-effort */ }
+        }
+      }
     } catch (e) {
       console.error('generate failed:', e.message);
       alert(e.message || 'Cast failed — the video could not be generated.');
@@ -1399,7 +1416,10 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
               : meta.approval_status === 'changes_requested' ? 'var(--accent)' : 'var(--text-4)',
           }}>{meta.approval_status.replace(/_/g, ' ')}</span>
         )}
-        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{video.title || 'Untitled cast'}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {meta && meta.job_number ? <span className="mono" style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', marginRight: 6 }}>Job {meta.job_number}</span> : null}
+          {video.title || 'Untitled cast'}
+        </div>
         <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
           {video.createdAt || (video.created_at ? String(video.created_at).slice(0, 10) : '')} · {ready ? 'ready' : (video.status || 'rendering')}
         </div>

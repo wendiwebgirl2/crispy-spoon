@@ -28,7 +28,7 @@ function PlanCard({ item, onAdvance, onDel, onSchedule, onPublish, publishing })
   return (
     <div className="card card-pad" style={{ background: 'var(--surface-2)' }}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ minWidth: 0 }}><span className="badge">{item.channel}</span> <span style={{ fontWeight: 600, fontSize: 13 }}>{item.title || '(untitled)'}</span></div>
+        <div style={{ minWidth: 0 }}><span className="badge">{item.channel}</span> {item.job_number ? <span className="mono" style={{ fontSize: 10, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px' }}>Job {item.job_number}</span> : null} <span style={{ fontWeight: 600, fontSize: 13 }}>{item.title || '(untitled)'}</span></div>
         <button className="btn sm" onClick={() => onDel(item.id)}>✕</button>
       </div>
       {item.channel_name && <div className="mono" style={{ color: 'var(--text-4)', marginTop: 4 }}>↳ {item.channel_name}</div>}
