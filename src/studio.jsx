@@ -175,7 +175,13 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       // page shows nothing for a client who has recorded but has no avatar -
       // which is every voice-only take, and every take before its twin exists.
       try {
-        const builtFrom = new Set(list.map((a) => a.recording_id).filter(Boolean).map(String));
+        // A recording counts as "built" only if it has an avatar with a real
+        // HeyGen id. A broken avatar row (e.g. voice clone failed, heygen id
+        // null) must NOT hide the recording — otherwise the take vanishes with
+        // no way to rebuild it.
+        const builtFrom = new Set(
+          list.filter((a) => a.heygen_avatar_id).map((a) => a.recording_id).filter(Boolean).map(String)
+        );
         const results = await Promise.all(
           tokens.map((t) => listRecordings(t)
             .then((r) => ({ ok: true, rows: (Array.isArray(r) ? r : (r.recordings || [])).map((rec) => ({ ...rec, _token: t })) }))
@@ -184,15 +190,25 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
         const perTokenRecs = results.map((r) => r.rows);
         const allFetchesOk = results.every((r) => r.ok);
 
-        // Deleting a recording does not delete the avatar built from it, so the
-        // twin lingers in the picker pointing at a file that no longer exists.
-        // Drop those - but only when every recordings fetch succeeded, so a
-        // network blip cannot wipe the list.
-        if (allFetchesOk) {
-          const liveRecIds = new Set(perTokenRecs.flat().map((rec) => String(rec.id)));
-          for (let i = list.length - 1; i >= 0; i--) {
-            const a = list[i];
-            if (a.recording_id != null && !liveRecIds.has(String(a.recording_id))) list.splice(i, 1);
+        // Deleting a recording deletes its avatar server-side now, but older
+        // orphans can remain. Drop an avatar whose source recording is gone —
+        // but scope this PER TOKEN: only prune avatars belonging to a token
+        // whose recordings fetch actually succeeded, so one token's network
+        // failure can neither strand deleted avatars nor hide a live recording.
+        const okByToken = {};
+        results.forEach((r, i) => { okByToken[tokens[i]] = r.ok; });
+        const liveRecIdsByToken = {};
+        results.forEach((r, i) => {
+          if (r.ok) liveRecIdsByToken[tokens[i]] = new Set(r.rows.map((rec) => String(rec.id)));
+        });
+        for (let i = list.length - 1; i >= 0; i--) {
+          const a = list[i];
+          if (a.recording_id == null) continue;
+          const tk = a._token;
+          // Only prune if we have a trustworthy live-recording set for this
+          // avatar's own token.
+          if (tk && okByToken[tk] && liveRecIdsByToken[tk] && !liveRecIdsByToken[tk].has(String(a.recording_id))) {
+            list.splice(i, 1);
           }
         }
 
