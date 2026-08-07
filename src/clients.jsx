@@ -56,15 +56,39 @@ function ClientsView({ activeClientId, onSelect, onOpenClient }) {
   };
 
   const remove = async (c) => {
-    if (!window.confirm(`Delete "${c.name}"? This also removes its brief and scripts.`)) return;
-    setErr('');
+    const typed = window.prompt(
+      `This permanently deletes "${c.name}" and ALL of its media \u2014 every recording, `
+      + `avatar twin (freed on HeyGen), rendered clip, script, episode and cast. This cannot be undone.\n\n`
+      + `Type the client name to confirm:`
+    );
+    if (typed == null) return;
+    if (typed.trim() !== String(c.name || '').trim()) { setErr('Name did not match \u2014 nothing was deleted.'); return; }
+    setErr(''); setBusy(true);
     try {
+      // 1) Purge Railway-side media. Deleting a recording already cascades to its
+      //    avatar row + R2 object + HeyGen twin; we then sweep any leftover avatars
+      //    (orphans with no recording) and rendered clips. All best-effort so one
+      //    failure never blocks the rest of the wipe.
+      let tokens = [];
+      try {
+        const inv = await api.listClientInvites(c.id);
+        const rows = Array.isArray(inv) ? inv : (inv && inv.invites ? inv.invites : []);
+        tokens = rows.map((r) => r.token).filter(Boolean);
+      } catch { /* client may have no invites */ }
+      for (const t of tokens) {
+        try { const r = await api.listRecordings(t); for (const rec of (r.recordings || [])) { try { await api.deleteRecording(rec.id, t); } catch { /* keep going */ } } } catch { /* ignore */ }
+        try { const a = await api.listAvatars(t); for (const av of (a.avatars || [])) { if (av.id != null) { try { await api.deleteAvatar(t, av.id); } catch { /* keep going */ } } } } catch { /* ignore */ }
+        try { const v = await api.listVideos(t); for (const vid of (v.videos || [])) { if (vid.id != null) { try { await api.deleteVideo(vid.id, t); } catch { /* keep going */ } } } } catch { /* ignore */ }
+      }
+      // 2) Delete the client locally. ON DELETE CASCADE clears scripts, episodes,
+      //    casts, invites, consents, brief and assets; the API also clears the
+      //    approval_log rows for this client.
       await api.deleteClient(c.id);
       if (activeClientId === c.id) onSelect?.(null);
       await load();
     } catch (e) {
       setErr(e.message || 'Could not delete.');
-    }
+    } finally { setBusy(false); }
   };
 
   return (

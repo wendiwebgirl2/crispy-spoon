@@ -526,8 +526,8 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 )}
                 {(() => { let log = []; try { log = JSON.parse(h.approval_log || '[]'); } catch { log = []; } return log.length ? (
                   <div className="mono" style={{ marginTop: 6, fontSize: 11, color: 'var(--text-4)' }}>
-                    <span style={{ color: 'var(--text-3)' }}>Approval sent ({log.length}):</span>
-                    {log.slice().reverse().map((e, k) => (<div key={k} style={{ marginTop: 2 }}>{fmtTs(e.sent_at)} &rarr; {e.email}</div>))}
+                    <span style={{ color: 'var(--text-3)' }}>Approval log ({log.length}):</span>
+                    {log.slice().reverse().map((e, k) => (<div key={k} style={{ marginTop: 2 }}>{fmtTs(e.sent_at)} &rarr; {e.email}{e.sent ? '' : <span style={{ color: 'var(--accent)' }}> &middot; not delivered</span>}</div>))}
                   </div>
                 ) : null; })()}
                 {diffOpen === h.id && h.prev_body && h.prev_body !== h.body && (
