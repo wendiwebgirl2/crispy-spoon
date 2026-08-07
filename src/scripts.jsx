@@ -82,7 +82,8 @@ const typePrefix = (channel, variant) => {
   if (channel === 'blog') return 'Blog';
   return (channel || '—').slice(0, 2).toUpperCase();
 };
-const castTitleFor = (s) => `${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || 'Untitled'}`;
+const epPrefix = (s) => { const n = String(s.episode_number || '').trim().replace(/^E/i, ''); return n ? `E${n} - ` : ''; };
+const castTitleFor = (s) => `${epPrefix(s)}${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || 'Untitled'}`;
 
 // Per-channel accent colors so longform / shortform / blog cards are
 // distinguishable at a glance. Applied to badges and a left card stripe.
@@ -119,6 +120,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [picked, setPicked] = useState({ longform: true, shortform: true, blog: false });
   const [topic, setTopic] = useState('');
   const [jobNumber, setJobNumber] = useState('');
+  const [episodeNumber, setEpisodeNumber] = useState('');
   const [extra, setExtra] = useState('');
   const [results, setResults] = useState([]);
   const [history, setHistory] = useState([]);
@@ -134,6 +136,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [editDesc, setEditDesc] = useState('');
   const [editHashtags, setEditHashtags] = useState('');
   const [editJob, setEditJob] = useState('');
+  const [editEpisode, setEditEpisode] = useState('');
   const [revisePrompt, setRevisePrompt] = useState('');
   const [revising, setRevising] = useState(false);
   const [reviseNote, setReviseNote] = useState('');
@@ -152,6 +155,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     if (!topicRequest) return;
     setTopic(topicRequest.text || '');
     setJobNumber(topicRequest.job_number || '');
+    setEpisodeNumber(topicRequest.episode_number || '');
     if (Array.isArray(topicRequest.channels) && topicRequest.channels.length) {
       setPicked({ longform: topicRequest.channels.includes('longform'), shortform: topicRequest.channels.includes('shortform'), tvradio: topicRequest.channels.includes('tvradio'), blog: topicRequest.channels.includes('blog') });
     }
@@ -191,6 +195,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         channels: chosen,
         extra: extra.trim() || undefined,
         job_number: jobNumber.trim() || undefined,
+        episode_number: episodeNumber.trim() || undefined,
         qa_bypass_by: qaBypassBy || undefined,
       });
       setResults(out.scripts || []);
@@ -280,10 +285,10 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch { /* noop */ }
   };
-  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setEditTitle(h.title || ''); setEditDesc(h.description || ''); setEditHashtags(h.hashtags || ''); setEditJob(h.job_number || ''); setRevisePrompt(''); setReviseNote(''); setErr(''); };
+  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setEditTitle(h.title || ''); setEditDesc(h.description || ''); setEditHashtags(h.hashtags || ''); setEditJob(h.job_number || ''); setEditEpisode(h.episode_number || ''); setRevisePrompt(''); setReviseNote(''); setErr(''); };
   const saveEdit = async () => {
     try {
-      const payload = { body: editBody, title: editTitle, description: editDesc, hashtags: editHashtags.trim() || null, job_number: editJob.trim() || null };
+      const payload = { body: editBody, title: editTitle, description: editDesc, hashtags: editHashtags.trim() || null, job_number: editJob.trim() || null, episode_number: editEpisode.trim() || null };
       if (editing && (editing.approval_status === 'changes_requested' || editing.approval_status === 'approved_with_changes')) {
         payload.approval_status = 'changes_completed';
       } else if (editing && editBody !== (editing.body || '') &&
@@ -389,6 +394,12 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
               placeholder="e.g. 1042"
               style={{ minHeight: 0, height: 44, fontSize: 15, width: '100%' }} />
           </div>
+          <div style={{ flex: '0 0 110px' }}>
+            <div className="label" style={{ marginBottom: 8 }}>EPISODE #</div>
+            <input className="textarea" value={episodeNumber} onChange={(e) => setEpisodeNumber(e.target.value)}
+              placeholder="e.g. 1"
+              style={{ minHeight: 0, height: 44, fontSize: 15, width: '100%' }} />
+          </div>
         </div>
 
         <div className="label" style={{ marginBottom: 8 }}>EXTRA DIRECTION (optional)</div>
@@ -491,6 +502,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 <div className="row" style={{ gap: 8 }}>
                   <span className="badge" style={chBadgeStyle(h.channel)}>{labelFor(h.channel)}</span>
                   {h.job_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {h.job_number}</span>}
+                  {h.episode_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>E{String(h.episode_number).replace(/^E/i, '')}</span>}
                   {h.status && h.status !== 'draft' && <span className="mono" style={{ color: h.status === 'approved' ? 'var(--ok)' : 'var(--text-4)' }}>{h.status}</span>}
                   {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: (h.approval_status.startsWith('approved') || h.approval_status === 'in_production') ? 'var(--ok)' : h.approval_status === 'changes_completed' ? 'var(--text-2)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{(APPROVAL_LABEL[h.approval_status] || h.approval_status.replace(/_/g, ' '))}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production') && h.approval_by ? ' · by ' + h.approval_by : ''}</span>}
                   {h.production_status && PRODUCTION_LABEL[h.production_status] && <span className="mono" style={{ color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', fontSize: 11 }}>{PRODUCTION_LABEL[h.production_status]}</span>}
@@ -611,6 +623,8 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 placeholder="Title" style={{ minHeight: 0, height: 40, fontSize: 15, flex: 1 }} />
               <input className="textarea" value={editJob} onChange={(e) => setEditJob(e.target.value)}
                 placeholder="Job #" style={{ minHeight: 0, height: 40, fontSize: 15, flex: '0 0 110px' }} />
+              <input className="textarea" value={editEpisode} onChange={(e) => setEditEpisode(e.target.value)}
+                placeholder="Episode #" style={{ minHeight: 0, height: 40, fontSize: 15, flex: '0 0 100px' }} />
             </div>
             <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} maxLength={500}
               placeholder="Description (max 500 characters)"
