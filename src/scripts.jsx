@@ -21,6 +21,56 @@ const readTime = (t) => {
   return mins < 1 ? `${Math.max(1, Math.round(mins * 60))} sec` : `${mins.toFixed(1)} min`;
 };
 
+// Format a SQLite UTC datetime ('YYYY-MM-DD HH:MM:SS') as local date + time.
+const fmtTs = (t) => {
+  if (!t) return '';
+  const d = new Date(String(t).replace(' ', 'T') + 'Z');
+  return isNaN(d) ? String(t) : d.toLocaleString();
+};
+
+// Word-level diff between the pre-revision body and the current body, so the
+// dashboard can highlight exactly what changed when a script is revised to the
+// client's requested changes. LCS over whitespace-delimited tokens.
+function diffWords(prev, next) {
+  const a = String(prev || '').split(/(\s+)/);
+  const b = String(next || '').split(/(\s+)/);
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const out = [];
+  const push = (type, text) => {
+    const last = out[out.length - 1];
+    if (last && last.type === type) last.text += text; else out.push({ type, text });
+  };
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { push('same', b[j]); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { push('del', a[i]); i++; }
+    else { push('add', b[j]); j++; }
+  }
+  while (i < n) { push('del', a[i]); i++; }
+  while (j < m) { push('add', b[j]); j++; }
+  return out;
+}
+
+function ChangeHighlight({ prev, next }) {
+  const parts = diffWords(prev, next);
+  return (
+    <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+      <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 6 }}>
+        What changed &middot; <span style={{ background: 'rgba(46,160,67,0.22)' }}>added</span> &middot; <span style={{ textDecoration: 'line-through', color: 'var(--accent)' }}>removed</span>
+      </div>
+      {parts.map((prt, k) =>
+        prt.type === 'same' ? <span key={k}>{prt.text}</span>
+        : prt.type === 'add' ? <span key={k} style={{ background: 'rgba(46,160,67,0.22)' }}>{prt.text}</span>
+        : <span key={k} style={{ textDecoration: 'line-through', color: 'var(--accent)', opacity: 0.7 }}>{prt.text}</span>
+      )}
+    </div>
+  );
+}
+
 // Compact type prefix so scripts on the same topic can be told apart in any
 // listing — shortform variants number themselves (SF1/SF2/SF3), longform and
 // blog don't need to. Duplicated in client-detail.jsx and episodes.jsx (no
@@ -76,6 +126,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
+  const [diffOpen, setDiffOpen] = useState(null);
   const [expandedTopic, setExpandedTopic] = useState(null);
   const [renamingTopic, setRenamingTopic] = useState(null); // { from, to }
   const [editBody, setEditBody] = useState('');
@@ -473,6 +524,15 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                     <span style={{ color: 'var(--accent)' }}>Client notes:</span> {h.approval_comment}
                   </div>
                 )}
+                {(() => { let log = []; try { log = JSON.parse(h.approval_log || '[]'); } catch { log = []; } return log.length ? (
+                  <div className="mono" style={{ marginTop: 6, fontSize: 11, color: 'var(--text-4)' }}>
+                    <span style={{ color: 'var(--text-3)' }}>Approval sent ({log.length}):</span>
+                    {log.slice().reverse().map((e, k) => (<div key={k} style={{ marginTop: 2 }}>{fmtTs(e.sent_at)} &rarr; {e.email}</div>))}
+                  </div>
+                ) : null; })()}
+                {diffOpen === h.id && h.prev_body && h.prev_body !== h.body && (
+                  <ChangeHighlight prev={h.prev_body} next={h.body} />
+                )}
               </div>
               <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
                 <button className="btn sm" onClick={() => copy(h.body)}><Icon name="doc" size={12} /> Copy</button>
@@ -483,6 +543,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 {h.approval_status === 'approved' && <button className="btn sm" onClick={() => undoApproval(h.id)}><Icon name="arrow-l" size={12} /> Undo approve</button>}
                 {(h.approval_status === 'approved' || h.approval_status === 'approved_with_changes') && <button className="btn sm" onClick={() => setApproval(h.id, 'in_production', 'approved')}><Icon name="play" size={12} /> In production</button>}
                 {h.approval_status === 'changes_requested' && <button className="btn sm" onClick={() => setApproval(h.id, 'changes_completed')} style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}><Icon name="check" size={12} /> Changes verified</button>}
+                {h.prev_body && h.prev_body !== h.body && <button className="btn sm" onClick={() => setDiffOpen(diffOpen === h.id ? null : h.id)}><Icon name="sliders" size={12} /> {diffOpen === h.id ? 'Hide changes' : 'Show changes'}</button>}
                 <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> {h.approval_status === 'changes_completed' ? 'Resend for approval' : 'Send for approval'}</button>
                 {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body, castTitleFor(h), h.job_number, h.id)}><Icon name="sparkle" size={12} /> Cast</button>}
                 <button className="btn sm" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Delete</button>

@@ -102,6 +102,8 @@ function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = 
 
 function YourAvatars({ cid }) {
   const [avatars, setAvatars] = useState([]);
+  const [orphans, setOrphans] = useState([]);
+  const [purging, setPurging] = useState(false);
   const [loading, setLoading] = useState(true);
   const [openLooks, setOpenLooks] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -116,22 +118,47 @@ function YourAvatars({ cid }) {
         const nameByToken = {};
         for (const iv of rows) if (iv.token) nameByToken[iv.token] = iv.label || iv.client_email || null;
         const perToken = await Promise.all(tokens.map((t) => api.listAvatars(t).then((r) => r.avatars || []).catch(() => [])));
-        const seen = new Set(); const out = [];
+        // Masters still in R2 for this client. An avatar whose source recording
+        // was deleted is an orphan: it no longer belongs in the pickable list and
+        // still eats a HeyGen twin slot, so it is split out for cleanup.
+        const recPerToken = await Promise.all(tokens.map((t) => api.listRecordings(t).then((r) => r.recordings || []).catch(() => [])));
+        const recSet = new Set(recPerToken.flat().map((rr) => String(rr.id)));
+        const seen = new Set(); const kept = []; const orphaned = [];
         for (const a of perToken.flat()) {
           if (!a || !a.heygen_avatar_id) continue;
           if (a.id != null && seen.has(a.id)) continue;
           if (a.id != null) seen.add(a.id);
-          out.push({ ...a, _name: (a.invite_token && nameByToken[a.invite_token]) || a.name || 'Avatar', _token: a.invite_token || tokens[0] || null });
+          const row = { ...a, _name: (a.invite_token && nameByToken[a.invite_token]) || a.name || 'Avatar', _token: a.invite_token || tokens[0] || null };
+          if (a.recording_id != null && recSet.has(String(a.recording_id))) kept.push(row);
+          else orphaned.push(row);
         }
-        if (live) setAvatars(out);
+        if (live) { setAvatars(kept); setOrphans(orphaned); }
       } finally { if (live) setLoading(false); }
     })();
     return () => { live = false; };
   }, [cid, refreshKey]);
 
+  const purgeOrphans = async () => {
+    if (!orphans.length) return;
+    if (!window.confirm(`Delete ${orphans.length} orphaned avatar${orphans.length === 1 ? '' : 's'} from HeyGen to free the twin cap? This cannot be undone.`)) return;
+    setPurging(true);
+    try {
+      for (const o of orphans) { try { await api.deleteAvatar(o._token, o.id); } catch (e) { /* best-effort per HeyGen delete */ } }
+      setRefreshKey((k) => k + 1);
+    } finally { setPurging(false); }
+  };
+
   return (
     <div style={{ marginTop: 28 }}>
       <div className="label" style={{ marginBottom: 12 }}>Your Avatars</div>
+      {orphans.length > 0 && (
+        <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span>{orphans.length} orphaned {orphans.length === 1 ? 'avatar' : 'avatars'} (source recording deleted) still using HeyGen slots.</span>
+          <button className="btn sm" disabled={purging} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={purgeOrphans}>
+            <Icon name="close" size={12} /> {purging ? 'Cleaning up\u2026' : 'Clean up orphaned avatars'}
+          </button>
+        </div>
+      )}
       {loading ? (
         <div className="mono" style={{ color: 'var(--text-4)' }}>Loading avatars…</div>
       ) : avatars.length === 0 ? (
