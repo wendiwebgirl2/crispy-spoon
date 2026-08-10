@@ -911,7 +911,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
 
             {editCast && (
               <div onClick={() => setEditCast(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
-                <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(640px, 96vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(640px, 96vw)', maxHeight: '88vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                     <div className="label">EDIT CAST</div>
                     <button className="btn sm" onClick={() => setEditCast(null)}>Close</button>

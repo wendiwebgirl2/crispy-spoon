@@ -614,7 +614,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       )}
       {editing && (
         <div onClick={() => setEditing(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
-          <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(760px, 96vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(760px, 96vw)', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="label">EDIT SCRIPT{editing.topic ? ' · ' + editing.topic : ''}</div>
               <button className="icon-btn" title="Close" onClick={() => setEditing(null)}><Icon name="close" size={14} /></button>
