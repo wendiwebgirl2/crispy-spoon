@@ -2,9 +2,9 @@
 // VoiceCast API (same origin): pick a client, choose channels, generate copy
 // grounded in the client's brief, verified against their PAMW, with history.
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { api } from './api.js'
-import { Icon, ensureOperatorName } from './shared.jsx'
+import { Icon, ensureOperatorName, ExpressionTags } from './shared.jsx'
 
 const CHANNEL_FALLBACK = [
   { key: 'longform',  label: 'Longform (5–7 min)', variants: 1 },
@@ -132,6 +132,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [expandedTopic, setExpandedTopic] = useState(null);
   const [renamingTopic, setRenamingTopic] = useState(null); // { from, to }
   const [editBody, setEditBody] = useState('');
+  const editBodyRef = useRef(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editHashtags, setEditHashtags] = useState('');
@@ -635,8 +636,9 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 placeholder="Social hashtags — e.g. #podcast #marketing #smallbusiness"
                 style={{ minHeight: 0, height: 40, fontSize: 13, fontFamily: 'var(--f-mono)' }} />
             )}
-            <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)}
+            <textarea ref={editBodyRef} value={editBody} onChange={(e) => setEditBody(e.target.value)}
               style={{ flex: 1, minHeight: 340, resize: 'vertical', padding: 14, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 15, lineHeight: 1.6 }} />
+            <ExpressionTags value={editBody} onChange={setEditBody} textareaRef={editBodyRef} />
             <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>
               {charCount(editBody).toLocaleString()} characters · ~{readTime(editBody)} read
             </div>

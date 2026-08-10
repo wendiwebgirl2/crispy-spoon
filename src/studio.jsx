@@ -6,7 +6,7 @@
 import React from 'react'
 import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
 import { clientToken, voice } from './dashboard-api.js'
-import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt } from './shared.jsx'
+import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
 import { LookPicker } from './brief.jsx'
 
@@ -69,6 +69,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [editCast, setEditCast] = React.useState(null);
   const [editCastTitle, setEditCastTitle] = React.useState('');
   const [editCastScript, setEditCastScript] = React.useState('');
+  const editCastScriptRef = React.useRef(null);
   const [editCastAspect, setEditCastAspect] = React.useState('16:9');
   const [recasting, setRecasting] = React.useState(false);
   const [voiceProfiles, setVoiceProfiles] = React.useState([]);
@@ -83,6 +84,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   // —— render step (video) ——
   const [avatarId, setAvatarId] = React.useState(null);
   const [script, setScript] = React.useState(DEFAULT_SCRIPT);
+  const scriptRef = React.useRef(null);
   const [castTitle, setCastTitle] = React.useState('');
   const [castJobNumber, setCastJobNumber] = React.useState('');
   const [castScriptId, setCastScriptId] = React.useState(null);
@@ -856,6 +858,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   <span className="mono">{wordCount} words · ~{estSeconds}s · ${estCost}</span>
                 </div>
                 <textarea
+                  ref={scriptRef}
                   className="textarea"
                   value={script}
                   onChange={(e) => setScript(e.target.value)}
@@ -863,6 +866,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   placeholder="Paste or write the script you want the avatar to deliver…"
                   style={{ fontSize: 15, fontFamily: 'var(--f-display)', lineHeight: 1.5, letterSpacing: '0', minHeight: 180 }}
                 />
+                <ExpressionTags value={script} onChange={setScript} textareaRef={scriptRef} />
                 <div className="row" style={{ gap: 8, marginTop: 12 }}>
                   <button className="btn sm"><Icon name="sparkle" size={12} /> Refine with Claude</button>
                   <button className="btn sm"><Icon name="doc" size={12} /> Paste from doc</button>
@@ -915,12 +919,13 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   <input value={editCastTitle} onChange={(e) => setEditCastTitle(e.target.value)} placeholder="Cast title"
                     style={{ padding: 10, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 14 }} />
                   {editCast.script != null ? (
-                    <textarea value={editCastScript} onChange={(e) => setEditCastScript(e.target.value)}
+                    <textarea ref={editCastScriptRef} value={editCastScript} onChange={(e) => setEditCastScript(e.target.value)}
                       style={{ flex: 1, minHeight: 260, resize: 'vertical', padding: 12, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 14, lineHeight: 1.6 }} />
                   ) : (
                     <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>No script stored for this cast (older render).</div>
                   )}
                   <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>{editCastScript.length} characters</div>
+                  <ExpressionTags value={editCastScript} onChange={setEditCastScript} textareaRef={editCastScriptRef} />
                   <div className="row" style={{ gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Recast format</span>
                     {['16:9', '9:16', '1:1'].map((a) => (

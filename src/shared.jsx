@@ -288,7 +288,66 @@ function ensureOperatorName() {
   return n;
 }
 
+// Expression + pause tags for the voice engine (HeyGen renders the avatar's
+// Fish S2 Pro voice). <break> is the ONLY wrapper tag HeyGen accepts - it
+// controls pauses; the [square-bracket] cues are Fish S2 expression tags read
+// inline. Tags pass through the cast-time spoken normalisation untouched and are
+// stripped from the client approval view (see spoken.js stripTags on the server).
+const PAUSE_TAGS = [
+  { label: '0.5s pause', tag: '<break time="0.5s"/>' },
+  { label: '1s pause', tag: '<break time="1s"/>' },
+  { label: '2s pause', tag: '<break time="2s"/>' },
+];
+const EXPR_TAGS = ['[happy]', '[excited]', '[warm]', '[calm]', '[serious]', '[emphasis]', '[whisper]', '[laughing]', '[sigh]', '[pause]'];
+// Any angle-bracket tag that is NOT <break> risks HeyGen audio artifacts.
+const BAD_WRAPPER_RE = /<(?!\s*break\b)[a-z][^>]*>/i;
+
+const ExpressionTags = ({ value, onChange, textareaRef }) => {
+  const [open, setOpen] = React.useState(false);
+  const insert = (tag) => {
+    const el = textareaRef && textareaRef.current;
+    const v = value || '';
+    if (!el) { onChange(v + (v && !v.endsWith(' ') ? ' ' : '') + tag + ' '); return; }
+    const s = el.selectionStart == null ? v.length : el.selectionStart;
+    const e = el.selectionEnd == null ? v.length : el.selectionEnd;
+    onChange(v.slice(0, s) + tag + v.slice(e));
+    requestAnimationFrame(() => {
+      try { el.focus(); const p = s + tag.length; el.setSelectionRange(p, p); } catch (_) { /* noop */ }
+    });
+  };
+  const warn = BAD_WRAPPER_RE.test(value || '');
+  const chip = { fontSize: 11, padding: '2px 8px' };
+  const mono = { ...chip, fontFamily: 'var(--f-mono)' };
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Insert</span>
+        {PAUSE_TAGS.map((p) => (
+          <button key={p.tag} type="button" className="btn sm" style={chip} onClick={() => insert(p.tag)}>{p.label}</button>
+        ))}
+        {EXPR_TAGS.map((t) => (
+          <button key={t} type="button" className="btn sm" style={mono} onClick={() => insert(t)}>{t}</button>
+        ))}
+        <button type="button" className="btn sm" style={{ ...chip, marginLeft: 'auto' }} onClick={() => setOpen(!open)}>{open ? 'Hide help' : 'What are these?'}</button>
+      </div>
+      {warn && (
+        <div className="mono" style={{ fontSize: 11, color: 'var(--accent)', marginTop: 6 }}>
+          Only &lt;break&gt; is supported in angle brackets - other &lt;...&gt; tags can glitch the audio. Use [square-bracket] cues for expression.
+        </div>
+      )}
+      {open && (
+        <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.7, marginTop: 6, padding: 10, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)' }}>
+          <div style={{ marginBottom: 4 }}><strong>Pauses</strong> - HeyGen honours only the break tag, e.g. <code>&lt;break time="1s"/&gt;</code>. Drop it anywhere; the time is in seconds.</div>
+          <div style={{ marginBottom: 4 }}><strong>Expression</strong> - your Fish S2 Pro voice reads square-bracket cues inline: <code>[excited]</code>, <code>[whisper]</code>, <code>[laughing]</code>, and many more. Put a cue right before the words it should colour.</div>
+          <div>These are production cues only - they are stripped from the script your client sees for approval.</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export {
+  ExpressionTags,
   downloadWithPrompt,
   saveBlobWithPrompt,
   getOperatorName,
