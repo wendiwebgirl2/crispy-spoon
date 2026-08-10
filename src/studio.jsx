@@ -91,6 +91,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [scene, setScene] = React.useState('studio');
   const [language, setLanguage] = React.useState('EN');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
+  const [engine, setEngine] = React.useState('auto');  // 'auto' | 'avatar_v' | 'avatar_iv'
   const [generating, setGenerating] = React.useState(false);
   const [queue, setQueue] = React.useState([]);
 
@@ -636,6 +637,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
         title: (editCastTitle.trim() || editCast.title || 'Untitled') + ' (recast)',
         avatarId: editCast.avatar_id || undefined,
         aspectRatio: editCastAspect,
+        engine,
       });
       setEditCast(null); await reloadQueue();
     } catch (e) { alert(e.message || 'Recast failed'); }
@@ -699,7 +701,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     setGenerating(true);
     try {
       const before = new Set(queue.map((q) => q.id));
-      await generateVideo(script, { token, title: castTitle.trim() || script.slice(0, 60), avatarId, caption, background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null, aspectRatio, backgroundAssetId });
+      await generateVideo(script, { token, title: castTitle.trim() || script.slice(0, 60), avatarId, caption, background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null, aspectRatio, backgroundAssetId, engine });
       const v = await listVideos(token).catch(() => ({ videos: [] }));
       setQueue(v.videos || []);
       // Register the job number on the newly created cast's local mirror so it
@@ -1075,6 +1077,26 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 </div>
               )}
               {bgAssets.length === 0 && <div style={{ marginBottom: 22 }} />}
+
+              <div className="label" style={{ marginBottom: 10 }}>RENDER ENGINE</div>
+              <div className="row" style={{ gap: 4, marginBottom: 6 }}>
+                {[{ k: 'auto', t: 'Auto' }, { k: 'avatar_v', t: 'Avatar V' }, { k: 'avatar_iv', t: 'Avatar IV' }].map(o => (
+                  <button key={o.k} onClick={() => setEngine(o.k)} className="btn sm"
+                    style={{
+                      flex: 1, justifyContent: 'center',
+                      background: engine === o.k ? 'var(--surface-2)' : 'transparent',
+                      borderColor: engine === o.k ? 'var(--accent)' : 'var(--border)',
+                      color: engine === o.k ? 'var(--text)' : 'var(--text-2)'
+                    }}>{o.t}</button>
+                ))}
+              </div>
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 22, lineHeight: 1.5 }}>
+                {engine === 'avatar_v'
+                  ? 'Avatar V - preserves the photo\u2019s teeth/structure; minimal expression.'
+                  : engine === 'avatar_iv'
+                    ? 'Avatar IV - more expressive delivery, but photo twins can show the wide-smile glitch.'
+                    : 'Auto - Avatar V for photo twins (falls back to IV), Avatar IV for stock avatars.'}
+              </div>
 
               <div className="label" style={{ marginBottom: 10 }}>ASPECT RATIO</div>
               <div className="row" style={{ gap: 4, marginBottom: 22 }}>
