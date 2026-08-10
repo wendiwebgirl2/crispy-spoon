@@ -19,6 +19,16 @@ const SCENES = [
 
 const DEFAULT_SCRIPT = "Hi! I'm excited you're here. This is a preview of the voice for your character—take a quick listen.";
 
+// Delivery presets map to a HeyGen motion_prompt (natural-language gesture +
+// expression guidance). 'calm' = empty so the backend keeps its teeth-safe default.
+const DELIVERY_PROMPTS = {
+  calm: '',
+  warm: 'warm, friendly delivery with a natural smile; relaxed and engaged; gentle head movement',
+  energetic: 'upbeat, energetic delivery; lively hand gestures and animated facial expression; confident and dynamic',
+  laughing: 'joyful, laughing delivery; genuine laughter and a big warm smile; playful and animated',
+  serious: 'serious, authoritative delivery; composed and confident; steady gaze with minimal smiling',
+};
+
 // destination = where the finished piece goes. types = valid content shapes per
 // destination (each presets an aspect ratio). 'download' is always available so a
 // client with no connected channels is never a dead end.
@@ -92,6 +102,9 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [language, setLanguage] = React.useState('EN');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
   const [engine, setEngine] = React.useState('auto');  // 'auto' | 'avatar_v' | 'avatar_iv'
+  const [expressiveness, setExpressiveness] = React.useState('low');  // 'low' | 'medium' | 'high'
+  const [delivery, setDelivery] = React.useState('calm');
+  const [customMotion, setCustomMotion] = React.useState('');
   const [generating, setGenerating] = React.useState(false);
   const [queue, setQueue] = React.useState([]);
 
@@ -638,6 +651,8 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
         avatarId: editCast.avatar_id || undefined,
         aspectRatio: editCastAspect,
         engine,
+        expressiveness,
+        motionPrompt: (customMotion.trim() || DELIVERY_PROMPTS[delivery] || undefined),
       });
       setEditCast(null); await reloadQueue();
     } catch (e) { alert(e.message || 'Recast failed'); }
@@ -701,7 +716,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     setGenerating(true);
     try {
       const before = new Set(queue.map((q) => q.id));
-      await generateVideo(script, { token, title: castTitle.trim() || script.slice(0, 60), avatarId, caption, background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null, aspectRatio, backgroundAssetId, engine });
+      await generateVideo(script, { token, title: castTitle.trim() || script.slice(0, 60), avatarId, caption, background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null, aspectRatio, backgroundAssetId, engine, expressiveness, motionPrompt: (customMotion.trim() || DELIVERY_PROMPTS[delivery] || undefined) });
       const v = await listVideos(token).catch(() => ({ videos: [] }));
       setQueue(v.videos || []);
       // Register the job number on the newly created cast's local mirror so it
@@ -1096,6 +1111,43 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   : engine === 'avatar_iv'
                     ? 'Avatar IV - more expressive delivery, but photo twins can show the wide-smile glitch.'
                     : 'Auto - Avatar V for photo twins (falls back to IV), Avatar IV for stock avatars.'}
+              </div>
+
+              <div className="label" style={{ marginBottom: 10 }}>EXPRESSIVENESS</div>
+              <div className="row" style={{ gap: 4, marginBottom: 6 }}>
+                {[{ k: 'low', t: 'Low' }, { k: 'medium', t: 'Medium' }, { k: 'high', t: 'High' }].map(o => (
+                  <button key={o.k} onClick={() => setExpressiveness(o.k)} className="btn sm" disabled={engine === 'avatar_v'}
+                    style={{
+                      flex: 1, justifyContent: 'center', opacity: engine === 'avatar_v' ? 0.4 : 1,
+                      background: expressiveness === o.k ? 'var(--surface-2)' : 'transparent',
+                      borderColor: expressiveness === o.k ? 'var(--accent)' : 'var(--border)',
+                      color: expressiveness === o.k ? 'var(--text)' : 'var(--text-2)'
+                    }}>{o.t}</button>
+                ))}
+              </div>
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 22, lineHeight: 1.5 }}>
+                {engine === 'avatar_v'
+                  ? 'Avatar V ignores expressiveness \u2014 use Delivery below, or switch to Avatar IV.'
+                  : 'Applies to Avatar IV. Higher = more animated gestures and face.'}
+              </div>
+
+              <div className="label" style={{ marginBottom: 10 }}>DELIVERY</div>
+              <div className="row" style={{ gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
+                {[{ k: 'calm', t: 'Calm' }, { k: 'warm', t: 'Warm' }, { k: 'energetic', t: 'Energetic' }, { k: 'laughing', t: 'Laughing' }, { k: 'serious', t: 'Serious' }].map(o => (
+                  <button key={o.k} onClick={() => { setDelivery(o.k); setCustomMotion(''); }} className="btn sm"
+                    style={{
+                      justifyContent: 'center',
+                      background: (!customMotion && delivery === o.k) ? 'var(--surface-2)' : 'transparent',
+                      borderColor: (!customMotion && delivery === o.k) ? 'var(--accent)' : 'var(--border)',
+                      color: (!customMotion && delivery === o.k) ? 'var(--text)' : 'var(--text-2)'
+                    }}>{o.t}</button>
+                ))}
+              </div>
+              <input className="textarea" value={customMotion} onChange={(e) => setCustomMotion(e.target.value)}
+                placeholder="Custom delivery, overrides preset - e.g. laughs, then leans in warmly"
+                style={{ minHeight: 0, height: 36, fontSize: 12, marginBottom: 6 }} />
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 22, lineHeight: 1.5 }}>
+                Drives gestures + expression on both engines. Laughing lands best on Avatar IV + High; on Avatar V a big laugh can bring back the wide-smile glitch.
               </div>
 
               <div className="label" style={{ marginBottom: 10 }}>ASPECT RATIO</div>
