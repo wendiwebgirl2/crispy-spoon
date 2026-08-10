@@ -29,6 +29,17 @@ const DELIVERY_PROMPTS = {
   serious: 'serious, authoritative delivery; composed and confident; steady gaze with minimal smiling',
 };
 
+// Cast timestamp in the operator's local 12-hour time; falls back to the raw
+// value if it can't be parsed. engineLabel maps stored engine -> display name.
+const fmtWhen = (v) => {
+  if (!v) return '';
+  let d = new Date(v);
+  if (isNaN(d.getTime())) d = new Date(String(v).replace(' ', 'T'));
+  if (isNaN(d.getTime())) return String(v);
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+};
+const engineLabel = (e) => (e === 'avatar_v' ? 'Avatar V' : e === 'avatar_iv' ? 'Avatar IV' : '');
+
 // destination = where the finished piece goes. types = valid content shapes per
 // destination (each presets an aspect ratio). 'download' is always available so a
 // client with no connected channels is never a dead end.
@@ -1520,8 +1531,11 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
           {meta && meta.job_number ? <span className="mono" style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', marginRight: 6 }}>Job {meta.job_number}</span> : null}
           {video.title || 'Untitled cast'}
         </div>
+        {engineLabel(video.engine_used) ? (
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>{engineLabel(video.engine_used)}</div>
+        ) : null}
         <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
-          {video.createdAt || (video.created_at ? String(video.created_at).slice(0, 10) : '')} · {ready ? 'ready' : (video.status || 'rendering')}
+          {fmtWhen(video.created_at || video.createdAt)} · {ready ? 'ready' : (video.status || 'rendering')}
         </div>
         {meta && (meta.approval_sent_at || meta.approval_approved_at || meta.changes_verified_at) && (
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
@@ -1585,7 +1599,8 @@ const VideoRow = ({ video, avatars = [] }) => {
             <span className="mono">{(avatar.contact || '').split(' ')[0]}</span>
             {video.duration && <><span className="mono">·</span><span className="mono">{video.duration}</span></>}
             <span className="mono">·</span>
-            <span className="mono">{video.createdAt || (video.created_at ? String(video.created_at).slice(0, 10) : '')}</span>
+            <span className="mono">{fmtWhen(video.created_at || video.createdAt)}</span>
+            {engineLabel(video.engine_used) ? <><span className="mono">·</span><span className="mono">{engineLabel(video.engine_used)}</span></> : null}
           </div>
           {video.status === 'rendering' && (
             <div style={{ marginTop: 8, height: 3, background: 'var(--surface-2)', borderRadius: 2, overflow: 'hidden' }}>
