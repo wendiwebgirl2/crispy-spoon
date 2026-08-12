@@ -36,7 +36,18 @@ const HEADER_TITLES = {
   settings:        { title: 'Settings',        sub: 'workspace · branding · integrations' },
   billing:         { title: 'Billing',         sub: 'plans, usage, and invoices' },
   changes:         { title: 'Client changes',  sub: 'requested changes across every client — newest first' },
+  attention:       { title: 'Needs attention',  sub: 'clients & tasks waiting on you — newest first' },
 };
+
+// Local 12-hour, user-local time formatter for attention timestamps. SQLite
+// datetime('now') is UTC with no zone marker, so tag it as UTC before display.
+function fmtWhen(s) {
+  if (!s) return '';
+  const iso = String(s).includes('T') ? String(s) : String(s).replace(' ', 'T');
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + 'Z');
+  if (isNaN(d.getTime())) return String(s);
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
 
 // Requested-changes inbox. Each row links straight to the item's home view.
 function ChangesView({ onOpen }) {
@@ -66,6 +77,53 @@ function ChangesView({ onOpen }) {
               Open in {TYPE_VIEW[r.type] || 'dashboard'} →
             </button>
           </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// "Needs attention" inbox — clients and tasks waiting on the operator,
+// grouped by client. Each row links straight to the item's home view.
+const ATTN_META = {
+  approved: { color: 'var(--ok)',     label: 'Approved' },
+  rendered: { color: 'var(--accent)', label: 'Ready' },
+  failed:   { color: 'var(--warn)',   label: 'Needs retry' },
+};
+
+function AttentionView({ onOpen }) {
+  const [data, setData] = React.useState(null);
+  React.useEffect(() => {
+    let live = true;
+    api.attention().then((d) => { if (live) setData(d && d.clients ? d : { total: 0, clients: [] }); })
+      .catch(() => { if (live) setData({ total: 0, clients: [] }); });
+    return () => { live = false; };
+  }, []);
+  if (data === null) return <div className="v-pad fade-in"><div className="mono">Loading…</div></div>;
+  if (!data.clients.length) return <div className="v-pad fade-in"><div className="mono" style={{ color: 'var(--text-3)' }}>All caught up — nothing needs your attention right now.</div></div>;
+  return (
+    <div className="fade-in" style={{ padding: 'var(--pad)', display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 780 }}>
+      {data.clients.map((c) => (
+        <div key={c.clientId} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>{c.clientName || ('Client ' + c.clientId)}</span>
+            <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)' }}>{c.items.length} {c.items.length === 1 ? 'task' : 'tasks'}</span>
+          </div>
+          {c.items.map((it) => {
+            const m = ATTN_META[it.type] || ATTN_META.approved;
+            return (
+              <div key={it.code + '-' + it.id} className="card" style={{ padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: m.color, flex: 'none' }} />
+                <span className="badge" style={{ color: m.color }}>{m.label}</span>
+                <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)', textTransform: 'uppercase' }}>{it.kind}</span>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{it.title}</span>
+                <span className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>· {it.action}</span>
+                {it.detail && <span className="mono" style={{ fontSize: 11, color: 'var(--warn)', width: '100%' }}>{it.detail}</span>}
+                <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)', marginLeft: 'auto' }}>{fmtWhen(it.at)}</span>
+                <button className="btn sm" onClick={() => onOpen(it.client_id, it.view)}>Open →</button>
+              </div>
+            );
+          })}
         </div>
       ))}
     </div>
@@ -166,6 +224,17 @@ function App() {
           <>
             <div className="side-section" style={{ marginTop: 14 }}>ALERTS</div>
             <div className="side-nav">
+              <button
+                className={'nav-item' + (view === 'attention' ? ' active' : '')}
+                onClick={() => setView('attention')}
+                title="Needs attention"
+              >
+                <Icon name="bell" size={16} stroke={1.6} className="nav-icon" style={{ color: view === 'attention' ? 'var(--accent)' : 'var(--text-3)' }} />
+                <span>Needs attention</span>
+                {alerts.attention > 0 && <span className="nav-count">{alerts.attention}</span>}
+              </button>
+            </div>
+            <div className="side-nav">
               {[
                 { k: 'changes', label: 'Changes from client', color: 'var(--warn)', go: () => setView('changes') },
                 { k: 'pending', label: 'Pending approval', color: 'var(--accent)' },
@@ -252,6 +321,7 @@ function App() {
           )}
           {view === 'settings' && <SettingsView />}
           {view === 'changes' && <ChangesView onOpen={(clientId, targetView) => { setActiveClientId(clientId); setView(targetView); }} />}
+          {view === 'attention' && <AttentionView onOpen={(clientId, targetView) => { setActiveClientId(clientId); setView(targetView); }} />}
           {view === 'billing' && <BillingView />}
         </section>
       </main>
