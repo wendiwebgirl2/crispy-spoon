@@ -10,7 +10,7 @@ const Portal = ({ children }) => createPortal(children, document.body);
 const CHAN_COLORS = {
   longform: '#fbb033', shortform: '#d6608f', blog: '#4a90d6', episode: '#6bbf8a',
   podcast: '#fbb033', instagram: '#d6608f', linkedin: '#4a90d6', x: '#6bbf8a',
-  youtube: '#c94a4a', facebook: '#4a6fd6',
+  youtube: '#c94a4a', facebook: '#4a6fd6', cast: '#6bbf8a',
   default: '#b09a8d',
 };
 const SOCIAL_CHANNELS = [
@@ -23,79 +23,96 @@ const colorFallback = (k) => EXTRA_COLORS[String(k).split('').reduce((a, c) => a
 const colorOf = (k) => CHAN_COLORS[k] || colorFallback(k);
 
 const inputStyle = { background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontFamily: 'var(--f-mono)', fontSize: 13, padding: '9px 11px', boxSizing: 'border-box', width: '100%' };
+const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 };
 
-function PlanCard({ item, onAdvance, onDel, onSchedule, onPublish, publishing }) {
-  const isEpisodeSocial = item.episode_id && SOCIAL_CHANNELS.some((c) => c.key === item.channel);
-  const busy = publishing && publishing.has(item.id);
-  let meta = null;
-  if (item.publish_meta) { try { meta = JSON.parse(item.publish_meta); } catch { /* ignore */ } }
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const pad2 = (n) => String(n).padStart(2, '0');
+const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const midnight = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 
+// scheduled_for is stored as local "YYYY-MM-DD HH:MM[:SS]" text, so the date
+// prefix and time slice are already in the user's own terms — no TZ math.
+const dayKeyOf = (item) => String(item.scheduled_for || '').slice(0, 10);
+const timeOf = (item) => { const m = String(item.scheduled_for || '').match(/[ T](\d{2}):(\d{2})/); return m ? `${m[1]}:${m[2]}` : ''; };
+const fmt12 = (hhmm) => {
+  const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})/); if (!m) return '';
+  let h = +m[1]; const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
+  return `${h}:${m[2]} ${ap}`;
+};
+const splitWhen = (v) => {
+  const m = String(v || '').replace('T', ' ').match(/^(\d{4}-\d{2}-\d{2})[ ]?(\d{2}:\d{2})?/);
+  return { d: m ? m[1] : '', t: (m && m[2]) || '09:00' };
+};
+
+// One dot + title chip for a day cell. Draft = faded, scheduled = solid,
+// delivered = outlined with a check.
+function DayChip({ item, onClick }) {
+  const col = colorOf(item.channel);
+  const delivered = item.status === 'delivered';
   return (
-    <div className="card card-pad" style={{ background: 'var(--surface-2)' }}>
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ minWidth: 0 }}><span className="badge">{item.channel}</span> {item.job_number ? <span className="mono" style={{ fontSize: 10, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px' }}>Job {item.job_number}</span> : null} <span style={{ fontWeight: 600, fontSize: 13 }}>{item.title || '(untitled)'}</span></div>
-        <button className="btn sm" onClick={() => onDel(item.id)}>✕</button>
-      </div>
-      {item.channel_name && <div className="mono" style={{ color: 'var(--text-4)', marginTop: 4 }}>↳ {item.channel_name}</div>}
-      <div className="mono" style={{ color: 'var(--text-4)', marginTop: 2 }}>{item.scheduled_for ? '🗓 ' + item.scheduled_for : 'no date set'}</div>
-      {item.script_body && <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6, maxHeight: 70, overflow: 'hidden' }}>{item.script_body.slice(0, 160)}…</div>}
-      {isEpisodeSocial && item.episode_has_video === false && (
-        <div className="mono" style={{ color: 'var(--accent)', marginTop: 6, fontSize: 12 }}>No video on this episode yet — stitch it first.</div>
-      )}
-      {meta && meta.ok === false && (
-        <div className="mono" style={{ color: 'var(--accent)', marginTop: 6, fontSize: 12 }}>Last attempt failed: {meta.error}</div>
-      )}
-      {item.status !== 'delivered' && (
-        <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-          {item.status === 'draft' && <button className="btn sm" onClick={() => onSchedule(item)}><Icon name="history" size={12} /> Schedule</button>}
-          {item.status === 'scheduled' && <button className="btn sm" onClick={() => onSchedule(item)}>Reschedule</button>}
-          {isEpisodeSocial ? (
-            <button className="btn sm primary" disabled={busy || item.episode_has_video === false} onClick={() => onPublish(item)}>
-              {busy ? 'Publishing…' : <><Icon name="check" size={12} /> Publish now</>}
-            </button>
-          ) : (
-            item.status === 'scheduled' && <button className="btn sm primary" onClick={() => onAdvance(item.id, 'delivered')}>Mark delivered</button>
-          )}
-        </div>
-      )}
-      {item.status === 'delivered' && <span className="badge" style={{ color: 'var(--ok)', marginTop: 8, display: 'inline-block' }}>✓ delivered</span>}
+    <div
+      onClick={(e) => { e.stopPropagation(); onClick(item); }}
+      title={`${item.title || ''}${timeOf(item) ? ' · ' + fmt12(timeOf(item)) : ''} — ${item.status}`}
+      style={{
+        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, borderRadius: 5,
+        fontSize: 11, lineHeight: 1.3, padding: '2px 5px', marginTop: 3, overflow: 'hidden',
+        whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 600,
+        color: delivered ? 'var(--text-2)' : '#15120e',
+        background: delivered ? 'transparent' : col,
+        opacity: item.status === 'draft' ? 0.5 : 1,
+        border: delivered ? `1.5px solid ${col}` : '1.5px solid transparent',
+      }}
+    >
+      {delivered && <Icon name="check" size={10} />}
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: col, flex: 'none', display: delivered ? 'block' : 'none' }} />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{timeOf(item) ? fmt12(timeOf(item)).replace(':00', '') + ' ' : ''}{item.title || '•'}</span>
     </div>
   );
 }
 
-function Timeline({ items, channels, weekOffset, onEventClick }) {
-  const DAYS = 14;
-  const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() + weekOffset * DAYS);
-  const days = Array.from({ length: DAYS }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
-  const todayKey = new Date().toDateString();
-  const lanes = [...new Set([...channels.map((c) => c.key), ...items.map((i) => i.channel).filter(Boolean)])];
-  const cols = `160px repeat(${DAYS}, 1fr)`;
-  const chanLabel = (k) => (channels.find((c) => c.key === k) || {}).label || k;
+function CalendarGrid({ mode, anchor, items, todayKey, onEventClick, onDayClick }) {
+  let days;
+  if (mode === 'week') {
+    const start = new Date(anchor); start.setDate(anchor.getDate() - anchor.getDay());
+    days = Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
+  } else {
+    const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    const start = new Date(first); start.setDate(1 - first.getDay());
+    days = Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
+  }
+  const curMonth = anchor.getMonth();
+  const cellMin = mode === 'week' ? 220 : 96;
 
   return (
-    <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--r-md)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: cols, minWidth: 760 }}>
-        <div />
-        {days.map((d, i) => (
-          <div key={i} style={{ borderLeft: '1px solid var(--border)', padding: '6px 0', textAlign: 'center', fontSize: 11, color: 'var(--text-4)', background: d.toDateString() === todayKey ? 'rgba(251,176,51,0.12)' : 'transparent' }}>
-            {d.toLocaleDateString(undefined, { weekday: 'short' })}<br />{d.getDate()}/{d.getMonth() + 1}
-          </div>
+    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-md)', overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+        {WEEKDAYS.map((w) => (
+          <div key={w} style={{ padding: '7px 0', textAlign: 'center', fontSize: 11, letterSpacing: 0.4, color: 'var(--text-4)', fontFamily: 'var(--f-mono)', borderBottom: '1px solid var(--border)' }}>{w}</div>
         ))}
-        {lanes.map((ch) => (
-          <React.Fragment key={ch}>
-            <div style={{ padding: '10px 12px', fontSize: 12.5, fontWeight: 600, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap' }}>
-              <span style={{ width: 11, height: 11, borderRadius: 3, background: colorOf(ch), flex: 'none' }} />{chanLabel(ch)}
+        {days.map((d, i) => {
+          const key = ymd(d);
+          const dayItems = items.filter((it) => dayKeyOf(it) === key).sort((a, b) => timeOf(a).localeCompare(timeOf(b)));
+          const isToday = d.toDateString() === todayKey;
+          const outside = mode === 'month' && d.getMonth() !== curMonth;
+          return (
+            <div
+              key={i}
+              onClick={() => onDayClick(d)}
+              style={{
+                minHeight: cellMin, padding: '4px 5px 6px', cursor: 'pointer',
+                borderLeft: i % 7 === 0 ? 'none' : '1px solid var(--border)',
+                borderTop: i >= 7 ? '1px solid var(--border)' : 'none',
+                background: isToday ? 'rgba(251,176,51,0.10)' : 'transparent',
+                opacity: outside ? 0.4 : 1, display: 'flex', flexDirection: 'column',
+              }}
+            >
+              <div style={{ fontSize: 11, fontFamily: 'var(--f-mono)', color: isToday ? 'var(--accent)' : 'var(--text-4)', fontWeight: isToday ? 700 : 400, textAlign: 'right' }}>{d.getDate()}</div>
+              <div style={{ overflowY: 'auto', flex: 1 }}>
+                {dayItems.map((it) => <DayChip key={it.id} item={it} onClick={onEventClick} />)}
+              </div>
             </div>
-            {days.map((d, i) => {
-              const hit = items.find((it) => it.channel === ch && it.scheduled_for && new Date(String(it.scheduled_for).replace(' ', 'T')).toDateString() === d.toDateString());
-              return (
-                <div key={i} style={{ borderTop: '1px solid var(--border)', borderLeft: '1px solid var(--border)', position: 'relative', minHeight: 38 }}>
-                  {hit && <div title={(hit.title || '') + ' — ' + hit.status} onClick={() => onEventClick && onEventClick(hit)} style={{ cursor: 'pointer', position: 'absolute', top: 5, left: 3, right: 3, bottom: 5, borderRadius: 6, fontSize: 11, color: '#15120e', padding: '3px 6px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 600, background: colorOf(ch), opacity: hit.status === 'draft' ? 0.42 : 1, outline: hit.status === 'delivered' ? '2px solid #fff' : 'none', outlineOffset: -2 }}>{hit.title || '•'}</div>}
-                </div>
-              );
-            })}
-          </React.Fragment>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -105,28 +122,32 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
   const cid = activeClientId;
   const [items, setItems] = useState([]);
   const [channels, setChannels] = useState([]);
-  const [approved, setApproved] = useState([]);
-  const [episodes, setEpisodes] = useState([]);
+  const [approved, setApproved] = useState([]);   // approved scripts (optional attach on manual posts)
+  const [episodes, setEpisodes] = useState([]);   // finished + approved episodes to distribute
   const [publishing, setPublishing] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [channel, setChannel] = useState('');
-  const [channelName, setChannelName] = useState('');
-  const [title, setTitle] = useState('');
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('09:00');
-  const [scriptId, setScriptId] = useState('');
-  const [preview, setPreview] = useState(null);       // script preview from Ready to Distribute
-  const [schedItem, setSchedItem] = useState(null);   // item being scheduled/rescheduled
-  const [schedDate, setSchedDate] = useState('');
-  const [schedTime, setSchedTime] = useState('09:00');
-  const [schedChannel, setSchedChannel] = useState('');
-  const [schedChannelName, setSchedChannelName] = useState('');
-  const [detail, setDetail] = useState(null);         // timeline event detail
+
+  const [mode, setMode] = useState('month');
+  const [anchor, setAnchor] = useState(midnight());
+
+  const [detail, setDetail] = useState(null);       // existing schedule item
   const [detailDate, setDetailDate] = useState('');
   const [detailTime, setDetailTime] = useState('09:00');
-  const formRef = React.useRef(null);
+
+  const [dist, setDist] = useState(null);           // episode being distributed
+  const [distChannels, setDistChannels] = useState(new Set());
+  const [distFeed, setDistFeed] = useState(false);
+  const [distDate, setDistDate] = useState('');
+  const [distTime, setDistTime] = useState('09:00');
+  const [distBusy, setDistBusy] = useState(false);
+
+  const [newPost, setNewPost] = useState(false);    // manual post (from an empty day)
+  const [npChannel, setNpChannel] = useState('');
+  const [npTitle, setNpTitle] = useState('');
+  const [npScriptId, setNpScriptId] = useState('');
+  const [npDate, setNpDate] = useState('');
+  const [npTime, setNpTime] = useState('09:00');
 
   const load = () => {
     if (cid == null) { setLoading(false); return; }
@@ -140,95 +161,82 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
       setItems(Array.isArray(it) ? it : (it.items || []));
       const chans = Array.isArray(ch) ? ch : [];
       setChannels(chans);
-      setChannel((prev) => prev || (chans[0] ? chans[0].key : ''));
       const scr = Array.isArray(sc) ? sc : (sc.scripts || []);
       setApproved(scr.filter((s) => s.status === 'approved'));
       const epsArr = Array.isArray(eps) ? eps : (eps.episodes || []);
-      setEpisodes(epsArr.filter((e) => e.approval_status === 'approved'));
+      // Only finished + approved episodes are distributable.
+      setEpisodes(epsArr.filter((e) => e.approval_status === 'approved' && e.hasVideo));
     }).catch((e) => setErr(e.message || 'Could not load planner.')).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, [cid]);
 
-  const add = async () => {
-    if (!channel) { setErr('Pick a channel'); return; }
-    const body = { channel, title };
-    if (channelName) body.channelName = channelName;
-    if (date) body.scheduledFor = `${date} ${time || '09:00'}`;
-    if (scriptId) body.scriptId = Number(scriptId);
-    try { await sched.add(cid, body); setTitle(''); setChannelName(''); setDate(''); setScriptId(''); load(); }
-    catch (e) { setErr(e.message); }
-  };
-  const scheduleFromApproved = (s) => {
-    setScriptId(String(s.id));
-    if (s.channel && channels.find((c) => c.key === s.channel)) setChannel(s.channel);
-    setTitle(s.topic || '');
-    if (formRef.current) formRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-  const advance = async (id, status) => { try { await sched.advance(cid, id, status); load(); } catch (e) { setErr(e.message); } };
   const del = async (id) => { if (!window.confirm('Remove from planner?')) return; try { await sched.del(cid, id); load(); } catch (e) { setErr(e.message); } };
+  const advance = async (id, status) => { try { await sched.advance(cid, id, status); load(); } catch (e) { setErr(e.message); } };
 
-  // Episode-based distribution: podcast feed is a plain include/exclude flag
-  // on the episode (it's already live automatically); social channels get a
-  // schedule row so they show up in the Draft/Scheduled/Delivered columns
-  // and the timeline, same as script-based posts.
-  const toggleFeed = async (episode) => {
-    try { await epApi.setMeta(cid, episode.id, { feedInclude: !episode.feedInclude }); load(); }
-    catch (e) { setErr(e.message); }
+  // --- calendar nav ---
+  const step = (dir) => {
+    if (mode === 'week') { const d = new Date(anchor); d.setDate(anchor.getDate() + dir * 7); setAnchor(d); }
+    else setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() + dir, 1));
   };
-  const scheduleForEpisodeChannel = (episode, channel) => items.find((i) => i.episode_id === episode.id && i.channel === channel);
-  const toggleChannel = async (episode, channel) => {
-    const existing = scheduleForEpisodeChannel(episode, channel);
-    try {
-      if (existing) {
-        if (existing.status === 'delivered' && !window.confirm('Already published — remove from planner anyway?')) return;
-        await sched.del(cid, existing.id);
-      } else {
-        await sched.add(cid, { channel, title: episode.title, episodeId: episode.id });
-      }
-      load();
-    } catch (e) { setErr(e.message); }
-  };
-  const publishItem = async (item) => {
-    setPublishing((prev) => new Set(prev).add(item.id));
-    try { await epApi.publish(cid, item.episode_id, [item.channel], item.id); }
-    catch { /* server already recorded the error in publish_meta */ }
-    setPublishing((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
-    load();
-  };
+  const label = mode === 'week'
+    ? (() => { const s = new Date(anchor); s.setDate(anchor.getDate() - anchor.getDay()); const e = new Date(s); e.setDate(s.getDate() + 6); return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${e.getFullYear()}`; })()
+    : anchor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
-  const splitWhen = (v) => {
-    const m = String(v || '').replace('T', ' ').match(/^(\d{4}-\d{2}-\d{2})[ ]?(\d{2}:\d{2})?/);
-    return { d: m ? m[1] : '', t: (m && m[2]) || '09:00' };
-  };
-  const openSchedule = (item) => {
-    const w = splitWhen(item.scheduled_for);
-    setSchedItem(item); setSchedDate(w.d); setSchedTime(w.t);
-    setSchedChannel(item.channel || ''); setSchedChannelName(item.channel_name || '');
-  };
-  const saveSchedule = async () => {
-    if (!schedDate) { setErr('Pick a date to schedule.'); return; }
-    try {
-      await sched.update(cid, schedItem.id, {
-        channel: schedChannel || schedItem.channel,
-        channelName: schedChannelName || null,
-        scheduledFor: `${schedDate} ${schedTime || '09:00'}`,
-        status: 'scheduled',
-      });
-      setSchedItem(null); load();
-    } catch (e) { setErr(e.message); }
-  };
-  const openDetail = (item) => {
-    const w = splitWhen(item.scheduled_for);
-    setDetail(item); setDetailDate(w.d); setDetailTime(w.t);
-  };
+  // --- existing-item detail (reschedule / cancel / publish) ---
+  const openDetail = (item) => { const w = splitWhen(item.scheduled_for); setDetail(item); setDetailDate(w.d); setDetailTime(w.t); };
   const saveDetailDate = async () => {
     if (!detailDate) { setErr('Pick a date.'); return; }
-    try { await sched.update(cid, detail.id, { scheduledFor: `${detailDate} ${detailTime || '09:00'}` }); setDetail(null); load(); }
+    try { await sched.update(cid, detail.id, { scheduledFor: `${detailDate} ${detailTime || '09:00'}`, status: 'scheduled' }); setDetail(null); load(); }
     catch (e) { setErr(e.message); }
   };
   const cancelEvent = async () => {
     if (!window.confirm('Cancel this event and remove it from the planner?')) return;
     try { await sched.del(cid, detail.id); setDetail(null); load(); } catch (e) { setErr(e.message); }
+  };
+  const publishItem = async (item) => {
+    setPublishing((prev) => new Set(prev).add(item.id));
+    try { await epApi.publish(cid, item.episode_id, [item.channel], item.id); }
+    catch { /* server records the error in publish_meta */ }
+    setPublishing((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
+    setDetail(null); load();
+  };
+
+  // --- distribute an approved+rendered episode ---
+  const openDistribute = (epi) => {
+    const mine = items.filter((i) => i.episode_id === epi.id);
+    setDist(epi);
+    setDistChannels(new Set(mine.map((i) => i.channel).filter((c) => SOCIAL_CHANNELS.some((s) => s.key === c))));
+    setDistFeed(!!epi.feedInclude);
+    const w = splitWhen(mine[0] && mine[0].scheduled_for);
+    setDistDate(w.d || ymd(midnight())); setDistTime(w.t || '09:00');
+  };
+  const toggleDistChannel = (key) => setDistChannels((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const saveDistribute = async () => {
+    const chans = [...distChannels];
+    if (!chans.length && distFeed === !!dist.feedInclude) { setErr('Pick at least one channel, or change the podcast-feed setting.'); return; }
+    if (chans.length && !distDate) { setErr('Pick a date to schedule the social posts.'); return; }
+    const when = `${distDate} ${distTime || '09:00'}`;
+    setDistBusy(true); setErr('');
+    try {
+      if (distFeed !== !!dist.feedInclude) await epApi.setMeta(cid, dist.id, { feedInclude: distFeed });
+      for (const ch of chans) {
+        const existing = items.find((i) => i.episode_id === dist.id && i.channel === ch);
+        if (existing) await sched.update(cid, existing.id, { scheduledFor: when, status: 'scheduled' });
+        else await sched.add(cid, { channel: ch, title: dist.title, episodeId: dist.id, scheduledFor: when });
+      }
+      setDist(null); load();
+    } catch (e) { setErr(e.message); }
+    finally { setDistBusy(false); }
+  };
+
+  // --- manual post from an empty day ---
+  const openNewPost = (day) => { setNewPost(true); setNpDate(ymd(day)); setNpTime('09:00'); setNpChannel(channels[0] ? channels[0].key : ''); setNpTitle(''); setNpScriptId(''); };
+  const saveNewPost = async () => {
+    if (!npChannel) { setErr('Pick a channel.'); return; }
+    const body = { channel: npChannel, title: npTitle };
+    if (npDate) body.scheduledFor = `${npDate} ${npTime || '09:00'}`;
+    if (npScriptId) body.scriptId = Number(npScriptId);
+    try { await sched.add(cid, body); setNewPost(false); load(); } catch (e) { setErr(e.message); }
   };
 
   if (cid == null) {
@@ -242,146 +250,143 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
     );
   }
 
-  const byStatus = (st) => items.filter((i) => i.status === st);
+  const todayKey = new Date().toDateString();
+  const unscheduled = items.filter((i) => !i.scheduled_for || i.status === 'draft');
+  const isEpisodeSocial = detail && detail.episode_id && SOCIAL_CHANNELS.some((c) => c.key === detail.channel);
+  const detailMeta = (() => { if (!detail || !detail.publish_meta) return null; try { return JSON.parse(detail.publish_meta); } catch { return null; } })();
 
   return (
     <div className="v-pad fade-in">
       {onBackToStudio && <button className="btn sm" style={{ marginBottom: 10 }} onClick={onBackToStudio}><Icon name="arrow-l" size={12} /> Studio</button>}
+
+      {/* Calendar */}
       <div className="card card-pad" style={{ marginBottom: 14 }}>
-        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-          <div className="label">TIMELINE</div>
-          <div className="row" style={{ gap: 6 }}>
-            <button className="btn sm" onClick={() => setWeekOffset(weekOffset - 1)}>‹ Earlier</button>
-            <button className="btn sm" onClick={() => setWeekOffset(0)}>Today</button>
-            <button className="btn sm" onClick={() => setWeekOffset(weekOffset + 1)}>Later ›</button>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+            <button className="btn sm" onClick={() => step(-1)} title="Previous">‹</button>
+            <button className="btn sm" onClick={() => setAnchor(midnight())}>Today</button>
+            <button className="btn sm" onClick={() => step(1)} title="Next">›</button>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, marginLeft: 8 }}>{label}</div>
+          </div>
+          <div className="row" style={{ gap: 0, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', overflow: 'hidden' }}>
+            {['month', 'week'].map((m) => (
+              <button key={m} className="btn sm" onClick={() => setMode(m)}
+                style={{ borderRadius: 0, border: 'none', textTransform: 'capitalize', background: mode === m ? 'var(--surface-2)' : 'transparent', color: mode === m ? 'var(--accent)' : 'var(--text-3)', fontWeight: mode === m ? 700 : 400 }}>{m}</button>
+            ))}
           </div>
         </div>
-        <Timeline items={items} channels={channels} weekOffset={weekOffset} onEventClick={openDetail} />
+        <CalendarGrid mode={mode} anchor={anchor} items={items} todayKey={todayKey} onEventClick={openDetail} onDayClick={openNewPost} />
+        <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 8 }}>Click a day to plan a post · click a chip to reschedule, publish, or cancel · faded = draft, solid = scheduled, outlined ✓ = delivered</div>
       </div>
-      {episodes.length > 0 && (
+
+      {/* Unscheduled drafts strip */}
+      {unscheduled.length > 0 && (
         <div className="card card-pad" style={{ marginBottom: 14 }}>
-          <div className="label" style={{ marginBottom: 10 }}>EPISODES READY TO DISTRIBUTE <span style={{ color: 'var(--text-4)' }}>({episodes.length})</span></div>
+          <div className="label" style={{ marginBottom: 10 }}>UNSCHEDULED DRAFTS <span style={{ color: 'var(--text-4)' }}>({unscheduled.length})</span></div>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            {unscheduled.map((i) => (
+              <div key={i.id} className="card" style={{ padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface-2)' }}>
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: colorOf(i.channel), flex: 'none' }} />
+                <span style={{ fontSize: 12.5, fontWeight: 600, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title || '(untitled)'}</span>
+                <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{i.channel}</span>
+                <button className="btn sm" onClick={() => openDetail(i)}><Icon name="history" size={12} /> Schedule</button>
+                <button className="btn sm" onClick={() => del(i.id)} title="Remove">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Distribute finished + approved episodes */}
+      <div className="card card-pad" style={{ marginBottom: 14 }}>
+        <div className="label" style={{ marginBottom: 10 }}>DISTRIBUTE AN EPISODE <span style={{ color: 'var(--text-4)' }}>({episodes.length})</span></div>
+        {episodes.length === 0 ? (
+          <div className="mono" style={{ color: 'var(--text-4)' }}>No episodes ready yet — an episode appears here once it's rendered and approved by the client.</div>
+        ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
-            {episodes.map((epi) => (
-              <div key={epi.id} className="card" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{epi.title}</div>
-                <label className="row" style={{ gap: 6, alignItems: 'center', fontSize: 12 }}>
-                  <input type="checkbox" checked={!!epi.feedInclude} onChange={() => toggleFeed(epi)} />
-                  <span className="mono">Podcast feed {epi.feedInclude ? '(live)' : '(excluded)'}</span>
-                </label>
-                {SOCIAL_CHANNELS.map((c) => {
-                  const existing = scheduleForEpisodeChannel(epi, c.key);
-                  return (
-                    <label key={c.key} className="row" style={{ gap: 6, alignItems: 'center', fontSize: 12, opacity: epi.hasVideo ? 1 : 0.5 }}>
-                      <input type="checkbox" disabled={!epi.hasVideo} checked={!!existing} onChange={() => toggleChannel(epi, c.key)} />
-                      <span style={{ width: 9, height: 9, borderRadius: 2, background: colorOf(c.key), flex: 'none' }} />
-                      <span className="mono">{c.label}{existing ? ' — ' + existing.status : ''}</span>
-                    </label>
-                  );
-                })}
-                {!epi.hasVideo && <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>No video output — social channels need one.</div>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {approved.length > 0 && (
-        <div className="card card-pad" style={{ marginBottom: 14 }}>
-          <div className="label" style={{ marginBottom: 10 }}>READY TO DISTRIBUTE <span style={{ color: 'var(--text-4)' }}>({approved.length})</span></div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
-            {approved.map((s) => (
-              <div key={s.id} className="card" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div className="row" style={{ gap: 6, alignItems: 'center' }}>
-                  <span className="badge">{s.channel}</span>
-                  <span className="mono" style={{ color: 'var(--ok)', fontSize: 11 }}>approved</span>
+            {episodes.map((epi) => {
+              const scheduledCount = items.filter((i) => i.episode_id === epi.id && SOCIAL_CHANNELS.some((s) => s.key === i.channel)).length;
+              return (
+                <div key={epi.id} className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{epi.title}</div>
+                  <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                    <span className="mono" style={{ fontSize: 11, color: epi.feedInclude ? 'var(--ok)' : 'var(--text-4)' }}>{epi.feedInclude ? '● podcast feed' : '○ feed off'}</span>
+                    {scheduledCount > 0 && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{scheduledCount} scheduled</span>}
+                  </div>
+                  <button className="btn primary sm" style={{ marginTop: 'auto' }} onClick={() => openDistribute(epi)}><Icon name="send" size={12} /> Schedule</button>
                 </div>
-                <div style={{ fontSize: 13, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.topic || (s.body || '').slice(0, 80) || 'Untitled script'}</div>
-                <div className="row" style={{ gap: 6, marginTop: 'auto' }}>
-                  <button className="btn sm" onClick={() => scheduleFromApproved(s)}><Icon name="plus" size={12} /> Schedule</button>
-                  <button className="btn sm" onClick={() => setPreview(s)}><Icon name="doc" size={12} /> Preview</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </div>
-      )}
-      <div ref={formRef} className="card card-pad" style={{ marginBottom: 14 }}>
-        <div className="label" style={{ marginBottom: 10 }}>PLAN A POST</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <label className="col" style={{ gap: 4 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Channel</span>
-            <select value={channel} onChange={(e) => setChannel(e.target.value)} style={inputStyle}>{channels.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</select></label>
-          <label className="col" style={{ gap: 4 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Channel name</span>
-            <input value={channelName} onChange={(e) => setChannelName(e.target.value)} placeholder="e.g. The Morning Brew Show" style={inputStyle} /></label>
-          <label className="col" style={{ gap: 4 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Title</span>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Episode / post name" style={inputStyle} /></label>
-          <div className="row" style={{ gap: 8 }}>
-            <label className="col" style={{ gap: 4, flex: 1 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Date</span><input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} /></label>
-            <label className="col" style={{ gap: 4, width: 120 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Time</span><input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={inputStyle} /></label>
-          </div>
-        </div>
-        <label className="col" style={{ gap: 4, marginTop: 10 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Attach approved script (optional)</span>
-          <select value={scriptId} onChange={(e) => setScriptId(e.target.value)} style={inputStyle}>
-            <option value="">— none —</option>
-            {approved.map((s) => <option key={s.id} value={s.id}>{s.channel}: {(s.topic || s.body || '').slice(0, 40)}</option>)}
-          </select></label>
-        <button className="btn primary" onClick={add} style={{ marginTop: 10 }}><Icon name="plus" size={13} /> Add to planner</button>
-        {approved.length === 0 && <div className="mono" style={{ color: 'var(--text-4)', marginTop: 8 }}>Tip: approve scripts in the Scripts tab to attach them here.</div>}
+        )}
       </div>
 
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
       {loading && <div className="mono" style={{ color: 'var(--text-3)' }}>Loading planner…</div>}
 
-      <div className="row" style={{ gap: 12, alignItems: 'flex-start', marginBottom: 14 }}>
-        {[['draft', 'Draft'], ['scheduled', 'Scheduled'], ['delivered', 'Delivered']].map(([st, lbl]) => (
-          <div key={st} className="card card-pad" style={{ flex: 1, minWidth: 0 }}>
-            <div className="label" style={{ marginBottom: 10 }}>{lbl} <span style={{ color: 'var(--text-4)' }}>({byStatus(st).length})</span></div>
-            <div className="col" style={{ gap: 8 }}>
-              {byStatus(st).length === 0 ? <div className="mono" style={{ color: 'var(--text-4)' }}>Nothing here.</div>
-                : byStatus(st).map((i) => <PlanCard key={i.id} item={i} onAdvance={advance} onDel={del} onSchedule={openSchedule} onPublish={publishItem} publishing={publishing} />)}
+      {/* Distribute modal */}
+      {dist && (
+        <Portal><div onClick={() => setDist(null)} style={overlayStyle}>
+          <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(480px, 96vw)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="label">SCHEDULE · {dist.title}</div>
+            <div className="col" style={{ gap: 6 }}>
+              <span className="mono" style={{ color: 'var(--text-4)' }}>Social channels</span>
+              {SOCIAL_CHANNELS.map((c) => (
+                <label key={c.key} className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13 }}>
+                  <input type="checkbox" checked={distChannels.has(c.key)} onChange={() => toggleDistChannel(c.key)} />
+                  <span style={{ width: 10, height: 10, borderRadius: 2, background: colorOf(c.key), flex: 'none' }} />
+                  <span>{c.label}</span>
+                </label>
+              ))}
             </div>
-          </div>
-        ))}
-      </div>
-
-      {preview && (
-        <Portal><div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
-          <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(680px, 96vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="label">PREVIEW · {preview.channel}{preview.topic ? ' · ' + preview.topic : ''}</div>
-              <button className="btn sm" onClick={() => setPreview(null)}>Close</button>
-            </div>
-            {preview.title && <div style={{ fontFamily: 'var(--f-display)', fontSize: 19 }}>{preview.title}</div>}
-            {preview.description && <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>{preview.description}</div>}
-            <div style={{ overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: 12, background: 'var(--surface)' }}>{preview.body}</div>
-            <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
-              <button className="btn primary sm" onClick={() => { scheduleFromApproved(preview); setPreview(null); }}><Icon name="plus" size={12} /> Schedule this</button>
-            </div>
-          </div>
-        </div></Portal>
-      )}
-      {schedItem && (
-        <Portal><div onClick={() => setSchedItem(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
-          <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(460px, 96vw)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div className="label">SCHEDULE · {schedItem.title || '(untitled)'}</div>
-            <label className="col" style={{ gap: 4 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Channel</span>
-              <select value={schedChannel} onChange={(e) => setSchedChannel(e.target.value)} style={inputStyle}>
-                {[...new Set([schedItem.channel, ...channels.map((c) => c.key)])].filter(Boolean).map((k) => <option key={k} value={k}>{(channels.find((c) => c.key === k) || {}).label || k}</option>)}
-              </select></label>
-            <label className="col" style={{ gap: 4 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Channel name (outlet)</span>
-              <input value={schedChannelName} onChange={(e) => setSchedChannelName(e.target.value)} placeholder="e.g. The Morning Brew Show" style={inputStyle} /></label>
+            <label className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+              <input type="checkbox" checked={distFeed} onChange={(e) => setDistFeed(e.target.checked)} />
+              <span>Also include in the podcast feed</span>
+            </label>
             <div className="row" style={{ gap: 8 }}>
-              <label className="col" style={{ gap: 4, flex: 1 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Publish date</span><input type="date" value={schedDate} onChange={(e) => setSchedDate(e.target.value)} style={inputStyle} /></label>
-              <label className="col" style={{ gap: 4, width: 120 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Time</span><input type="time" value={schedTime} onChange={(e) => setSchedTime(e.target.value)} style={inputStyle} /></label>
+              <label className="col" style={{ gap: 4, flex: 1 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Publish date</span><input type="date" value={distDate} onChange={(e) => setDistDate(e.target.value)} style={inputStyle} /></label>
+              <label className="col" style={{ gap: 4, width: 120 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Time</span><input type="time" value={distTime} onChange={(e) => setDistTime(e.target.value)} style={inputStyle} /></label>
             </div>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Each checked channel gets a scheduled post on that date. Publish it from its calendar chip when ready.</div>
             <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
-              <button className="btn sm" onClick={() => setSchedItem(null)}>Cancel</button>
-              <button className="btn primary sm" onClick={saveSchedule}><Icon name="check" size={12} /> Schedule</button>
+              <button className="btn sm" onClick={() => setDist(null)}>Cancel</button>
+              <button className="btn primary sm" disabled={distBusy} onClick={saveDistribute}><Icon name="check" size={12} /> {distBusy ? 'Saving…' : 'Schedule'}</button>
             </div>
           </div>
         </div></Portal>
       )}
+
+      {/* Manual new-post modal (empty day) */}
+      {newPost && (
+        <Portal><div onClick={() => setNewPost(false)} style={overlayStyle}>
+          <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(460px, 96vw)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="label">PLAN A POST</div>
+            <label className="col" style={{ gap: 4 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Channel</span>
+              <select value={npChannel} onChange={(e) => setNpChannel(e.target.value)} style={inputStyle}>{channels.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</select></label>
+            <label className="col" style={{ gap: 4 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Title</span>
+              <input value={npTitle} onChange={(e) => setNpTitle(e.target.value)} placeholder="Episode / post name" style={inputStyle} /></label>
+            <div className="row" style={{ gap: 8 }}>
+              <label className="col" style={{ gap: 4, flex: 1 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Date</span><input type="date" value={npDate} onChange={(e) => setNpDate(e.target.value)} style={inputStyle} /></label>
+              <label className="col" style={{ gap: 4, width: 120 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Time</span><input type="time" value={npTime} onChange={(e) => setNpTime(e.target.value)} style={inputStyle} /></label>
+            </div>
+            {approved.length > 0 && (
+              <label className="col" style={{ gap: 4 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Attach approved script (optional)</span>
+                <select value={npScriptId} onChange={(e) => setNpScriptId(e.target.value)} style={inputStyle}>
+                  <option value="">— none —</option>
+                  {approved.map((s) => <option key={s.id} value={s.id}>{s.channel}: {(s.topic || s.body || '').slice(0, 40)}</option>)}
+                </select></label>
+            )}
+            <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn sm" onClick={() => setNewPost(false)}>Cancel</button>
+              <button className="btn primary sm" onClick={saveNewPost}><Icon name="plus" size={12} /> Add to planner</button>
+            </div>
+          </div>
+        </div></Portal>
+      )}
+
+      {/* Existing-item detail modal */}
       {detail && (
-        <Portal><div onClick={() => setDetail(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
+        <Portal><div onClick={() => setDetail(null)} style={overlayStyle}>
           <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(520px, 96vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="row" style={{ gap: 8, alignItems: 'center' }}>
@@ -393,15 +398,32 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
             <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>
               {(channels.find((c) => c.key === detail.channel) || {}).label || detail.channel}
               {detail.channel_name ? ' · ' + detail.channel_name : ''} · {detail.status}
+              {timeOf(detail) ? ' · ' + fmt12(timeOf(detail)) : ''}
             </div>
+            {isEpisodeSocial && detail.episode_has_video === false && (
+              <div className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>No video on this episode yet — stitch it first.</div>
+            )}
+            {detailMeta && detailMeta.ok === false && (
+              <div className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>Last attempt failed: {detailMeta.error}</div>
+            )}
             {detail.script_body && <div style={{ overflow: 'auto', maxHeight: 200, whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.6, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: 10, background: 'var(--surface)' }}>{detail.script_body}</div>}
             <div className="row" style={{ gap: 8 }}>
               <label className="col" style={{ gap: 4, flex: 1 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Publish date</span><input type="date" value={detailDate} onChange={(e) => setDetailDate(e.target.value)} style={inputStyle} /></label>
               <label className="col" style={{ gap: 4, width: 120 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Time</span><input type="time" value={detailTime} onChange={(e) => setDetailTime(e.target.value)} style={inputStyle} /></label>
             </div>
-            <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
+            <div className="row" style={{ justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
               <button className="btn sm" onClick={cancelEvent} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Cancel event</button>
-              <button className="btn primary sm" onClick={saveDetailDate}><Icon name="check" size={12} /> Save date</button>
+              <div className="row" style={{ gap: 8 }}>
+                {isEpisodeSocial && (
+                  <button className="btn sm primary" disabled={publishing.has(detail.id) || detail.episode_has_video === false} onClick={() => publishItem(detail)}>
+                    {publishing.has(detail.id) ? 'Publishing…' : <><Icon name="check" size={12} /> Publish now</>}
+                  </button>
+                )}
+                {!isEpisodeSocial && detail.status === 'scheduled' && (
+                  <button className="btn sm" onClick={() => { advance(detail.id, 'delivered'); setDetail(null); }}>Mark delivered</button>
+                )}
+                <button className="btn primary sm" onClick={saveDetailDate}><Icon name="check" size={12} /> Save date</button>
+              </div>
             </div>
           </div>
         </div></Portal>
