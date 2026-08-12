@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { Icon } from './shared.jsx'
 import { sched, ep as epApi } from './dashboard-api.js'
+import { createPortal } from 'react-dom'
+
+// Render modals at <body> so an ancestor's transform/scroll (.fade-in / .view)
+// can't re-anchor a position:fixed overlay off-screen.
+const Portal = ({ children }) => createPortal(children, document.body);
 
 const CHAN_COLORS = {
   longform: '#fbb033', shortform: '#d6608f', blog: '#4a90d6', episode: '#6bbf8a',
@@ -139,7 +144,7 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
       const scr = Array.isArray(sc) ? sc : (sc.scripts || []);
       setApproved(scr.filter((s) => s.status === 'approved'));
       const epsArr = Array.isArray(eps) ? eps : (eps.episodes || []);
-      setEpisodes(epsArr.filter((e) => e.hasOutput));
+      setEpisodes(epsArr.filter((e) => e.approval_status === 'approved'));
     }).catch((e) => setErr(e.message || 'Could not load planner.')).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, [cid]);
@@ -339,7 +344,7 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
       </div>
 
       {preview && (
-        <div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
+        <Portal><div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
           <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(680px, 96vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="label">PREVIEW · {preview.channel}{preview.topic ? ' · ' + preview.topic : ''}</div>
@@ -352,10 +357,10 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
               <button className="btn primary sm" onClick={() => { scheduleFromApproved(preview); setPreview(null); }}><Icon name="plus" size={12} /> Schedule this</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
       {schedItem && (
-        <div onClick={() => setSchedItem(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
+        <Portal><div onClick={() => setSchedItem(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
           <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(460px, 96vw)', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div className="label">SCHEDULE · {schedItem.title || '(untitled)'}</div>
             <label className="col" style={{ gap: 4 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Channel</span>
@@ -373,10 +378,10 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
               <button className="btn primary sm" onClick={saveSchedule}><Icon name="check" size={12} /> Schedule</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
       {detail && (
-        <div onClick={() => setDetail(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
+        <Portal><div onClick={() => setDetail(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
           <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(520px, 96vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="row" style={{ gap: 8, alignItems: 'center' }}>
@@ -399,7 +404,7 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
               <button className="btn primary sm" onClick={saveDetailDate}><Icon name="check" size={12} /> Save date</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
     </div>
   );
