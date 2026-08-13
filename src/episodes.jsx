@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Icon, downloadWithPrompt } from './shared.jsx'
+import { Icon, downloadWithPrompt, buildArchiveZip } from './shared.jsx'
 import { ep, video, rec, clientToken, sched } from './dashboard-api.js'
 import { api, episodeWaveformStart, episodeWaveformStatus, episodeWaveformFileUrl } from './api.js'
 import { LookPicker } from './brief.jsx'
@@ -603,7 +603,7 @@ function epTitle(e) {
   return t;
 }
 
-function EpRow({ cid, e, active, onOpen, onRemove }) {
+function EpRow({ cid, e, active, onOpen, onRemove, onArchive }) {
   return (
     <div className="card" onClick={onOpen}
       style={{ padding: 10, cursor: 'pointer', border: '1px solid ' + (active ? 'var(--accent)' : 'var(--border)'), background: active ? 'var(--surface-2)' : 'var(--surface)' }}>
@@ -625,6 +625,7 @@ function EpRow({ cid, e, active, onOpen, onRemove }) {
         <button className="btn sm" onClick={onOpen}>{active ? 'Close' : 'Open'}</button>
         {e.hasOutput && <button className="btn sm" onClick={() => downloadWithPrompt(ep.videoFileUrl(cid, e.id), (e.title || 'episode').replace(/[^\w-]+/g, '_') + '.mp4')}><Icon name="download" size={12} /> Video</button>}
         {e.hasOutput && <button className="btn sm" onClick={() => downloadWithPrompt(ep.fileUrl(cid, e.id), (e.title || 'episode').replace(/[^\w-]+/g, '_') + '.mp3')}><Icon name="download" size={12} /> Audio</button>}
+        {onArchive && <button className="btn sm" onClick={onArchive} title="Download a .zip backup (media + manifest), then delete"><Icon name="download" size={12} /> Archive</button>}
         <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={onRemove}><Icon name="close" size={12} /> Delete</button>
       </div>
     </div>
@@ -710,6 +711,24 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
     if (!window.confirm('Delete this episode and its files?')) return;
     try { await ep.del(cid, id); if (openId === id) setOpenId(null); await load(); }
     catch (e) { setErr(e.message || 'Could not delete.'); }
+  };
+  // Archive = download a .zip (media + manifest) FIRST, then offer to delete.
+  // Two steps so nothing is purged before the backup exists.
+  const archive = async (e) => {
+    setErr('');
+    try {
+      const n = await buildArchiveZip({
+        zipName: `episode-${e.id}-${(e.title || 'episode').replace(/[^\w-]+/g, '_')}.zip`,
+        files: [
+          e.hasVideo && { url: ep.videoFileUrl(cid, e.id), name: 'video.mp4' },
+          e.hasOutput && { url: ep.fileUrl(cid, e.id), name: 'audio.mp3' },
+          e.hasCover && { url: ep.coverUrl(cid, e.id), name: 'cover.jpg' },
+        ].filter(Boolean),
+        manifest: { type: 'episode', ...e, archivedAt: new Date().toISOString() },
+      });
+      if (!window.confirm(`Archive .zip downloaded (${n} file${n === 1 ? '' : 's'} + manifest). Delete this episode and its files permanently now? Make sure the download finished first.`)) return;
+      await ep.del(cid, e.id); if (openId === e.id) setOpenId(null); await load();
+    } catch (err) { setErr('Archive failed — nothing was deleted: ' + (err.message || err)); }
   };
 
   // An episode is "past" once every schedule row planned for it (it can have
@@ -816,7 +835,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {activeList.map((e) => (
               <EpRow key={e.id} cid={cid} e={e} active={openId === e.id}
-                onOpen={() => setOpenId(openId === e.id ? null : e.id)} onRemove={() => remove(e.id)} />
+                onOpen={() => setOpenId(openId === e.id ? null : e.id)} onRemove={() => remove(e.id)} onArchive={() => archive(e)} />
             ))}
           </div>
         )}
@@ -835,7 +854,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {g.items.map((e) => (
                         <EpRow key={e.id} cid={cid} e={e} active={openId === e.id}
-                          onOpen={() => setOpenId(openId === e.id ? null : e.id)} onRemove={() => remove(e.id)} />
+                          onOpen={() => setOpenId(openId === e.id ? null : e.id)} onRemove={() => remove(e.id)} onArchive={() => archive(e)} />
                       ))}
                     </div>
                   </div>

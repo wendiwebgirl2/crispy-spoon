@@ -341,8 +341,37 @@ const ExpressionTags = ({ value, onChange, textareaRef }) => {
   );
 };
 
+// Build a .zip archive in the browser and trigger its download. JSZip is
+// lazy-loaded (its own chunk) so it never weighs on initial load.
+//   files:  [{ url, name }]   — fetched (same-origin) and added; missing ones skipped
+//   texts:  [{ name, content }] — added verbatim
+//   manifest: object          — serialized to manifest.json
+// Returns the number of media files actually written, so callers can warn if
+// an expected file didn't come through before offering to delete the original.
+async function buildArchiveZip({ zipName, files = [], texts = [], manifest }) {
+  const { default: JSZip } = await import('jszip');
+  const zip = new JSZip();
+  let written = 0;
+  for (const f of files) {
+    if (!f || !f.url) continue;
+    try {
+      const r = await fetch(f.url, { credentials: 'same-origin' });
+      if (r.ok) { zip.file(f.name, await r.blob()); written += 1; }
+    } catch { /* skip a file that won't fetch rather than fail the whole zip */ }
+  }
+  for (const t of texts) { if (t && t.name) { zip.file(t.name, t.content || ''); written += 1; } }
+  if (manifest) zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = zipName; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  return written;
+}
+
 export {
   ExpressionTags,
+  buildArchiveZip,
   downloadWithPrompt,
   saveBlobWithPrompt,
   getOperatorName,

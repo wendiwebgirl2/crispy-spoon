@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { api, generateVideo, listVideos } from './api.js'
-import { Icon, ensureOperatorName, ExpressionTags } from './shared.jsx'
+import { Icon, ensureOperatorName, ExpressionTags, buildArchiveZip } from './shared.jsx'
 import { TopicsSection } from './brief.jsx'
 
 const CHANNEL_FALLBACK = [
@@ -287,6 +287,47 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       setSelected(new Set());
       await refreshHistory();
     } catch (e) { setErr(e.message || 'Could not delete the topic.'); }
+  };
+
+  // Render one script as a readable .md file for the archive zip.
+  const scriptMd = (h) => {
+    const title = (h.title && h.title.trim()) || (h.topic && h.topic.trim()) || `Script ${h.id}`;
+    const parts = [`# ${title}`, '', `_${labelFor(h.channel)}${h.job_number ? ` · Job ${h.job_number}` : ''}${h.episode_number ? ` · E${String(h.episode_number).replace(/^E/i, '')}` : ''}_`, '', h.body || ''];
+    if (h.description) parts.push('', '## Description', '', h.description);
+    if (h.hashtags) parts.push('', '## Hashtags', '', h.hashtags);
+    return parts.join('\n');
+  };
+  const safe = (s) => String(s || '').replace(/[^\w-]+/g, '_').slice(0, 50);
+
+  // Archive one script: download a .zip (script .md + manifest), then offer delete.
+  const archiveScript = async (h) => {
+    setErr('');
+    try {
+      await buildArchiveZip({
+        zipName: `script-${h.id}-${safe(h.title || h.topic || 'script')}.zip`,
+        texts: [{ name: `${typePrefix(h.channel, h.variant)}-${h.id}.md`, content: scriptMd(h) }],
+        manifest: { type: 'script', ...h, archivedAt: new Date().toISOString() },
+      });
+      if (!window.confirm('Archive .zip downloaded. Delete this script permanently now?')) return;
+      await remove(h.id);
+    } catch (e) { setErr('Archive failed — nothing was deleted: ' + (e.message || e)); }
+  };
+
+  // Archive a whole topic of scripts as one zip (download only — no delete here;
+  // "Delete all" is a separate button).
+  const archiveTopicGroup = async (g) => {
+    setErr('');
+    try {
+      await buildArchiveZip({
+        zipName: `topic-${safe(g.topic || 'untitled')}.zip`,
+        texts: g.items.map((h) => ({ name: `${typePrefix(h.channel, h.variant)}-${h.id}.md`, content: scriptMd(h) })),
+        manifest: {
+          type: 'topic', topic: g.topic, count: g.items.length,
+          scripts: g.items.map((h) => ({ id: h.id, channel: h.channel, title: h.title, job_number: h.job_number })),
+          archivedAt: new Date().toISOString(),
+        },
+      });
+    } catch (e) { setErr('Topic archive failed: ' + (e.message || e)); }
   };
 
   // Multi-select → batch cast. Picks the client's first ready avatar and fires a
@@ -587,6 +628,10 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                       <Icon name="sliders" size={12} />
                     </span>
                   )}
+                  <span className="icon-btn" title="Download this topic as a .zip" role="button"
+                    onClick={(e) => { e.stopPropagation(); archiveTopicGroup(g); }}>
+                    <Icon name="download" size={12} />
+                  </span>
                   <span className="icon-btn" title="Delete all scripts in this topic" role="button"
                     style={{ color: 'var(--accent)' }}
                     onClick={(e) => { e.stopPropagation(); deleteTopicGroup(g); }}>
@@ -661,6 +706,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 {h.prev_body && h.prev_body !== h.body && <button className="btn sm" onClick={() => setDiffOpen(diffOpen === h.id ? null : h.id)}><Icon name="sliders" size={12} /> {diffOpen === h.id ? 'Hide changes' : 'Show changes'}</button>}
                 <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> {h.approval_status === 'changes_completed' ? 'Resend for approval' : 'Send for approval'}</button>
                 {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body, castTitleFor(h), h.job_number, h.id)}><Icon name="sparkle" size={12} /> Cast</button>}
+                <button className="btn sm" onClick={() => archiveScript(h)} title="Download a .zip backup, then delete"><Icon name="download" size={12} /> Archive</button>
                 <button className="btn sm" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Delete</button>
               </div>
             </div>
