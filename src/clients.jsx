@@ -13,6 +13,10 @@ function ClientsView({ activeClientId, onSelect, onOpenClient }) {
   const [err, setErr] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  // Only admins may create or delete clients (the server enforces this too, but
+  // hide the controls so an editor never triggers the destructive delete cascade).
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => { api.me().then((m) => setIsAdmin(m && m.role === 'admin')).catch(() => setIsAdmin(false)); }, []);
 
   const load = async () => {
     setErr('');
@@ -107,6 +111,7 @@ function ClientsView({ activeClientId, onSelect, onOpenClient }) {
         </div>
       )}
 
+      {isAdmin && (
       <div className="card card-pad" style={{ marginTop: 18, marginBottom: 22 }}>
         <div className="label">ADD A CLIENT</div>
         <div className="row" style={{ gap: 10, marginTop: 10, alignItems: 'stretch' }}>
@@ -128,6 +133,7 @@ function ClientsView({ activeClientId, onSelect, onOpenClient }) {
           </button>
         </div>
       </div>
+      )}
 
       {loading ? (
         <div className="mono" style={{ color: 'var(--text-3)' }}>Loading clients…</div>
@@ -159,9 +165,11 @@ function ClientsView({ activeClientId, onSelect, onOpenClient }) {
                 <button className="icon-btn" title="Rename" onClick={() => rename(c)}>
                   <Icon name="more" size={14} />
                 </button>
-                <button className="icon-btn" title="Delete" onClick={() => remove(c)} style={{ color: 'var(--accent)' }}>
-                  ✕
-                </button>
+                {isAdmin && (
+                  <button className="icon-btn" title="Delete" onClick={() => remove(c)} style={{ color: 'var(--accent)' }}>
+                    ✕
+                  </button>
+                )}
               </div>
             );
           })}
