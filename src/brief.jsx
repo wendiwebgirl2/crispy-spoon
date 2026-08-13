@@ -810,12 +810,11 @@ function BriefView({ clientId, onSendTopicToScripts }) {
         ))}
       </div>
 
-      {/* Topics moved to the Scripts page — manage the topic queue there. */}
+      {/* Topics moved to the Scripts page; Assets moved to the Studio Assets step. */}
 
-      <AssetsSection clientId={clientId} />
       <AvatarsSection clientId={clientId} />
     </div>
   );
 }
 
-export { BriefView, LookPicker, TopicsSection }
+export { BriefView, LookPicker, TopicsSection, AssetsSection }

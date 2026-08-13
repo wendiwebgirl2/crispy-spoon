@@ -202,7 +202,10 @@ function AttentionView({ onOpen }) {
 function App() {
   const [view, setView] = React.useState('clients');
   const [studioNonce, setStudioNonce] = React.useState(0);
-  const goStudio = () => { setStudioNonce((n) => n + 1); setView('studio'); };
+  const [studioStep, setStudioStep] = React.useState(null);
+  // `step` is optional; guard against event objects when goStudio is passed
+  // directly as a click handler (onBackToStudio={goStudio}).
+  const goStudio = (step) => { setStudioStep(typeof step === 'string' ? step : null); setStudioNonce((n) => n + 1); setView('studio'); };
   const [castRequest, setCastRequest] = React.useState(null);
   const [scriptTopicRequest, setScriptTopicRequest] = React.useState(null);
   const [scriptRequest, setScriptRequest] = React.useState(null);
@@ -370,11 +373,16 @@ function App() {
             />
           )}
           {view === 'brief' && <BriefView clientId={activeClientId} onSendTopicToScripts={(t) => { setScriptTopicRequest(t); setView('scripts'); }} />}
-          {view === 'client-detail' && <ClientDetailView client={detailClient} onBack={() => setView('clients')} onOpenStudio={(clientId) => { setActiveClientId(clientId); goStudio(); }} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} onSendTopicToScripts={(t) => { setScriptTopicRequest(t); setView('scripts'); }} />}
+          {view === 'client-detail' && <ClientDetailView client={detailClient} onBack={() => setView('clients')} onOpenStudio={(clientId) => { setActiveClientId(clientId); goStudio(); }} onNavigate={(target, cid) => {
+            setActiveClientId(cid);
+            if (target === 'casts') { setCastRequest({ clientId: cid }); setView('studio'); }
+            else if (target === 'assets') { goStudio('assets'); }
+            else setView(target); // invitations | scripts | episodes
+          }} onSendTopicToScripts={(t) => { setScriptTopicRequest(t); setView('scripts'); }} />}
           {view === 'invitations' && <InvitationsView focusId={inviteFocus} onFocusConsumed={() => setInviteFocus(null)} />}
           {view === 'planner' && <PlannerView activeClientId={activeClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
           {view === 'scripts' && <ScriptsView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} topicRequest={scriptTopicRequest} onTopicConsumed={() => setScriptTopicRequest(null)} scriptRequest={scriptRequest} onScriptRequestConsumed={() => setScriptRequest(null)} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
-          {view === 'studio' && <StudioView key={studioNonce} onNavigate={setView} castRequest={castRequest} onCastConsumed={() => setCastRequest(null)} activeClientId={activeClientId} onSelectClient={setActiveClientId} />}
+          {view === 'studio' && <StudioView key={studioNonce} onNavigate={setView} openStep={studioStep} castRequest={castRequest} onCastConsumed={() => setCastRequest(null)} activeClientId={activeClientId} onSelectClient={setActiveClientId} />}
           {view === 'episodes' && <EpisodesView activeClientId={activeClientId} onBackToStudio={goStudio} episodeRequest={episodeRequest} onEpisodeRequestConsumed={() => setEpisodeRequest(null)} />}
           {view === 'recordings' && <RecordingsView activeClientId={activeClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} onCreateEpisode={(req) => { setEpisodeRequest(req); setView('episodes'); }} />}
           {view === 'onboarding' && (

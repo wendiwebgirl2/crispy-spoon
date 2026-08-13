@@ -8,7 +8,7 @@ import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob
 import { clientToken, voice } from './dashboard-api.js'
 import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
-import { LookPicker } from './brief.jsx'
+import { LookPicker, AssetsSection } from './brief.jsx'
 
 const SCENES = [
   { id: 'plain',     label: 'Plain', desc: 'No background.' },
@@ -59,9 +59,9 @@ const STEPS = [
   { id: 'type',        n: 3, label: 'Type' },
 ];
 
-const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, onSelectClient }) => {
+const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, onSelectClient, openStep }) => {
   // —— decision flow ——
-  const [step, setStep] = React.useState('home');   // home | assets | client | destination | type | render
+  const [step, setStep] = React.useState(openStep || 'home');   // home | assets | client | destination | type | render
   const [clientId, setClientId] = React.useState(null);
   // Local approval state for casts, keyed on the Railway video id.
   const [castMeta, setCastMeta] = React.useState({});
@@ -403,7 +403,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
           <button className="btn sm" onClick={() => setStep('home')}><Icon name="arrow-l" size={12} /> Studio</button>
         </div>
         <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, letterSpacing: '-0.01em', margin: '18px 0 4px' }}>Assets</h1>
-        <div className="mono" style={{ color: 'var(--text-4)' }}>A shared library of logos, music, backgrounds, and fonts for stitching &mdash; coming soon.</div>
+        <div className="mono" style={{ color: 'var(--text-4)', marginBottom: 4 }}>Shared library of logos, backgrounds, music, and fonts for stitching.</div>
+        {activeClientId != null
+          ? <AssetsSection clientId={activeClientId} />
+          : <div className="mono" style={{ color: 'var(--text-3)', marginTop: 16 }}>Pick a client first to manage their assets.</div>}
       </div>
     );
   }
