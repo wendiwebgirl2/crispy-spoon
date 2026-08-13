@@ -15,7 +15,8 @@
 
 import React from 'react'
 import { Icon } from './shared.jsx'
-import { getConsent, postConsent, uploadRecording, currentToken } from './api.js'
+import { getConsent, postConsent, uploadRecording } from './api.js'
+import { api } from './api.js'
 
 const STEPS = [
   { id: 'consent', label: 'Consent' },
@@ -25,6 +26,16 @@ const STEPS = [
 
 const OnboardingView = ({ onDone, onCancel }) => {
   const [step, setStep] = React.useState(0);
+
+  // —— on-site session ——
+  // Record on-site is a walk-in flow with no emailed invite, so we mint a fresh
+  // token for the chosen client here (a 1-day 'record' invite). Everything
+  // downstream — consent, upload — is keyed on this token, NOT the expired demo
+  // token that used to make the page fail with "Invitation expired" on load.
+  const [clients, setClients] = React.useState([]);
+  const [clientId, setClientId] = React.useState('');
+  const [token, setToken] = React.useState(null);
+  const [starting, setStarting] = React.useState(false);
 
   // —— consent state ——
   const [consentText, setConsentText] = React.useState('');
@@ -52,12 +63,36 @@ const OnboardingView = ({ onDone, onCancel }) => {
 
   const fmtTime = (s) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 
-  // Load consent text on mount.
+  // Load the client roster so the operator can pick who they're recording.
   React.useEffect(() => {
+    api.listClients()
+      .then((r) => setClients(Array.isArray(r) ? r : (r.clients || [])))
+      .catch(() => setClients([]));
+  }, []);
+
+  // Start an on-site session: mint a fresh short-lived token for this client.
+  const start = async () => {
+    if (!clientId) return;
+    setStarting(true); setConsentErr(null);
+    try {
+      const inv = await api.createInvite(clientId, { label: 'On-site recording', days: 1, mode: 'video', kind: 'record' });
+      if (!inv || !inv.token) throw new Error('Could not start an on-site session — no token returned.');
+      setToken(inv.token);
+    } catch (err) {
+      setConsentErr(err.message || 'Could not start the on-site recording session.');
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  // Load consent text once we have a live token for the session.
+  React.useEffect(() => {
+    if (!token) return;
     let alive = true;
+    setConsentLoading(true);
     (async () => {
       try {
-        const data = await getConsent();
+        const data = await getConsent(token);
         if (!alive) return;
         setConsentText(data.text || '');
         if (data.already_signed) setAlreadySigned(true);
@@ -68,7 +103,7 @@ const OnboardingView = ({ onDone, onCancel }) => {
       }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [token]);
 
   // Record timer.
   React.useEffect(() => {
@@ -95,7 +130,7 @@ const OnboardingView = ({ onDone, onCancel }) => {
     setSigning(true);
     setConsentErr(null);
     try {
-      await postConsent(signature.trim());
+      await postConsent(signature.trim(), token);
       setStep(1); // advance to Record
     } catch (err) {
       setConsentErr(err.message);
@@ -169,7 +204,7 @@ const OnboardingView = ({ onDone, onCancel }) => {
     setUploading(true);
     setUploadErr(null);
     try {
-      const data = await uploadRecording(recordedBlob);
+      const data = await uploadRecording(recordedBlob, { token });
       setSubmitted(data.recording || {});
       stream?.getTracks().forEach(t => t.stop());
       setStep(2); // done
@@ -181,6 +216,38 @@ const OnboardingView = ({ onDone, onCancel }) => {
   };
 
   const consentReady = checks.likeness && checks.voice && checks.legal && signature.trim().length > 2;
+
+  // Gate: pick a client and start a session before the consent/record flow.
+  if (!token) {
+    return (
+      <div className="fade-in" style={{ maxWidth: 640, margin: '0 auto', padding: 'var(--pad)' }}>
+        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 24 }}>
+          <button className="btn ghost" onClick={onCancel}><Icon name="arrow-l" size={13} /> Cancel</button>
+        </div>
+        <div className="label" style={{ marginBottom: 6 }}>RECORD ON-SITE</div>
+        <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 30, margin: '0 0 8px' }}>Record a client in person</h1>
+        <div className="mono" style={{ color: 'var(--text-3)', marginBottom: 20 }}>
+          Pick the client you're recording. This starts a fresh on-site session — no emailed invite needed.
+        </div>
+        {consentErr && (
+          <div className="card card-pad" style={{ borderColor: 'var(--accent)', marginBottom: 14 }}>
+            <span className="mono" style={{ color: 'var(--accent)' }}>{consentErr}</span>
+          </div>
+        )}
+        <div className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 420 }}>
+          <select value={clientId} onChange={(e) => setClientId(e.target.value)}
+            style={{ height: 42, padding: '0 12px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 14 }}>
+            <option value="">Select a client…</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name || c.companyName || ('Client ' + c.id)}</option>)}
+          </select>
+          <button className="btn primary lg" disabled={!clientId || starting} onClick={start}
+            style={{ justifyContent: 'center', opacity: (!clientId || starting) ? 0.5 : 1 }}>
+            {starting ? 'Starting…' : <><Icon name="mic" size={14} /> Start recording session</>}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fade-in" style={{ maxWidth: 920, margin: '0 auto', padding: 'var(--pad)' }}>
