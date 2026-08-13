@@ -87,45 +87,114 @@ function ChangesView({ onOpen }) {
 // grouped by client. Each row links straight to the item's home view.
 const ATTN_META = {
   approved: { color: 'var(--ok)',     label: 'Approved' },
+  pending:  { color: 'var(--accent)', label: 'Pending' },
   rendered: { color: 'var(--accent)', label: 'Ready' },
   failed:   { color: 'var(--warn)',   label: 'Needs retry' },
+  invite:   { color: 'var(--text-3)', label: 'Invite' },
 };
+// Category display order within a client — most urgent first.
+const ATTN_ORDER = ['failed', 'rendered', 'approved', 'invite', 'pending'];
 
 function AttentionView({ onOpen }) {
   const [data, setData] = React.useState(null);
+  const [openClient, setOpenClient] = React.useState(null);
+  const [busy, setBusy] = React.useState(null);
   React.useEffect(() => {
     let live = true;
     api.attention().then((d) => { if (live) setData(d && d.clients ? d : { total: 0, clients: [] }); })
       .catch(() => { if (live) setData({ total: 0, clients: [] }); });
     return () => { live = false; };
   }, []);
+
+  const dismiss = async (it) => {
+    const key = it.code + '-' + it.id;
+    setBusy(key);
+    try { await api.dismissAttention(it.code, it.id); } catch { /* best-effort */ }
+    setData((cur) => {
+      if (!cur) return cur;
+      const clients = cur.clients
+        .map((c) => ({ ...c, items: c.items.filter((x) => !(x.code === it.code && x.id === it.id)) }))
+        .filter((c) => c.items.length);
+      return { total: clients.reduce((n, c) => n + c.items.length, 0), clients };
+    });
+    setBusy(null);
+  };
+
   if (data === null) return <div className="v-pad fade-in"><div className="mono">Loading…</div></div>;
   if (!data.clients.length) return <div className="v-pad fade-in"><div className="mono" style={{ color: 'var(--text-3)' }}>All caught up — nothing needs your attention right now.</div></div>;
-  return (
-    <div className="fade-in" style={{ padding: 'var(--pad)', display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 780 }}>
-      {data.clients.map((c) => (
-        <div key={c.clientId} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>{c.clientName || ('Client ' + c.clientId)}</span>
-            <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)' }}>{c.items.length} {c.items.length === 1 ? 'task' : 'tasks'}</span>
-          </div>
-          {c.items.map((it) => {
-            const m = ATTN_META[it.type] || ATTN_META.approved;
+
+  const current = openClient != null ? data.clients.find((c) => c.clientId === openClient) : null;
+
+  // ——— Landing: one card per client with its open-alert count ———
+  if (!current) {
+    return (
+      <div className="fade-in" style={{ padding: 'var(--pad)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 'var(--gap)', maxWidth: 900 }}>
+          {data.clients.map((c) => {
+            const counts = {};
+            for (const it of c.items) counts[it.type] = (counts[it.type] || 0) + 1;
             return (
+              <button key={c.clientId} className="card card-pad" onClick={() => setOpenClient(c.clientId)}
+                style={{ textAlign: 'left', cursor: 'pointer', color: 'inherit', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'stretch' }}>
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ fontWeight: 700, fontSize: 15 }}>{c.clientName || ('Client ' + c.clientId)}</span>
+                  <span style={{ fontFamily: 'var(--f-display)', fontSize: 22, lineHeight: 1 }}>{c.items.length}</span>
+                </div>
+                <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                  {ATTN_ORDER.filter((t) => counts[t]).map((t) => {
+                    const m = ATTN_META[t];
+                    return (
+                      <span key={t} className="row" style={{ gap: 5, fontSize: 12, color: 'var(--text-3)' }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: m.color, flex: 'none' }} />
+                        {counts[t]} {m.label.toLowerCase()}
+                      </span>
+                    );
+                  })}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ——— Drill-in: one client's alerts grouped by category ———
+  const groups = {};
+  for (const it of current.items) (groups[it.type] = groups[it.type] || []).push(it);
+  return (
+    <div className="fade-in" style={{ padding: 'var(--pad)', display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 820 }}>
+      <div className="row" style={{ gap: 10, alignItems: 'baseline' }}>
+        <button className="btn sm" onClick={() => setOpenClient(null)}><Icon name="arrow-l" size={12} /> All clients</button>
+        <span style={{ fontWeight: 700, fontSize: 16 }}>{current.clientName || ('Client ' + current.clientId)}</span>
+        <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)' }}>{current.items.length} open</span>
+      </div>
+      {ATTN_ORDER.filter((t) => groups[t]).map((t) => {
+        const m = ATTN_META[t];
+        return (
+          <div key={t} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: m.color, flex: 'none' }} />
+              <span className="mono" style={{ fontSize: 12, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{m.label}</span>
+              <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)' }}>{groups[t].length}</span>
+            </div>
+            {groups[t].map((it) => (
               <div key={it.code + '-' + it.id} className="card" style={{ padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: m.color, flex: 'none' }} />
-                <span className="badge" style={{ color: m.color }}>{m.label}</span>
                 <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)', textTransform: 'uppercase' }}>{it.kind}</span>
                 <span style={{ fontWeight: 600, fontSize: 13 }}>{it.title}</span>
                 <span className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>· {it.action}</span>
                 {it.detail && <span className="mono" style={{ fontSize: 11, color: 'var(--warn)', width: '100%' }}>{it.detail}</span>}
                 <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)', marginLeft: 'auto' }}>{fmtWhen(it.at)}</span>
-                <button className="btn sm" onClick={() => onOpen(it.client_id, it.view)}>Open →</button>
+                <button className="btn sm" onClick={() => onOpen(it)}>Open →</button>
+                <button className="btn sm" disabled={busy === (it.code + '-' + it.id)} onClick={() => dismiss(it)}
+                  title="Dismiss this alert">
+                  <Icon name="check" size={12} /> Done
+                </button>
               </div>
-            );
-          })}
-        </div>
-      ))}
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -136,7 +205,20 @@ function App() {
   const goStudio = () => { setStudioNonce((n) => n + 1); setView('studio'); };
   const [castRequest, setCastRequest] = React.useState(null);
   const [scriptTopicRequest, setScriptTopicRequest] = React.useState(null);
+  const [scriptRequest, setScriptRequest] = React.useState(null);
   const [episodeRequest, setEpisodeRequest] = React.useState(null);
+  const [inviteFocus, setInviteFocus] = React.useState(null);
+
+  // Deep-open an item from the "Needs attention" inbox — route by kind so the
+  // target view opens the actual episode/script/cast/invite, not just its tab.
+  const openAttentionItem = (it) => {
+    if (!it) return;
+    if (it.kind === 'episode') { setActiveClientId(it.client_id); setEpisodeRequest({ openId: it.id }); setView('episodes'); }
+    else if (it.kind === 'script') { setActiveClientId(it.client_id); setScriptRequest({ openId: it.id }); setView('scripts'); }
+    else if (it.kind === 'cast') { setActiveClientId(it.client_id); setCastRequest({ clientId: it.client_id }); setView('studio'); }
+    else if (it.kind === 'invite') { setActiveClientId(it.client_id); setInviteFocus(it.id); setView('invitations'); }
+    else { setActiveClientId(it.client_id); setView(it.view || 'clients'); }
+  };
   const [activeClientId, setActiveClientId] = React.useState(null);
   const [alerts, setAlerts] = React.useState(null);
   React.useEffect(() => {
@@ -289,9 +371,9 @@ function App() {
           )}
           {view === 'brief' && <BriefView clientId={activeClientId} onSendTopicToScripts={(t) => { setScriptTopicRequest(t); setView('scripts'); }} />}
           {view === 'client-detail' && <ClientDetailView client={detailClient} onBack={() => setView('clients')} onOpenStudio={(clientId) => { setActiveClientId(clientId); goStudio(); }} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} onSendTopicToScripts={(t) => { setScriptTopicRequest(t); setView('scripts'); }} />}
-          {view === 'invitations' && <InvitationsView />}
+          {view === 'invitations' && <InvitationsView focusId={inviteFocus} onFocusConsumed={() => setInviteFocus(null)} />}
           {view === 'planner' && <PlannerView activeClientId={activeClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
-          {view === 'scripts' && <ScriptsView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} topicRequest={scriptTopicRequest} onTopicConsumed={() => setScriptTopicRequest(null)} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
+          {view === 'scripts' && <ScriptsView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} topicRequest={scriptTopicRequest} onTopicConsumed={() => setScriptTopicRequest(null)} scriptRequest={scriptRequest} onScriptRequestConsumed={() => setScriptRequest(null)} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
           {view === 'studio' && <StudioView key={studioNonce} onNavigate={setView} castRequest={castRequest} onCastConsumed={() => setCastRequest(null)} activeClientId={activeClientId} onSelectClient={setActiveClientId} />}
           {view === 'episodes' && <EpisodesView activeClientId={activeClientId} onBackToStudio={goStudio} episodeRequest={episodeRequest} onEpisodeRequestConsumed={() => setEpisodeRequest(null)} />}
           {view === 'recordings' && <RecordingsView activeClientId={activeClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} onCreateEpisode={(req) => { setEpisodeRequest(req); setView('episodes'); }} />}
@@ -303,7 +385,7 @@ function App() {
           )}
           {view === 'settings' && <SettingsView />}
           {view === 'changes' && <ChangesView onOpen={(clientId, targetView) => { setActiveClientId(clientId); setView(targetView); }} />}
-          {view === 'attention' && <AttentionView onOpen={(clientId, targetView) => { setActiveClientId(clientId); setView(targetView); }} />}
+          {view === 'attention' && <AttentionView onOpen={openAttentionItem} />}
           {view === 'billing' && <BillingView />}
         </section>
       </main>

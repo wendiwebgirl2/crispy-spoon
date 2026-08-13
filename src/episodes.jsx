@@ -670,6 +670,12 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   // into a fresh episode's body slot (recording master or rendered avatar clip).
   useEffect(() => {
     if (!episodeRequest || cid == null) return;
+    // Deep-open from the alerts inbox: just open an existing episode, don't create.
+    if (episodeRequest.openId != null) {
+      setOpenId(episodeRequest.openId);
+      if (onEpisodeRequestConsumed) onEpisodeRequestConsumed();
+      return;
+    }
     let cancelled = false;
     (async () => {
       setErr('');

@@ -112,7 +112,7 @@ const printScript = (h, label) => {
   setTimeout(() => w.print(), 250);
 };
 
-const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStudio, topicRequest, onTopicConsumed } = {}) => {
+const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStudio, topicRequest, onTopicConsumed, scriptRequest, onScriptRequestConsumed } = {}) => {
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(null);
   const [brief, setBrief] = useState(null);
@@ -287,6 +287,17 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     } catch { /* noop */ }
   };
   const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setEditTitle(h.title || ''); setEditDesc(h.description || ''); setEditHashtags(h.hashtags || ''); setEditJob(h.job_number || ''); setEditEpisode(h.episode_number || ''); setRevisePrompt(''); setReviseNote(''); setErr(''); };
+
+  // Deep-open from the alerts inbox: open the editor for a specific script once
+  // this client's history has loaded (App has already set the active client).
+  useEffect(() => {
+    if (!scriptRequest || scriptRequest.openId == null) return;
+    const h = history.find((x) => x.id === scriptRequest.openId);
+    if (!h) return; // history not loaded yet — re-runs when it arrives
+    openEdit(h);
+    if (onScriptRequestConsumed) onScriptRequestConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scriptRequest, history]);
   const saveEdit = async () => {
     try {
       const payload = { body: editBody, title: editTitle, description: editDesc, hashtags: editHashtags.trim() || null, job_number: editJob.trim() || null, episode_number: editEpisode.trim() || null };

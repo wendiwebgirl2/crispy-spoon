@@ -3,7 +3,7 @@
 // (POST /api/clients/:id/invites) against a chosen client. The ornate demo
 // compose/preview was replaced with a real, focused flow.
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Icon } from './shared.jsx'
 import { api, API_BASE } from './api.js'
 
@@ -19,19 +19,38 @@ const STATUS_TONE = {
   disabled:  { fg: 'var(--text-4)' },
 };
 
-const InvitationsView = () => {
+const InvitationsView = ({ focusId, onFocusConsumed } = {}) => {
   const [mode, setMode] = useState('list'); // 'list' | 'compose'
   if (mode === 'compose') return <ComposeView onClose={() => setMode('list')} />;
-  return <InvitationsList onCompose={() => setMode('compose')} />;
+  return <InvitationsList onCompose={() => setMode('compose')} focusId={focusId} onFocusConsumed={onFocusConsumed} />;
 };
 
 // —— List ————————————————————————————————————————————————————————————
-const InvitationsList = ({ onCompose }) => {
+const InvitationsList = ({ onCompose, focusId, onFocusConsumed }) => {
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [filter, setFilter] = useState('all');
   const [copied, setCopied] = useState(null);
+  const [highlightId, setHighlightId] = useState(null);
+  const focusRef = useRef(null);
+
+  // Deep-open from the alerts inbox: reveal + highlight a specific invite.
+  useEffect(() => {
+    if (focusId == null || loading) return;
+    if (!invites.some((i) => i.id === focusId)) return;
+    setFilter('all');
+    setHighlightId(focusId);
+    if (onFocusConsumed) onFocusConsumed();
+    const t = setTimeout(() => setHighlightId(null), 4000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId, loading, invites]);
+  useEffect(() => {
+    if (highlightId != null && focusRef.current) {
+      focusRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightId]);
 
   // Best-effort: ask Railway for each pending invite's real status and flip
   // completed ones to "recorded" in place. Never blocks or fails the list.
@@ -126,7 +145,8 @@ const InvitationsList = ({ onCompose }) => {
       ) : (
         <div className="col" style={{ gap: 8 }}>
           {filtered.map((inv) => (
-            <div key={inv.id} className="card card-pad row" style={{ gap: 12, alignItems: 'center' }}>
+            <div key={inv.id} ref={inv.id === highlightId ? focusRef : null} className="card card-pad row"
+              style={{ gap: 12, alignItems: 'center', borderColor: inv.id === highlightId ? 'var(--accent)' : undefined, boxShadow: inv.id === highlightId ? '0 0 0 2px var(--accent)' : undefined }}>
               <Icon name="send" size={16} style={{ color: 'var(--text-3)' }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>
