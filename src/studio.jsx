@@ -734,8 +734,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       const v = await listVideos(token).catch(() => ({ videos: [] }));
       setQueue(v.videos || []);
       // Register the job number on the newly created cast's local mirror so it
-      // carries forward to approvals, episodes, and the planner.
-      if (castJobNumber.trim() || castScriptId) {
+      // carries forward to approvals, episodes, and the planner. Always register
+      // the cast (even with no job #) so every render is mirrored locally and
+      // logged for billing — HeyGen usage is recorded on this upsert.
+      {
         const fresh = (v.videos || []).find((x) => !before.has(x.id));
         if (fresh) {
           try {
