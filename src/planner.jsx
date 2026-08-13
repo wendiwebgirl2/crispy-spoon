@@ -9,7 +9,7 @@ const Portal = ({ children }) => createPortal(children, document.body);
 
 const CHAN_COLORS = {
   longform: '#fbb033', shortform: '#d6608f', blog: '#4a90d6', episode: '#6bbf8a',
-  podcast: '#fbb033', instagram: '#d6608f', linkedin: '#4a90d6', x: '#6bbf8a',
+  podcast: '#fbb033', transistor: '#fbb033', instagram: '#d6608f', linkedin: '#4a90d6', x: '#6bbf8a',
   youtube: '#c94a4a', facebook: '#4a6fd6', cast: '#6bbf8a',
   default: '#b09a8d',
 };
@@ -17,6 +17,7 @@ const SOCIAL_CHANNELS = [
   { key: 'youtube', label: 'YouTube' },
   { key: 'facebook', label: 'Facebook' },
   { key: 'instagram', label: 'Instagram' },
+  { key: 'transistor', label: 'Transistor (podcast)' },
 ];
 const EXTRA_COLORS = ['#c96f4a', '#8a7ad6', '#4ab8a8', '#d6c04a'];
 const colorFallback = (k) => EXTRA_COLORS[String(k).split('').reduce((a, c) => a + c.charCodeAt(0), 0) % EXTRA_COLORS.length];
@@ -195,7 +196,10 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
   };
   const publishItem = async (item) => {
     setPublishing((prev) => new Set(prev).add(item.id));
-    try { await epApi.publish(cid, item.episode_id, [item.channel], item.id); }
+    try {
+      if (item.channel === 'transistor') await epApi.publishTransistor(cid, item.episode_id, item.id);
+      else await epApi.publish(cid, item.episode_id, [item.channel], item.id);
+    }
     catch { /* server records the error in publish_meta */ }
     setPublishing((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
     setDetail(null); load();

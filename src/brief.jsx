@@ -14,6 +14,7 @@ const CONTACT = [
   ['website', 'Website', false],
   ['blog_url', 'Blog link', false],
   ['transistor_url', 'Transistor podcast link', false],
+  ['transistor_show_id', 'Transistor show ID (for auto-publish)', false],
   ['address', 'Address', true],
 ];
 const REPO = [

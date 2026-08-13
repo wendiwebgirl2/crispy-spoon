@@ -43,6 +43,7 @@ export const ep = {
   voiceOutputs: (cid) => get(`/api/clients/${cid}/voice/outputs`),
   setMeta: (cid, id, body) => put(`/api/clients/${cid}/episodes/${id}/meta`, body),
   publish: (cid, id, platforms, scheduleId) => post(`/api/clients/${cid}/episodes/${id}/publish`, { platforms, scheduleId }),
+  publishTransistor: (cid, id, scheduleId) => post(`/api/clients/${cid}/episodes/${id}/publish-transistor`, { scheduleId }),
 };
 
 // ElevenLabs voice synthesis (audio-only casting — cheaper than a HeyGen video).
