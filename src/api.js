@@ -326,4 +326,11 @@ export const api = {
   deleteScript: (id, sid) => vcReq(`/clients/${id}/scripts/${sid}`, { method: "DELETE" }),
   sendScriptApproval: (id, sid, email) => vcReq(`/clients/${id}/scripts/${sid}/send-approval`, { method: "POST", body: JSON.stringify(email ? { email } : {}) }),
   reviseScript: (id, sid, instruction) => vcReq(`/clients/${id}/scripts/${sid}/revise`, { method: "POST", body: JSON.stringify({ instruction }) }),
+  // ---- accounts & roles ----
+  me: () => vcReq('/me'),
+  logout: () => vcReq('/logout', { method: 'POST' }),
+  listUsers: () => vcReq('/users'),
+  createUser: (payload) => vcReq('/users', { method: 'POST', body: JSON.stringify(payload) }),
+  updateUser: (uid, payload) => vcReq(`/users/${uid}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  resetUserPassword: (uid, password) => vcReq(`/users/${uid}/password`, { method: 'POST', body: JSON.stringify({ password }) }),
 };
