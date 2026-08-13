@@ -19,14 +19,14 @@ const STATUS_TONE = {
   disabled:  { fg: 'var(--text-4)' },
 };
 
-const InvitationsView = ({ focusId, onFocusConsumed } = {}) => {
+const InvitationsView = ({ focusId, onFocusConsumed, clientFilter } = {}) => {
   const [mode, setMode] = useState('list'); // 'list' | 'compose'
   if (mode === 'compose') return <ComposeView onClose={() => setMode('list')} />;
-  return <InvitationsList onCompose={() => setMode('compose')} focusId={focusId} onFocusConsumed={onFocusConsumed} />;
+  return <InvitationsList onCompose={() => setMode('compose')} focusId={focusId} onFocusConsumed={onFocusConsumed} clientFilter={clientFilter} />;
 };
 
 // —— List ————————————————————————————————————————————————————————————
-const InvitationsList = ({ onCompose, focusId, onFocusConsumed }) => {
+const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter }) => {
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -97,14 +97,23 @@ const InvitationsList = ({ onCompose, focusId, onFocusConsumed }) => {
     catch (e) { setErr(e.message || 'Could not delete invitation.'); }
   };
 
+  // Once an invite is recorded its job is done — it drops out of the list so the
+  // list never grows without bound. The row is NOT deleted (its token still
+  // links the client to their recordings); it's just hidden here. Optionally
+  // scope the list to a single client (when opened from that client's page).
+  const clientName = clientFilter != null
+    ? (invites.find((i) => i.client_id === clientFilter)?.client_name || null)
+    : null;
+  const visible = invites.filter((i) =>
+    i.status !== 'recorded' && (clientFilter == null || i.client_id === clientFilter)
+  );
   const counts = {
-    all: invites.length,
-    pending: invites.filter((i) => i.status === 'pending').length,
-    recorded: invites.filter((i) => i.status === 'recorded').length,
-    expired: invites.filter((i) => i.status === 'expired').length,
-    disabled: invites.filter((i) => i.status === 'disabled').length,
+    all: visible.length,
+    pending: visible.filter((i) => i.status === 'pending').length,
+    expired: visible.filter((i) => i.status === 'expired').length,
+    disabled: visible.filter((i) => i.status === 'disabled').length,
   };
-  const filtered = filter === 'all' ? invites : invites.filter((i) => i.status === filter);
+  const filtered = filter === 'all' ? visible : visible.filter((i) => i.status === filter);
 
   return (
     <div className="v-pad fade-in">
@@ -112,9 +121,11 @@ const InvitationsList = ({ onCompose, focusId, onFocusConsumed }) => {
         <div>
           <div className="label" style={{ marginBottom: 6 }}>INVITATIONS · LIVE</div>
           <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 34, lineHeight: 1.1, margin: '0 0 4px' }}>
-            Every <em>invitation</em>, across clients.
+            {clientName
+              ? <><em>{clientName}</em> — invitations</>
+              : <>Every <em>invitation</em>, across clients.</>}
           </h1>
-          <div className="mono" style={{ color: 'var(--text-3)' }}>Record links you've created — newest first.</div>
+          <div className="mono" style={{ color: 'var(--text-3)' }}>Open record links — newest first. Recorded ones drop off automatically.</div>
         </div>
         <button className="btn primary" onClick={onCompose}>
           <Icon name="send" size={14} stroke={2.2} /> New invitation
@@ -129,7 +140,7 @@ const InvitationsList = ({ onCompose, focusId, onFocusConsumed }) => {
 
       {/* filter chips */}
       <div className="row" style={{ gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-        {[['all', 'All'], ['pending', 'Pending'], ['recorded', 'Recorded'], ['expired', 'Expired'], ['disabled', 'Disabled']].map(([k, label]) => (
+        {[['all', 'All'], ['pending', 'Pending'], ['expired', 'Expired'], ['disabled', 'Disabled']].map(([k, label]) => (
           <button key={k} className={'btn sm' + (filter === k ? ' primary' : '')} onClick={() => setFilter(k)}>
             {label} <span className="mono" style={{ opacity: 0.7 }}>{counts[k]}</span>
           </button>
@@ -140,7 +151,9 @@ const InvitationsList = ({ onCompose, focusId, onFocusConsumed }) => {
         <div className="mono" style={{ color: 'var(--text-3)' }}>Loading invitations…</div>
       ) : filtered.length === 0 ? (
         <div className="mono" style={{ color: 'var(--text-3)' }}>
-          {invites.length === 0 ? 'No invitations yet — create your first.' : `No invitations match "${filter}".`}
+          {visible.length === 0
+            ? (clientName ? `No open invitations for ${clientName}.` : 'No open invitations — create one.')
+            : `No invitations match "${filter}".`}
         </div>
       ) : (
         <div className="col" style={{ gap: 8 }}>

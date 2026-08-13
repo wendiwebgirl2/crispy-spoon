@@ -211,15 +211,18 @@ function App() {
   const [scriptRequest, setScriptRequest] = React.useState(null);
   const [episodeRequest, setEpisodeRequest] = React.useState(null);
   const [inviteFocus, setInviteFocus] = React.useState(null);
+  const [invitesClient, setInvitesClient] = React.useState(null);
 
   // Deep-open an item from the "Needs attention" inbox — route by kind so the
-  // target view opens the actual episode/script/cast/invite, not just its tab.
+  // target view opens the actual episode/script/cast/recording, not just its tab.
   const openAttentionItem = (it) => {
     if (!it) return;
     if (it.kind === 'episode') { setActiveClientId(it.client_id); setEpisodeRequest({ openId: it.id }); setView('episodes'); }
     else if (it.kind === 'script') { setActiveClientId(it.client_id); setScriptRequest({ openId: it.id }); setView('scripts'); }
     else if (it.kind === 'cast') { setActiveClientId(it.client_id); setCastRequest({ clientId: it.client_id }); setView('studio'); }
-    else if (it.kind === 'invite') { setActiveClientId(it.client_id); setInviteFocus(it.id); setView('invitations'); }
+    // A recorded invite drops off the invites list, so send the operator to the
+    // client's recordings — where the take actually landed and the avatar builds.
+    else if (it.kind === 'invite') { setActiveClientId(it.client_id); setView('recordings'); }
     else { setActiveClientId(it.client_id); setView(it.view || 'clients'); }
   };
   const [activeClientId, setActiveClientId] = React.useState(null);
@@ -377,9 +380,10 @@ function App() {
             setActiveClientId(cid);
             if (target === 'casts') { setCastRequest({ clientId: cid }); setView('studio'); }
             else if (target === 'assets') { goStudio('assets'); }
-            else setView(target); // invitations | scripts | episodes
+            else if (target === 'invitations') { setInvitesClient(cid); setView('invitations'); }
+            else setView(target); // scripts | episodes
           }} onSendTopicToScripts={(t) => { setScriptTopicRequest(t); setView('scripts'); }} />}
-          {view === 'invitations' && <InvitationsView focusId={inviteFocus} onFocusConsumed={() => setInviteFocus(null)} />}
+          {view === 'invitations' && <InvitationsView clientFilter={invitesClient} focusId={inviteFocus} onFocusConsumed={() => setInviteFocus(null)} />}
           {view === 'planner' && <PlannerView activeClientId={activeClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
           {view === 'scripts' && <ScriptsView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} topicRequest={scriptTopicRequest} onTopicConsumed={() => setScriptTopicRequest(null)} scriptRequest={scriptRequest} onScriptRequestConsumed={() => setScriptRequest(null)} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
           {view === 'studio' && <StudioView key={studioNonce} onNavigate={setView} openStep={studioStep} castRequest={castRequest} onCastConsumed={() => setCastRequest(null)} activeClientId={activeClientId} onSelectClient={setActiveClientId} />}
