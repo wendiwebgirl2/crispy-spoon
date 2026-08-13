@@ -550,14 +550,6 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
           </>
         )}
 
-        {/* Topics queue — add/select topics without leaving the Scripts page.
-            "Use topic" preloads the generator above; generating removes it. */}
-        {clientId != null && (
-          <div style={{ marginBottom: 20 }}>
-            <TopicsSection clientId={clientId} onSendTopicToScripts={applyTopicRequest} reloadSignal={topicsReload} sendLabel="Use topic" />
-          </div>
-        )}
-
         {/* history */}
         <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12, alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div className="label">HISTORY</div>
@@ -699,12 +691,11 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
           <Field label="Website" value={brief?.website} link />
         </div>
 
-        <div className="label" style={{ marginBottom: 10 }}>GROUNDING</div>
-        <div className="col" style={{ gap: 10 }}>
-          <Field label="Positioning" value={brief?.positioning} />
-          <Field label="Audience"    value={brief?.audience} />
-          <Field label="Tone"        value={brief?.tone} />
-        </div>
+        {/* Topics queue — manage the client's topic ideas here. "Use topic"
+            preloads the generator on the left; generating removes it. */}
+        {clientId != null && (
+          <TopicsSection clientId={clientId} onSendTopicToScripts={applyTopicRequest} reloadSignal={topicsReload} sendLabel="Use topic" />
+        )}
       </div>
       {renamingTopic && (
         <div onClick={() => setRenamingTopic(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
