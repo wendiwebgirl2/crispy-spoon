@@ -360,7 +360,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     const cards = [
       { id: 'scripts',    label: 'Scripts',       desc: 'Write & manage client scripts',      icon: 'doc',     go: () => onNavigate?.('scripts') },
       { id: 'recordings', label: 'Recordings',    desc: 'Client masters & cue:cast renders',  icon: 'play',    go: () => onNavigate?.('recordings') },
-      { id: 'cast',       label: 'Cast a script', desc: 'Quick-render an avatar video',        icon: 'sparkle', go: () => setStep('render') },
+      { id: 'cast',       label: 'Cast a script', desc: 'Quick-render an avatar video',        icon: 'sparkle', go: () => { if (activeClientId) selectClientInline(activeClientId); setStep('render'); } },
       { id: 'assets',     label: 'Assets',        desc: 'Logos, music, backgrounds & fonts',  icon: 'upload',  go: () => setStep('assets') },
       { id: 'planner',    label: 'Planner',       desc: 'Approved episodes ready to publish', icon: 'history', go: () => onNavigate?.('planner') },
       { id: 'episodes',   label: 'Episodes',      desc: 'Stitch audio + video episodes',      icon: 'studio',  go: () => onNavigate?.('episodes') },
@@ -788,10 +788,11 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       {/* top bar: breadcrumb + mode toggle */}
       <div className="row" style={{ justifyContent: 'space-between', padding: '10px var(--pad)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <select value={clientId || ''} onChange={(e) => { const c = clients.find(x => String(x.id) === e.target.value); if (c) selectClientInline(c.id); }}
-            style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, cursor: 'pointer' }}>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          {client && (
+            <span className="row" style={{ gap: 6, padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 13 }}>
+              <Icon name="avatars" size={13} style={{ color: 'var(--accent)' }} /> {client.name}
+            </span>
+          )}
           <select value={outputKey} onChange={(e) => applyOutput(e.target.value)}
             title="Output — from the client's brief"
             style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, cursor: 'pointer' }}>
@@ -836,7 +837,6 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   <div className="row" style={{ gap: 8 }}>
                     <span className="badge"><Icon name="cam" size={11} /> {aspectRatio}</span>
                     <span className="badge"><Icon name="lang" size={11} /> {language}</span>
-                    <span className="badge"><Icon name="studio" size={11} /> {SCENES.find(s => s.id === scene).label}</span>
                   </div>
                 </div>
                 <div style={{
@@ -1055,6 +1055,18 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 style={{ marginBottom: 22, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <Icon name="globe" size={13} /> Edit avatar in HeyGen
               </a>
+              <div className="label" style={{ marginBottom: 10 }}>ASPECT RATIO</div>
+              <div className="row" style={{ gap: 4, marginBottom: 22 }}>
+                {['16:9', '9:16', '1:1'].map(r => (
+                  <button key={r} onClick={() => setAspectRatio(r)} className="btn sm"
+                    style={{
+                      flex: 1, justifyContent: 'center',
+                      background: aspectRatio === r ? 'var(--surface-2)' : 'transparent',
+                      borderColor: aspectRatio === r ? 'var(--accent)' : 'var(--border)',
+                      color: aspectRatio === r ? 'var(--text)' : 'var(--text-2)'
+                    }}>{r}</button>
+                ))}
+              </div>
               <div className="label" style={{ marginBottom: 10 }}>CAPTIONS</div>
               <button onClick={() => setCaption((v) => !v)} className="row"
                 style={{ width: '100%', justifyContent: 'space-between', padding: 8, marginBottom: 22, borderRadius: 'var(--r-sm)',
@@ -1063,47 +1075,6 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 <span style={{ fontSize: 13 }}>Burn-in captions</span>
                 {caption ? <Icon name="check" size={14} style={{ color: 'var(--accent)' }} /> : <span className="mono" style={{ color: 'var(--text-4)' }}>off</span>}
               </button>
-              <div className="label" style={{ marginBottom: 10 }}>SCENE</div>
-              <div className="col" style={{ gap: 4, marginBottom: 22 }}>
-                {SCENES.map(s => (
-                  <button key={s.id} onClick={() => setScene(s.id)}
-                    className="row"
-                    style={{
-                      padding: '8px 10px', borderRadius: 'var(--r-sm)',
-                      background: scene === s.id ? 'var(--surface-2)' : 'transparent',
-                      border: '1px solid', borderColor: scene === s.id ? 'var(--border-strong)' : 'transparent',
-                      cursor: 'pointer', color: 'inherit'
-                    }}>
-                    <div style={{ flex: 1, textAlign: 'left' }}>
-                      <div style={{ fontSize: 13 }}>{s.label}</div>
-                      <div className="mono">{s.desc}</div>
-                    </div>
-                    {scene === s.id && <Icon name="check" size={14} style={{ color: 'var(--accent)' }} />}
-                  </button>
-                ))}
-              </div>
-
-              <div className="label" style={{ marginBottom: 10 }}>BACKGROUND</div>
-              <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 10 }}>
-                <input type="color" value={backgroundColor || '#1a1a1a'} onChange={(e) => { setBackgroundColor(e.target.value); setBackgroundAssetId(null); }}
-                  style={{ width: 40, height: 32, padding: 0, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', cursor: 'pointer' }} />
-                {(backgroundColor || backgroundAssetId)
-                  ? <button className="btn sm" onClick={() => { setBackgroundColor(null); setBackgroundAssetId(null); }}>Clear</button>
-                  : <span className="mono" style={{ color: 'var(--text-4)' }}>none — avatar's own</span>}
-              </div>
-              {bgAssets.length > 0 && (
-                <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 22 }}>
-                  {bgAssets.map((a) => (
-                    <button key={a.id} title={a.filename} onClick={() => { setBackgroundAssetId(a.id); setBackgroundColor(null); }}
-                      style={{ padding: 0, width: 44, height: 44, borderRadius: 5, overflow: 'hidden', cursor: 'pointer', background: 'var(--surface-2)',
-                        border: backgroundAssetId === a.id ? '2px solid var(--accent)' : '1px solid var(--border)' }}>
-                      <img src={api.assetFileUrl(clientId, a.id)} alt={a.filename} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    </button>
-                  ))}
-                </div>
-              )}
-              {bgAssets.length === 0 && <div style={{ marginBottom: 22 }} />}
-
               <div className="label" style={{ marginBottom: 10 }}>RENDER ENGINE</div>
               <div className="row" style={{ gap: 4, marginBottom: 6 }}>
                 {[{ k: 'auto', t: 'Auto' }, { k: 'avatar_v', t: 'Avatar V' }, { k: 'avatar_iv', t: 'Avatar IV' }].map(o => (
@@ -1159,19 +1130,6 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 style={{ minHeight: 0, height: 36, fontSize: 12, marginBottom: 6 }} />
               <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 22, lineHeight: 1.5 }}>
                 Drives gestures + expression on both engines. Laughing lands best on Avatar IV + High; on Avatar V a big laugh can bring back the wide-smile glitch.
-              </div>
-
-              <div className="label" style={{ marginBottom: 10 }}>ASPECT RATIO</div>
-              <div className="row" style={{ gap: 4, marginBottom: 22 }}>
-                {['16:9', '9:16', '1:1'].map(r => (
-                  <button key={r} onClick={() => setAspectRatio(r)} className="btn sm"
-                    style={{
-                      flex: 1, justifyContent: 'center',
-                      background: aspectRatio === r ? 'var(--surface-2)' : 'transparent',
-                      borderColor: aspectRatio === r ? 'var(--accent)' : 'var(--border)',
-                      color: aspectRatio === r ? 'var(--text)' : 'var(--text-2)'
-                    }}>{r}</button>
-                ))}
               </div>
 
               <div className="label" style={{ marginBottom: 10 }}>LANGUAGE</div>

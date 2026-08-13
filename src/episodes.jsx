@@ -592,6 +592,17 @@ function EpisodeEditor({ cid, epId, onChange }) {
   );
 }
 
+// Prefix the linked script's episode number to the title (E1 - …). If the title
+// already carries an E# prefix (baked in by castTitleFor upstream), leave it be.
+function epTitle(e) {
+  const t = (e && e.title) || 'Untitled episode';
+  if (/^E\d+\s*[-–]/i.test(t.trim())) return t;
+  if (e && e.episode_number != null && String(e.episode_number).trim() !== '') {
+    return `E${String(e.episode_number).trim()} - ${t}`;
+  }
+  return t;
+}
+
 function EpRow({ cid, e, active, onOpen, onRemove }) {
   return (
     <div className="card" onClick={onOpen}
@@ -603,7 +614,7 @@ function EpRow({ cid, e, active, onOpen, onRemove }) {
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {e.job_number ? <span className="mono" style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px', marginRight: 5 }}>Job {e.job_number}</span> : null}
-            {e.title}
+            {epTitle(e)}
           </div>
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
             {String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}

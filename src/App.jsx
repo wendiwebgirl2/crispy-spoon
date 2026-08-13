@@ -202,24 +202,6 @@ function App() {
           ))}
         </nav>
 
-        <div className="side-section">SHORTCUTS</div>
-        <div className="side-nav">
-          <button className="nav-item" onClick={() => setView('onboarding')}>
-            <Icon name="plus" size={16} className="nav-icon" />
-            <span>New avatar</span>
-            <span className="nav-count" style={{ background: 'transparent' }}>⌘N</span>
-          </button>
-          <button className="nav-item" onClick={goStudio}>
-            <Icon name="sparkle" size={16} className="nav-icon" />
-            <span>Quick render</span>
-            <span className="nav-count" style={{ background: 'transparent' }}>⌘G</span>
-          </button>
-          <button className="nav-item" onClick={() => setView('scripts')}>
-            <Icon name="doc" size={16} className="nav-icon" />
-            <span>New script</span>
-          </button>
-        </div>
-
         {alerts && (
           <>
             <div className="side-section" style={{ marginTop: 14 }}>ALERTS</div>
