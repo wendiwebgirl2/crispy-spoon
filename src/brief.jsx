@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { api } from './api.js'
 import { Icon, ensureOperatorName } from './shared.jsx'
 
@@ -557,7 +557,7 @@ function RichText({ value, onChange }) {
   );
 }
 
-function TopicsSection({ clientId, onSendTopicToScripts }) {
+function TopicsSection({ clientId, onSendTopicToScripts, reloadSignal, sendLabel }) {
   const [topics, setTopics] = useState([]);
   const [adding, setAdding] = useState('');
   const [addingJob, setAddingJob] = useState('');
@@ -569,6 +569,14 @@ function TopicsSection({ clientId, onSendTopicToScripts }) {
 
   const load = () => api.listTopics(clientId).then((r) => setTopics(Array.isArray(r) ? r : [])).catch(() => setTopics([]));
   useEffect(() => { if (clientId != null) load(); /* eslint-disable-next-line */ }, [clientId]);
+  // Reload when a parent signals a change (e.g. a topic was consumed into a
+  // script on the Scripts page). Skipped on first mount (handled above).
+  const firstReload = useRef(true);
+  useEffect(() => {
+    if (firstReload.current) { firstReload.current = false; return; }
+    if (clientId != null) load();
+    /* eslint-disable-next-line */
+  }, [reloadSignal]);
 
   const inp = { flex: 1, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 14, padding: '8px 10px', boxSizing: 'border-box' };
 
@@ -627,7 +635,7 @@ function TopicsSection({ clientId, onSendTopicToScripts }) {
                   <div style={{ flex: 1, fontSize: 14, minWidth: 160 }}>{t.text}{t.job_number ? <span className="mono" style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {t.job_number}</span> : null}</div>
                   <button className="btn sm" onClick={() => copy(t.text)}><Icon name="doc" size={13} /> Copy</button>
                   <button className="btn sm" onClick={() => setEditing({ id: t.id, text: t.text, job_number: t.job_number || '' })}><Icon name="sliders" size={13} /> Edit</button>
-                  <button className="btn sm" onClick={() => setSending(sending?.id === t.id ? null : { id: t.id, channels: { longform: true, shortform: true, tvradio: false, blog: false }, extra: '' })}><Icon name="send" size={13} /> Send to script</button>
+                  <button className="btn sm" onClick={() => setSending(sending?.id === t.id ? null : { id: t.id, channels: { longform: true, shortform: true, tvradio: false, blog: false }, extra: '' })}><Icon name="send" size={13} /> {sendLabel || 'Send to script'}</button>
                   <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => remove(t.id)}><Icon name="close" size={13} /> Delete</button>
                 </>
               )}
@@ -802,7 +810,7 @@ function BriefView({ clientId, onSendTopicToScripts }) {
         ))}
       </div>
 
-      <TopicsSection clientId={clientId} onSendTopicToScripts={onSendTopicToScripts} />
+      {/* Topics moved to the Scripts page — manage the topic queue there. */}
 
       <AssetsSection clientId={clientId} />
       <AvatarsSection clientId={clientId} />
@@ -810,4 +818,4 @@ function BriefView({ clientId, onSendTopicToScripts }) {
   );
 }
 
-export { BriefView, LookPicker }
+export { BriefView, LookPicker, TopicsSection }

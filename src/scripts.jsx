@@ -3,8 +3,9 @@
 // grounded in the client's brief, verified against their PAMW, with history.
 
 import React, { useState, useEffect, useRef } from 'react'
-import { api } from './api.js'
+import { api, generateVideo, listVideos } from './api.js'
 import { Icon, ensureOperatorName, ExpressionTags } from './shared.jsx'
+import { TopicsSection } from './brief.jsx'
 
 const CHANNEL_FALLBACK = [
   { key: 'longform',  label: 'Longform (5–7 min)', variants: 1 },
@@ -141,6 +142,13 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [revisePrompt, setRevisePrompt] = useState('');
   const [revising, setRevising] = useState(false);
   const [reviseNote, setReviseNote] = useState('');
+  // Slice 5: embedded Topics panel reload signal, multi-select + batch cast.
+  const [topicsReload, setTopicsReload] = useState(0);
+  const [selected, setSelected] = useState(() => new Set());
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchMsg, setBatchMsg] = useState('');
+  const topRef = useRef(null);
+  const toggleSel = (id) => setSelected((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   // manual entry
   const [manualOpen, setManualOpen] = useState(false);
@@ -152,17 +160,25 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   // field and remember its queue id — the queue entry is deleted only after a
   // generation actually succeeds, so navigating away never loses a topic.
   const [pendingTopicId, setPendingTopicId] = useState(null);
+  // Preload a queued topic into the generator form. Shared by the Brief hand-off
+  // (topicRequest prop) and the Topics panel embedded on this page.
+  const applyTopicRequest = (t) => {
+    if (!t) return;
+    setTopic(t.text || '');
+    setJobNumber(t.job_number || '');
+    setEpisodeNumber(t.episode_number || '');
+    if (Array.isArray(t.channels) && t.channels.length) {
+      setPicked({ longform: t.channels.includes('longform'), shortform: t.channels.includes('shortform'), tvradio: t.channels.includes('tvradio'), blog: t.channels.includes('blog') });
+    }
+    if (t.extra != null) setExtra(t.extra);
+    setPendingTopicId(t.id ?? null);
+    if (topRef.current) topRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   useEffect(() => {
     if (!topicRequest) return;
-    setTopic(topicRequest.text || '');
-    setJobNumber(topicRequest.job_number || '');
-    setEpisodeNumber(topicRequest.episode_number || '');
-    if (Array.isArray(topicRequest.channels) && topicRequest.channels.length) {
-      setPicked({ longform: topicRequest.channels.includes('longform'), shortform: topicRequest.channels.includes('shortform'), tvradio: topicRequest.channels.includes('tvradio'), blog: topicRequest.channels.includes('blog') });
-    }
-    if (topicRequest.extra != null) setExtra(topicRequest.extra);
-    setPendingTopicId(topicRequest.id ?? null);
+    applyTopicRequest(topicRequest);
     if (onTopicConsumed) onTopicConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicRequest]);
 
   useEffect(() => {
@@ -174,7 +190,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
 
   useEffect(() => {
     if (!clientId) return;
-    setBrief(null); setHistory([]); setResults([]); setErr('');
+    setBrief(null); setHistory([]); setResults([]); setErr(''); setSelected(new Set());
     api.getBrief(clientId).then(setBrief).catch(() => {});
     api.listScripts(clientId).then(s => setHistory(s || [])).catch(() => {});
     api.channels(clientId).then(ch => { if (Array.isArray(ch) && ch.length) setChannels(ch); }).catch(() => {});
@@ -203,6 +219,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       if (pendingTopicId != null) {
         try { await api.deleteTopic(clientId, pendingTopicId); } catch { /* queue entry may already be gone */ }
         setPendingTopicId(null);
+        setTopicsReload((n) => n + 1); // refresh the embedded Topics panel
       }
       await refreshHistory();
     } catch (e) {
@@ -261,6 +278,61 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       await refreshHistory();
     } catch (e) { setErr(e.message); }
   };
+  // Delete every script sharing a topic group (one call, server-side).
+  const deleteTopicGroup = async (g) => {
+    if (!window.confirm(`Delete all ${g.items.length} script${g.items.length > 1 ? 's' : ''} in “${g.topic}”? This can’t be undone.`)) return;
+    try {
+      await api.deleteScriptsByTopic(clientId, g.key === 'untitled' ? '' : g.topic);
+      setExpandedTopic(null);
+      setSelected(new Set());
+      await refreshHistory();
+    } catch (e) { setErr(e.message || 'Could not delete the topic.'); }
+  };
+
+  // Multi-select → batch cast. Picks the client's first ready avatar and fires a
+  // HeyGen render per selected script (auto-render). Guarded by a confirm since
+  // it spends render credits. Best-effort mirror so each cast carries job/script.
+  const castSelected = async () => {
+    const items = history.filter((h) => selected.has(h.id) && h.body && h.body.trim());
+    if (!items.length) return;
+    if (!window.confirm(`Start ${items.length} HeyGen render${items.length > 1 ? 's' : ''} now? This runs immediately and uses render credits.`)) return;
+    setBatchBusy(true); setBatchMsg('Finding a ready avatar…'); setErr('');
+    try {
+      const tokens = [];
+      try {
+        const res = await api.listClientInvites(clientId);
+        const rows = Array.isArray(res) ? res : (res && res.invites ? res.invites : []);
+        for (const iv of rows) if (iv && iv.token) tokens.push(iv.token);
+      } catch { /* fall through to no-avatar message */ }
+      let avatar = null;
+      for (const t of tokens) {
+        try {
+          const r = await api.listAvatars(t);
+          const avs = (r && r.avatars) || [];
+          const ready = avs.find((a) => a.heygen_avatar_id && (!a.status || a.status === 'ready'));
+          if (ready) { avatar = { ...ready, _token: t }; break; }
+        } catch { /* try next token */ }
+      }
+      if (!avatar) { setErr('No ready avatar for this client — build a twin in Studio before batch casting.'); setBatchMsg(''); setBatchBusy(false); return; }
+      let done = 0;
+      for (const h of items) {
+        setBatchMsg(`Casting ${done + 1} of ${items.length}…`);
+        try {
+          const beforeRes = await listVideos(avatar._token).catch(() => ({ videos: [] }));
+          const before = new Set((beforeRes.videos || []).map((v) => v.id));
+          await generateVideo(h.body, { token: avatar._token, avatarId: avatar.id, title: castTitleFor(h), aspectRatio: h.channel === 'shortform' ? '9:16' : '16:9', engine: 'auto' });
+          const afterRes = await listVideos(avatar._token).catch(() => ({ videos: [] }));
+          const fresh = (afterRes.videos || []).find((v) => !before.has(v.id));
+          if (fresh) { try { await api.castUpsert(clientId, fresh.id, castTitleFor(h), h.job_number || undefined, h.id); } catch { /* mirror best-effort */ } }
+          done++;
+        } catch { /* skip this one, keep going */ }
+      }
+      setBatchMsg(`Started ${done} of ${items.length} render${items.length > 1 ? 's' : ''}. Track them in Studio.`);
+      setSelected(new Set());
+      await refreshHistory();
+    } finally { setBatchBusy(false); }
+  };
+
   const APPROVAL_LABEL = { pending: 'pending approval', changes_requested: 'changes added', changes_completed: 'changes verified', approved: 'approved', approved_with_changes: 'approved w/ changes', in_production: 'in production' };
   const PRODUCTION_LABEL = { casting: 'production – casting', episode: 'production – episode', ready_to_distribute: 'ready to distribute', scheduled: 'scheduled to post' };
   const remove  = async (sid) => { try { await api.deleteScript(clientId, sid); await refreshHistory(); } catch (e) { setErr(e.message); } };
@@ -365,6 +437,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', height: '100%', minHeight: 0 }}>
       {/* —— center: generator + results + history —— */}
       <div style={{ overflow: 'auto', padding: 'var(--pad)' }}>
+        <div ref={topRef} />
         {onBackToStudio && <button className="btn sm" style={{ marginBottom: 10 }} onClick={onBackToStudio}><Icon name="arrow-l" size={12} /> Studio</button>}
         <div className="label">SCRIPTS · CLAUDE</div>
         <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 34, letterSpacing: '-0.01em', margin: '6px 0 18px' }}>
@@ -477,10 +550,29 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
           </>
         )}
 
+        {/* Topics queue — add/select topics without leaving the Scripts page.
+            "Use topic" preloads the generator above; generating removes it. */}
+        {clientId != null && (
+          <div style={{ marginBottom: 20 }}>
+            <TopicsSection clientId={clientId} onSendTopicToScripts={applyTopicRequest} reloadSignal={topicsReload} sendLabel="Use topic" />
+          </div>
+        )}
+
         {/* history */}
-        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
+        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12, alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div className="label">HISTORY</div>
-          <span className="mono">{history.length} on file</span>
+          <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            {batchMsg && <span className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>{batchMsg}</span>}
+            {selected.size > 0 && (
+              <>
+                <button className="btn primary sm" disabled={batchBusy} onClick={castSelected} style={{ opacity: batchBusy ? 0.6 : 1 }}>
+                  <Icon name="sparkle" size={12} /> {batchBusy ? 'Casting…' : `Cast selected (${selected.size})`}
+                </button>
+                <button className="btn sm" disabled={batchBusy} onClick={() => setSelected(new Set())}>Clear</button>
+              </>
+            )}
+            <span className="mono">{history.length} on file</span>
+          </div>
         </div>
         <div className="col" style={{ gap: 20 }}>
           {groupedHistory.map(g => {
@@ -503,6 +595,11 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                       <Icon name="sliders" size={12} />
                     </span>
                   )}
+                  <span className="icon-btn" title="Delete all scripts in this topic" role="button"
+                    style={{ color: 'var(--accent)' }}
+                    onClick={(e) => { e.stopPropagation(); deleteTopicGroup(g); }}>
+                    <Icon name="close" size={12} />
+                  </span>
                 </span>
                 <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>{g.date ? String(g.date).slice(0, 10) : ''} · {g.items.length} {g.items.length === 1 ? 'script' : 'scripts'}</span>
               </button>
@@ -512,6 +609,8 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
             <div key={h.id} className="col" style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface)', gap: 10, ...chStripe(h.channel) }}>
               <div style={{ minWidth: 0 }}>
                 <div className="row" style={{ gap: 8 }}>
+                  <input type="checkbox" checked={selected.has(h.id)} onChange={() => toggleSel(h.id)}
+                    onClick={(e) => e.stopPropagation()} title="Select for batch cast" style={{ cursor: 'pointer', flex: 'none' }} />
                   <span className="badge" style={chBadgeStyle(h.channel)}>{labelFor(h.channel)}</span>
                   {h.job_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {h.job_number}</span>}
                   {h.episode_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>E{String(h.episode_number).replace(/^E/i, '')}</span>}
