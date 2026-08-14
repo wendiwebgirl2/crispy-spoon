@@ -268,19 +268,28 @@ async function saveBlobWithPrompt(blob, suggestedName) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-// Current operator identity. Today this is a one-time locally-stored name
-// (prompted on first use); when admin/editor/client auth lands, point
-// getOperatorName() at the authenticated user instead — call sites won't change.
+// Current operator identity. Once a real account signs in, the authenticated
+// username IS the operator — locked, never prompted, so verification and
+// approval records always name the person who actually clicked. The old
+// localStorage name is only a pre-auth (dev) fallback; call sites don't change.
 const OPERATOR_KEY = 'cuecast_operator_name';
+// Primed once at boot from /api/me (see App.jsx). null until then / when signed out.
+let _authOperator = null; // { username, role } | null
+function setAuthOperator(user) { _authOperator = (user && user.username) ? user : null; }
+function authOperatorName() { return (_authOperator && _authOperator.username) ? _authOperator.username : ''; }
 function getOperatorName() {
+  const a = authOperatorName();
+  if (a) return a; // signed in → the account name wins
   try { return localStorage.getItem(OPERATOR_KEY) || ''; } catch { return ''; }
 }
 function setOperatorName(name) {
   try { localStorage.setItem(OPERATOR_KEY, String(name || '').trim()); } catch { /* ignore */ }
 }
-// Return the operator name, prompting once if it isn't set yet. Returns '' if
-// the person cancels.
+// Return the operator name. Signed in → the locked account username, no prompt.
+// Pre-auth (dev) → the stored name, prompting once if unset. '' if cancelled.
 function ensureOperatorName() {
+  const a = authOperatorName();
+  if (a) return a;
   let n = getOperatorName();
   if (!n) {
     n = (window.prompt('Your name (for internal verification records):') || '').trim();
@@ -377,6 +386,8 @@ export {
   getOperatorName,
   setOperatorName,
   ensureOperatorName,
+  setAuthOperator,
+  authOperatorName,
   Icon,
   CueLogo,
   Wordmark,

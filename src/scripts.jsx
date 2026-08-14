@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { api, generateVideo, listVideos } from './api.js'
-import { Icon, ensureOperatorName, ExpressionTags, buildArchiveZip } from './shared.jsx'
+import { Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip } from './shared.jsx'
 import { TopicsSection } from './brief.jsx'
 
 const CHANNEL_FALLBACK = [
@@ -255,9 +255,16 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       const payload = { approval_status };
       if (status) payload.status = status;
       if (approval_status === 'approved') {
-        const who = window.prompt('Approved by (name):', '');
-        if (who === null) return; // cancelled
-        if (who.trim()) payload.approval_by = who.trim();
+        // Signed in → stamp the locked account name, no prompt. Pre-auth (dev)
+        // falls back to asking so the field is never silently blank.
+        const locked = authOperatorName();
+        if (locked) {
+          payload.approval_by = locked;
+        } else {
+          const who = window.prompt('Approved by (name):', '');
+          if (who === null) return; // cancelled
+          if (who.trim()) payload.approval_by = who.trim();
+        }
       }
       await api.updateScript(clientId, sid, payload);
       await refreshHistory();

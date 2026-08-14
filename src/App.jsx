@@ -1,5 +1,5 @@
 import React from 'react'
-import { Icon } from './shared.jsx'
+import { Icon, setAuthOperator } from './shared.jsx'
 import logoLockup from './assets/LOGO-cuecreative.png'
 import { api } from './api.js'
 import { ClientsView } from './clients.jsx'
@@ -225,6 +225,9 @@ function App() {
     else if (it.kind === 'invite') { setActiveClientId(it.client_id); setView('recordings'); }
     else { setActiveClientId(it.client_id); setView(it.view || 'clients'); }
   };
+  // Prime the operator identity once at boot. From here on, verification and
+  // approval records name the signed-in account, locked (see shared.jsx).
+  React.useEffect(() => { api.me().then((m) => setAuthOperator(m)).catch(() => setAuthOperator(null)); }, []);
   const [activeClientId, setActiveClientId] = React.useState(null);
   const [alerts, setAlerts] = React.useState(null);
   React.useEffect(() => {
