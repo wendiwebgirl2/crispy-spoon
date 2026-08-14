@@ -227,8 +227,18 @@ function App() {
   };
   // Prime the operator identity once at boot. From here on, verification and
   // approval records name the signed-in account, locked (see shared.jsx).
-  React.useEffect(() => { api.me().then((m) => setAuthOperator(m)).catch(() => setAuthOperator(null)); }, []);
+  const [me, setMe] = React.useState(null);
+  React.useEffect(() => { api.me().then((m) => { setAuthOperator(m); setMe(m); }).catch(() => { setAuthOperator(null); setMe(null); }); }, []);
+  // An editor scoped to exactly one client works entirely inside that client —
+  // so their "Clients" nav goes straight to that client's Brief, not a one-row
+  // roster. (Admins and multi-client editors still get the roster.)
+  const soloClientId = (me && me.role === 'editor' && Array.isArray(me.clientIds) && me.clientIds.length === 1) ? me.clientIds[0] : null;
   const [activeClientId, setActiveClientId] = React.useState(null);
+  // On first load a single-client editor lands on the roster ('clients' default);
+  // redirect them to their client's Brief the moment identity resolves.
+  React.useEffect(() => {
+    if (soloClientId != null) { setActiveClientId((cur) => (cur == null ? soloClientId : cur)); setView((v) => (v === 'clients' ? 'brief' : v)); }
+  }, [soloClientId]);
   const [alerts, setAlerts] = React.useState(null);
   React.useEffect(() => {
     let live = true;
@@ -274,8 +284,12 @@ function App() {
           {NAV.map(n => (
             <button
               key={n.id}
-              className={'nav-item' + (view === n.id ? ' active' : '')}
-              onClick={() => n.id === 'studio' ? goStudio() : setView(n.id)}
+              className={'nav-item' + ((view === n.id || (n.id === 'clients' && soloClientId != null && view === 'brief')) ? ' active' : '')}
+              onClick={() => {
+                if (n.id === 'studio') return goStudio();
+                if (n.id === 'clients' && soloClientId != null) { setActiveClientId(soloClientId); return setView('brief'); }
+                setView(n.id);
+              }}
               title={n.label}
             >
               <Icon
