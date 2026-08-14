@@ -30,7 +30,7 @@ function UsersSection() {
   const create = async () => {
     setErr(''); setMsg(''); setBusy(true);
     try {
-      await api.createUser({ username: form.username, password: form.password, role: form.role, clientIds: form.role === 'editor' ? form.clientIds : [] });
+      await api.createUser({ username: form.username, password: form.password, role: form.role, clientIds: form.role !== 'admin' ? form.clientIds : [] });
       setForm({ username: '', password: '', role: 'editor', clientIds: [] });
       setMsg('User created.'); loadUsers();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
@@ -64,9 +64,9 @@ function UsersSection() {
             <div key={u.id} className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
               <span style={{ fontWeight: 600, minWidth: 130 }}>{u.username}</span>
               <select value={u.role} onChange={(e) => changeRole(u, e.target.value)} disabled={me.id === u.id} style={selStyle}>
-                <option value="admin">admin</option><option value="editor">editor</option>
+                <option value="admin">admin</option><option value="editor">editor</option><option value="client">client</option>
               </select>
-              {u.role === 'editor' && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{u.clientIds.length} client{u.clientIds.length === 1 ? '' : 's'}</span>}
+              {u.role !== 'admin' && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{u.clientIds.length} client{u.clientIds.length === 1 ? '' : 's'}</span>}
               <span className="mono" style={{ fontSize: 11, color: u.active ? 'var(--ok)' : 'var(--text-4)' }}>{u.active ? 'active' : 'disabled'}</span>
               <div className="row" style={{ gap: 6, marginLeft: 'auto' }}>
                 <button className="btn sm" onClick={() => resetPw(u)}>Reset password</button>
@@ -82,13 +82,13 @@ function UsersSection() {
           <input placeholder="Username" value={form.username} autoCapitalize="off" spellCheck={false} onChange={(e) => setForm({ ...form, username: e.target.value })} style={inpStyle} />
           <input placeholder="Password (min 6)" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={inpStyle} />
           <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} style={selStyle}>
-            <option value="editor">editor</option><option value="admin">admin</option>
+            <option value="editor">editor</option><option value="admin">admin</option><option value="client">client</option>
           </select>
           <button className="btn primary sm" onClick={create} disabled={busy || !form.username || !form.password}>Create user</button>
         </div>
-        {form.role === 'editor' && (
+        {form.role !== 'admin' && (
           <div style={{ marginTop: 10 }}>
-            <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 6 }}>Editor can access these clients (leave empty to assign later):</div>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 6 }}>{form.role === 'client' ? 'Client portal account — pick the ONE client it belongs to:' : 'Editor can access these clients (leave empty to assign later):'}</div>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
               {clients.map((c) => (
                 <label key={c.id} className="row" style={{ gap: 4, fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '3px 8px' }}>

@@ -333,4 +333,17 @@ export const api = {
   createUser: (payload) => vcReq('/users', { method: 'POST', body: JSON.stringify(payload) }),
   updateUser: (uid, payload) => vcReq(`/users/${uid}`, { method: 'PUT', body: JSON.stringify(payload) }),
   resetUserPassword: (uid, password) => vcReq(`/users/${uid}/password`, { method: 'POST', body: JSON.stringify({ password }) }),
+  // ---- client portal (role='client' accounts; scoped server-side to their one client) ----
+  portalSummary: () => vcReq('/portal/summary'),
+  portalNeedsApproval: () => vcReq('/portal/needs-approval'),
+  portalApprove: (payload) => vcReq('/portal/approve', { method: 'POST', body: JSON.stringify(payload) }),
+  portalInProduction: () => vcReq('/portal/in-production'),
+  portalEpisodes: () => vcReq('/portal/episodes'),
+  portalAvatars: () => vcReq('/portal/avatars'),
+  portalTopics: () => vcReq('/portal/topics'),
+  portalAddTopic: (text) => vcReq('/portal/topics', { method: 'POST', body: JSON.stringify({ text }) }),
+  portalRequest: (kind, body) => vcReq('/portal/requests', { method: 'POST', body: JSON.stringify({ kind, body }) }),
+  portalAccount: () => vcReq('/portal/account'),
+  portalEpisodeAudioUrl: (id) => `${VC_BASE}/portal/episodes/${id}/audio`,
+  portalEpisodeVideoUrl: (id) => `${VC_BASE}/portal/episodes/${id}/video`,
 };
