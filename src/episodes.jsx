@@ -21,6 +21,14 @@ const typePrefix = (channel, variant) => {
   return (channel || '—').slice(0, 2).toUpperCase();
 };
 
+// Episode title for a script: "E{n} - {LF/SF#}: {title}" — the episode number
+// sits BEFORE the LF/SF tag, then the original title (matches castTitleFor).
+const scriptEpLabel = (s) => {
+  const n = String(s.episode_number || '').trim().replace(/^E/i, '');
+  const t = (s.title && s.title.trim()) || (s.topic && s.topic.trim()) || ('Script ' + s.id);
+  return `${n ? `E${n} - ` : ''}${typePrefix(s.channel, s.variant)}: ${t}`;
+};
+
 function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = [], avatarVideos = [], briefAssets = [], imageAssets = [], onUseAsset, onStillSec, onUpload, onSynth, onUseRecording, onUseVideo, onClearVideo, onClearSlot }) {
   const [recPick, setRecPick] = useState('');
   const [vidPick, setVidPick] = useState('');
@@ -377,7 +385,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
 
   return (
     <div className="card card-pad">
-      <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 22, margin: '0 0 12px' }}>Producing: {full.title}</h2>
+      <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 22, margin: '0 0 12px' }}>Producing: {epTitle(full)}</h2>
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
 
       {/* Final format first — decides which renders run, so an audiogram never
@@ -792,17 +800,15 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
             <select value="" onChange={(e) => {
               const s = approvedScripts.find((x) => String(x.id) === e.target.value);
               if (!s) return;
-              const label = `${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || ('Script ' + s.id)}`;
-              setNewTitle(label);
+              setNewTitle(scriptEpLabel(s));
               setNewTopic((s.topic && s.topic.trim()) || '');
               setNewJob(s.job_number || '');
               setNewScriptId(s.id);
             }} style={{ ...inputStyle, maxWidth: 240 }}>
               <option value="">Approved scripts…</option>
-              {approvedScripts.map((s) => {
-                const label = `${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || ('Script ' + s.id)}`;
-                return <option key={s.id} value={s.id}>{label}</option>;
-              })}
+              {approvedScripts.map((s) => (
+                <option key={s.id} value={s.id}>{scriptEpLabel(s)}</option>
+              ))}
             </select>
           )}
           <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Episode title" style={{ ...inputStyle, flex: 1 }} />

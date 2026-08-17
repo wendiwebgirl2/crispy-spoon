@@ -28,7 +28,7 @@ const THEME = [
   ['theme_secondary', 'Secondary'],
   ['theme_accent', 'Accent'],
 ];
-const KEYS = [...CONTACT, ...REPO, ...THEME].map(([k]) => k).concat(['repo_richtext']);
+const KEYS = [...CONTACT, ...REPO, ...THEME].map(([k]) => k).concat(['repo_richtext', 'topics_to_avoid']);
 
 const KIND_OPTS = ['podcast', 'social', 'website', 'other'];
 
@@ -794,6 +794,16 @@ function BriefView({ clientId, onSendTopicToScripts }) {
       <div className="card card-pad" style={{ marginTop: 16 }}>
         <div className="label" style={{ marginBottom: 12 }}>REPO · steers the copy</div>
         <RichText value={form.repo_richtext ?? ''} onChange={(v) => set('repo_richtext', v)} />
+      </div>
+
+      <div className="card card-pad" style={{ marginTop: 16 }}>
+        <div className="label" style={{ marginBottom: 8 }}>TOPICS TO AVOID · never used in scripts</div>
+        <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginBottom: 10 }}>
+          No-go subjects, claims, or themes. Anything listed here is excluded when scripts are generated. Also pulled in from the client onboarding form.
+        </div>
+        <textarea value={form.topics_to_avoid ?? ''} onChange={(e) => set('topics_to_avoid', e.target.value)} rows={4}
+          placeholder="e.g. competitor names, pricing/discounts, politics, medical claims — one per line or comma-separated"
+          style={{ width: '100%', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', font: 'inherit', fontSize: 13, padding: '9px 11px', boxSizing: 'border-box', resize: 'vertical' }} />
       </div>
 
       <div className="card card-pad" style={{ marginTop: 16, maxWidth: 480 }}>
