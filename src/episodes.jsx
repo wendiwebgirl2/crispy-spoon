@@ -11,6 +11,20 @@ const inputStyle = {
   boxSizing: 'border-box', width: '100%',
 };
 
+// Render a stored 24h "HH:MM" air time as regular 12-hour time (e.g. "2:30 PM").
+const fmtAirTime = (t) => {
+  const m = String(t || '').match(/^(\d{1,2}):(\d{2})/); if (!m) return '';
+  let h = +m[1]; const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
+  return `${h}:${m[2]} ${ap}`;
+};
+// "Aired Jun 3, 2026 · 2:30 PM" from air_date/air_time (either may be blank).
+const fmtAired = (d, t) => {
+  const parts = [];
+  if (d) { const dt = new Date(d + 'T00:00:00'); parts.push(isNaN(dt) ? d : dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })); }
+  if (t) parts.push(fmtAirTime(t));
+  return parts.join(' · ');
+};
+
 // Duplicated from scripts.jsx / client-detail.jsx (no shared module between
 // these views) — change one, change all three.
 const typePrefix = (channel, variant) => {
@@ -212,8 +226,14 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const [musicPrompt, setMusicPrompt] = useState('');
   const [musicMode, setMusicMode] = useState('segment');
   const [assets, setAssets] = useState([]);
+  const [airDate, setAirDate] = useState('');
+  const [airTime, setAirTime] = useState('');
 
-  const refresh = () => ep.full(cid, epId).then((f) => { setFull(f); if (f && f.music_mode) setMusicMode(f.music_mode); }).catch((e) => setErr(e.message));
+  const refresh = () => ep.full(cid, epId).then((f) => {
+    setFull(f);
+    if (f && f.music_mode) setMusicMode(f.music_mode);
+    if (f) { setAirDate(f.air_date || ''); setAirTime(f.air_time || ''); }
+  }).catch((e) => setErr(e.message));
 
   const isImgAsset = (a) => (a.kind === 'logo' || a.kind === 'background') || /\.(png|jpe?g|webp|gif)$/i.test(a.filename || '');
   const isAudioAsset = (a) => (a.kind === 'music') || /\.(mp3|wav|m4a|aac|ogg)$/i.test(a.filename || '');
@@ -236,6 +256,12 @@ function EpisodeEditor({ cid, epId, onChange }) {
     setErr('');
     try { await ep.setMeta(cid, epId, { output_format: fmt }); await refresh(); }
     catch (e) { setErr(e.message || 'Could not set format.'); }
+  };
+  const saveAir = async () => {
+    setBusy('air'); setErr('');
+    try { await ep.setMeta(cid, epId, { airDate, airTime }); await refresh(); if (onChange) onChange(); }
+    catch (e) { setErr(e.message || 'Could not save air date.'); }
+    finally { setBusy(''); }
   };
   const verifyChanges = async () => {
     setBusy('verify'); setErr('');
@@ -592,6 +618,21 @@ function EpisodeEditor({ cid, epId, onChange }) {
             <button className="btn sm" disabled={busy === 'send'} onClick={sendToClient}><Icon name="send" size={12} /> {busy === 'send' ? 'Sending…' : (full.approval_status === 'changes_completed' ? 'Resend to client' : 'Send to client')}</button>
             <button className="btn sm" disabled={busy === 'planner'} onClick={addToPlanner}><Icon name="history" size={12} /> Add to planner</button>
           </div>
+          {/* Air date/time — record when the episode aired or was distributed. */}
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+            <div className="label" style={{ marginBottom: 8 }}>AIR DATE</div>
+            <div className="row" style={{ gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <label className="col" style={{ gap: 4 }}><span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Date aired / distributed</span>
+                <input type="date" value={airDate} onChange={(e) => setAirDate(e.target.value)} style={{ ...inputStyle, width: 170 }} /></label>
+              <label className="col" style={{ gap: 4 }}><span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Time</span>
+                <input type="time" value={airTime} onChange={(e) => setAirTime(e.target.value)} style={{ ...inputStyle, width: 130 }} /></label>
+              <button className="btn sm" disabled={busy === 'air'} onClick={saveAir}><Icon name="check" size={12} /> {busy === 'air' ? 'Saving…' : 'Save air date'}</button>
+              {(airDate || airTime) && <button className="btn sm" disabled={busy === 'air'} onClick={() => { setAirDate(''); setAirTime(''); }} title="Clear">✕</button>}
+            </div>
+            {(full.air_date || full.air_time) && (
+              <div className="mono" style={{ color: 'var(--ok)', fontSize: 11, marginTop: 6 }}>Aired {fmtAired(full.air_date, full.air_time)}</div>
+            )}
+          </div>
         </div>
       )}
 
@@ -627,6 +668,11 @@ function EpRow({ cid, e, active, onOpen, onRemove, onArchive }) {
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
             {String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}
           </div>
+          {(e.air_date || e.air_time) && (
+            <div className="mono" style={{ color: 'var(--ok)', fontSize: 11, marginTop: 2 }}>
+              <Icon name="check" size={10} /> Aired {fmtAired(e.air_date, e.air_time)}
+            </div>
+          )}
         </div>
       </div>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }} onClick={(ev) => ev.stopPropagation()}>
@@ -645,6 +691,8 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   const [list, setList] = useState([]);
   const [schedule, setSchedule] = useState([]);
   const [showArchive, setShowArchive] = useState(false);
+  const [archiveLog, setArchiveLog] = useState([]);
+  const [showArchiveLog, setShowArchiveLog] = useState(false);
   const [openId, setOpenId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -673,7 +721,11 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
     ])
       .catch((e) => setErr(e.message || 'Could not load episodes.')).finally(() => setLoading(false));
   };
-  useEffect(() => { setOpenId(null); load(); }, [cid]);
+  const loadArchiveLog = () => {
+    if (cid == null) { setArchiveLog([]); return; }
+    ep.archiveLog(cid).then((r) => setArchiveLog(Array.isArray(r) ? r : (r.log || []))).catch(() => setArchiveLog([]));
+  };
+  useEffect(() => { setOpenId(null); load(); loadArchiveLog(); }, [cid]);
 
   // A "Create episode" click from the Recordings tab hands us a clip to preload
   // into a fresh episode's body slot (recording master or rendered avatar clip).
@@ -735,7 +787,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
         manifest: { type: 'episode', ...e, archivedAt: new Date().toISOString() },
       });
       if (!window.confirm(`Archive .zip downloaded (${n} file${n === 1 ? '' : 's'} + manifest). Delete this episode and its files permanently now? Make sure the download finished first.`)) return;
-      await ep.del(cid, e.id); if (openId === e.id) setOpenId(null); await load();
+      await ep.archive(cid, e.id); if (openId === e.id) setOpenId(null); await load(); loadArchiveLog();
     } catch (err) { setErr('Archive failed — nothing was deleted: ' + (err.message || err)); }
   };
 
@@ -863,6 +915,28 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
                           onOpen={() => setOpenId(openId === e.id ? null : e.id)} onRemove={() => remove(e.id)} onArchive={() => archive(e)} />
                       ))}
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {archiveLog.length > 0 && (
+          <div style={{ marginTop: 22 }}>
+            <button className="btn sm" onClick={() => setShowArchiveLog((v) => !v)} style={{ width: '100%', justifyContent: 'space-between' }}>
+              <span>Archived episodes log ({archiveLog.length})</span>
+              <Icon name="arrow-r" size={12} style={{ transform: showArchiveLog ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+            </button>
+            {showArchiveLog && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+                {archiveLog.map((a) => (
+                  <div key={a.id} className="card" style={{ padding: 8, background: 'var(--surface)' }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600 }}>{a.episode_number ? `E${String(a.episode_number).replace(/^E/i, '')} - ` : ''}{a.title || '(untitled)'}</div>
+                    <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
+                      {a.job_number ? `Job ${a.job_number} · ` : ''}archived {String(a.archived_at || '').slice(0, 10)}{a.archived_by ? ' by ' + a.archived_by : ''}
+                    </div>
+                    {(a.air_date || a.air_time) && <div className="mono" style={{ color: 'var(--text-3)', fontSize: 11 }}>Aired {fmtAired(a.air_date, a.air_time)}</div>}
+                    {a.topic && <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>{a.topic}</div>}
                   </div>
                 ))}
               </div>

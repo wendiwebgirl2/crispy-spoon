@@ -42,6 +42,8 @@ export const ep = {
   coverUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/cover`,
   voiceOutputs: (cid) => get(`/api/clients/${cid}/voice/outputs`),
   setMeta: (cid, id, body) => put(`/api/clients/${cid}/episodes/${id}/meta`, body),
+  archive: (cid, id) => post(`/api/clients/${cid}/episodes/${id}/archive`, {}),
+  archiveLog: (cid) => get(`/api/clients/${cid}/episodes/archive-log`),
   publish: (cid, id, platforms, scheduleId) => post(`/api/clients/${cid}/episodes/${id}/publish`, { platforms, scheduleId }),
   publishTransistor: (cid, id, scheduleId) => post(`/api/clients/${cid}/episodes/${id}/publish-transistor`, { scheduleId }),
 };
