@@ -118,6 +118,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [customMotion, setCustomMotion] = React.useState('');
   const [generating, setGenerating] = React.useState(false);
   const [queue, setQueue] = React.useState([]);
+  const [zoom, setZoom] = React.useState(false);   // cast-preview full-size lightbox
 
   // —— live data ——
   const [clients, setClients] = React.useState([]);
@@ -844,14 +845,20 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                     <span className="badge"><Icon name="lang" size={11} /> {language}</span>
                   </div>
                 </div>
-                <div style={{
+                <div
+                  onClick={() => { if (avatar && (avatar.image_url || avatar.thumbnail_url)) setZoom(true); }}
+                  style={{
                   aspectRatio: aspectRatio === '16:9' ? '16/9' : (aspectRatio === '9:16' ? '9/16' : '1/1'),
                   maxHeight: 320,
                   margin: '0 auto',
                   position: 'relative',
                   background: '#0a0a0a',
                   display: 'grid', placeItems: 'center',
-                  width: aspectRatio === '9:16' ? 240 : (aspectRatio === '1:1' ? 320 : '100%')
+                  cursor: (avatar && (avatar.image_url || avatar.thumbnail_url)) ? 'zoom-in' : 'default',
+                  // 16:9 keeps its aspect UNDER the 320px cap (569 = 320 * 16/9);
+                  // width:100% here made the box full-width but capped-short, which
+                  // cropped the avatar (object-fit: cover) — the "too short" preview.
+                  width: aspectRatio === '9:16' ? 240 : (aspectRatio === '1:1' ? 320 : 'min(100%, 569px)')
                 }}>
                   <AvatarTile avatar={avatar} />
                   <div style={{ position: 'absolute', bottom: 16, left: 16, right: 16 }}>
@@ -871,6 +878,12 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   </div>
                 </div>
               </div>
+
+              {zoom && avatar && (avatar.image_url || avatar.thumbnail_url) && (
+                <div onClick={() => setZoom(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.85)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 200, cursor: 'zoom-out' }}>
+                  <img src={avatar.image_url || avatar.thumbnail_url} alt="avatar full size" style={{ maxWidth: '92vw', maxHeight: '92vh', borderRadius: 10, border: '1px solid var(--border)', objectFit: 'contain' }} />
+                </div>
+              )}
 
               {/* cast title */}
               <div style={{ marginBottom: 16 }}>
