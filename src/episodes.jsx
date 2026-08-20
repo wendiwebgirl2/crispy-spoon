@@ -232,7 +232,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const isImgAsset = (a) => (a.kind === 'logo' || a.kind === 'background') || /\.(png|jpe?g|webp|gif)$/i.test(a.filename || '');
   const imageAssets = assets.filter(isImgAsset);
   // What a music slot currently holds, for its status badge (audio | video | image).
-  const slotKind = (base) => full[base + '_video_path'] ? 'video' : (full[base + '_path'] ? 'audio' : (full[base + '_still_path'] ? 'image' : ''));
+  const slotKind = (base) => !full ? '' : (full[base + '_video_path'] ? 'video' : (full[base + '_path'] ? 'audio' : (full[base + '_still_path'] ? 'image' : '')));
   const introMusicKind = slotKind('intro_music');
   const introMusicSet = !!introMusicKind;
   const musicKind = slotKind('music');
