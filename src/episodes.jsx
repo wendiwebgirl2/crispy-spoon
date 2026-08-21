@@ -255,6 +255,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
     try { await ep.setMeta(cid, epId, { output_format: fmt }); await refresh(); }
     catch (e) { setErr(e.message || 'Could not set format.'); }
   };
+  const saveAspect = async (asp) => {
+    setErr('');
+    try { await ep.setMeta(cid, epId, { output_aspect: asp }); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not set output shape.'); }
+  };
   const saveAir = async () => {
     setBusy('air'); setErr('');
     try { await ep.setMeta(cid, epId, { airDate, airTime }); await refresh(); if (onChange) onChange(); }
@@ -431,6 +436,22 @@ function EpisodeEditor({ cid, epId, onChange }) {
               : 'Stitches audio and the full avatar video.'}
           </span>
         </div>
+        {(full.output_format || 'video') !== 'audio' && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+            <div className="label" style={{ marginBottom: 8 }}>FORMAT · output shape</div>
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              {[['16:9', 'Horizontal', '1920×1080'], ['9:16', 'Vertical', '1080×1920'], ['1:1', 'Square', '1920×1920']].map(([k, lab, dim]) => (
+                <button key={k} className="btn sm" onClick={() => saveAspect(k)}
+                  style={{
+                    background: (full.output_aspect || '16:9') === k ? 'var(--surface-2)' : 'transparent',
+                    borderColor: (full.output_aspect || '16:9') === k ? 'var(--accent)' : 'var(--border)',
+                    color: (full.output_aspect || '16:9') === k ? 'var(--text)' : 'var(--text-2)',
+                  }}>{lab} <span className="mono" style={{ fontSize: 10, opacity: 0.7 }}>{dim}</span></button>
+              ))}
+              <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)', alignSelf: 'center' }}>Clips fill this shape; off-shape clips are cropped, not letterboxed.</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
