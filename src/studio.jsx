@@ -669,7 +669,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       }
       await generateVideo(editCastScript.trim(), {
         token,
-        title: (editCastTitle.trim() || editCast.title || 'Untitled') + ' (recast)',
+        title: (editCastTitle.trim() || editCast.title || 'Untitled').replace(/(?:\s*\(recast\))+\s*$/i, '') + ' (recast)',
         avatarId: editCast.avatar_id || undefined,
         aspectRatio: editCastAspect,
         engine,

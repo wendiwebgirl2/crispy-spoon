@@ -256,7 +256,13 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
 
   const todayKey = new Date().toDateString();
   const unscheduled = items.filter((i) => !i.scheduled_for || i.status === 'draft');
-  const isEpisodeSocial = detail && detail.episode_id && SOCIAL_CHANNELS.some((c) => c.key === detail.channel);
+  // Any planner item backed by an episode can be published now (all channels).
+  // Podcast channels publish the audio; social/video channels need a stitched video.
+  const isEpisodeItem = !!(detail && detail.episode_id);
+  const isPodcastChannel = !!(detail && (detail.channel === 'transistor' || detail.channel === 'podcast'));
+  const needsVideo = isEpisodeItem && !isPodcastChannel;
+  const needsAudio = isEpisodeItem && isPodcastChannel;
+  const mediaMissing = (needsVideo && detail?.episode_has_video === false) || (needsAudio && detail?.episode_has_audio === false);
   const detailMeta = (() => { if (!detail || !detail.publish_meta) return null; try { return JSON.parse(detail.publish_meta); } catch { return null; } })();
 
   return (
@@ -404,8 +410,11 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
               {detail.channel_name ? ' · ' + detail.channel_name : ''} · {detail.status}
               {timeOf(detail) ? ' · ' + fmt12(timeOf(detail)) : ''}
             </div>
-            {isEpisodeSocial && detail.episode_has_video === false && (
+            {needsVideo && detail.episode_has_video === false && (
               <div className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>No video on this episode yet — stitch it first.</div>
+            )}
+            {needsAudio && detail.episode_has_audio === false && (
+              <div className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>No audio on this episode yet — stitch it first.</div>
             )}
             {detailMeta && detailMeta.ok === false && (
               <div className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>Last attempt failed: {detailMeta.error}</div>
@@ -418,12 +427,12 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
             <div className="row" style={{ justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
               <button className="btn sm" onClick={cancelEvent} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Cancel event</button>
               <div className="row" style={{ gap: 8 }}>
-                {isEpisodeSocial && (
-                  <button className="btn sm primary" disabled={publishing.has(detail.id) || detail.episode_has_video === false} onClick={() => publishItem(detail)}>
+                {isEpisodeItem && (
+                  <button className="btn sm primary" disabled={publishing.has(detail.id) || mediaMissing} onClick={() => publishItem(detail)}>
                     {publishing.has(detail.id) ? 'Publishing…' : <><Icon name="check" size={12} /> Publish now</>}
                   </button>
                 )}
-                {!isEpisodeSocial && detail.status === 'scheduled' && (
+                {!isEpisodeItem && detail.status === 'scheduled' && (
                   <button className="btn sm" onClick={() => { advance(detail.id, 'delivered'); setDetail(null); }}>Mark delivered</button>
                 )}
                 <button className="btn primary sm" onClick={saveDetailDate}><Icon name="check" size={12} /> Save date</button>
