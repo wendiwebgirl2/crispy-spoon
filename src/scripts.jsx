@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { api, generateVideo, listVideos } from './api.js'
-import { Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip } from './shared.jsx'
+import { Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip, SendReviewModal } from './shared.jsx'
 import { TopicsSection } from './brief.jsx'
 
 const CHANNEL_FALLBACK = [
@@ -127,6 +127,8 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [sendScript, setSendScript] = useState(null);   // script being sent for approval (opens the modal)
+  const [sendingApproval, setSendingApproval] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [diffOpen, setDiffOpen] = useState(null);
@@ -384,17 +386,25 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const APPROVAL_LABEL = { pending: 'pending approval', changes_requested: 'changes added', changes_completed: 'changes verified', approved: 'approved', approved_with_changes: 'approved w/ changes', in_production: 'in production' };
   const PRODUCTION_LABEL = { casting: 'production – casting', episode: 'production – episode', ready_to_distribute: 'ready to distribute', scheduled: 'scheduled to post' };
   const remove  = async (sid) => { try { await api.deleteScript(clientId, sid); await refreshHistory(); } catch (e) { setErr(e.message); } };
-  const sendApproval = async (sid) => {
+  // Opens the send-for-approval modal (email + note) for this script.
+  const sendApproval = (sid) => {
     setErr('');
+    const s = history.find((x) => x.id === sid) || results.find((x) => x.id === sid) || { id: sid };
+    setSendScript(s);
+  };
+  // Called by the modal's Send with the entered email + note (note goes into the email).
+  const doSendApproval = async (email, note) => {
+    if (!sendScript) return;
+    setSendingApproval(true); setErr('');
     try {
-      const to = window.prompt('Send this script for approval to which email?\n(Leave blank to use the brief approval contact.)', '');
-      if (to === null) return;
-      const r = await api.sendScriptApproval(clientId, sid, to.trim() || undefined);
+      const r = await api.sendScriptApproval(clientId, sendScript.id, email || undefined, note || undefined);
+      setSendScript(null);
       if (!(r && r.email && r.email.sent)) {
         setErr('Marked pending — email not sent: ' + ((r && r.email && r.email.error) || 'unknown') + (r && r.approval_link ? ' (link: ' + r.approval_link + ')' : ''));
       }
       await refreshHistory();
     } catch (e) { setErr(e.message); }
+    finally { setSendingApproval(false); }
   };
   const copy    = (text) => { try { navigator.clipboard.writeText(text); } catch { /* noop */ } };
   const download = (h) => {
@@ -815,6 +825,14 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
           </div>
         </div>
       )}
+
+      <SendReviewModal
+        open={!!sendScript}
+        title={sendScript ? (sendScript.topic || sendScript.channel || '') : ''}
+        busy={sendingApproval}
+        onSend={doSendApproval}
+        onClose={() => setSendScript(null)}
+      />
     </div>
   );
 };

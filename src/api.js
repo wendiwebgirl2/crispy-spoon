@@ -324,7 +324,7 @@ export const api = {
   renameScriptTopic: (id, from, to) => vcReq(`/clients/${id}/scripts/topic/rename`, { method: "POST", body: JSON.stringify({ from, to }) }),
   deleteScriptsByTopic: (id, topic) => vcReq(`/clients/${id}/scripts/topic/delete`, { method: "POST", body: JSON.stringify({ topic }) }),
   deleteScript: (id, sid) => vcReq(`/clients/${id}/scripts/${sid}`, { method: "DELETE" }),
-  sendScriptApproval: (id, sid, email) => vcReq(`/clients/${id}/scripts/${sid}/send-approval`, { method: "POST", body: JSON.stringify(email ? { email } : {}) }),
+  sendScriptApproval: (id, sid, email, note) => vcReq(`/clients/${id}/scripts/${sid}/send-approval`, { method: "POST", body: JSON.stringify({ ...(email ? { email } : {}), ...(note ? { note } : {}) }) }),
   reviseScript: (id, sid, instruction) => vcReq(`/clients/${id}/scripts/${sid}/revise`, { method: "POST", body: JSON.stringify({ instruction }) }),
   // ---- accounts & roles ----
   me: () => vcReq('/me'),
