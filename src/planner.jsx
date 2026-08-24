@@ -165,8 +165,9 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
       const scr = Array.isArray(sc) ? sc : (sc.scripts || []);
       setApproved(scr.filter((s) => s.status === 'approved'));
       const epsArr = Array.isArray(eps) ? eps : (eps.episodes || []);
-      // Only finished + approved episodes are distributable.
-      setEpisodes(epsArr.filter((e) => e.approval_status === 'approved' && e.hasVideo));
+      // Only finished + approved episodes that haven't aired yet are distributable.
+      // Once an episode has an air date logged, it drops off this section.
+      setEpisodes(epsArr.filter((e) => e.approval_status === 'approved' && e.hasVideo && !e.air_date));
     }).catch((e) => setErr(e.message || 'Could not load planner.')).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, [cid]);
@@ -255,7 +256,6 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
   }
 
   const todayKey = new Date().toDateString();
-  const unscheduled = items.filter((i) => !i.scheduled_for || i.status === 'draft');
   // Any planner item backed by an episode can be published now (all channels).
   // Podcast channels publish the audio; social/video channels need a stitched video.
   const isEpisodeItem = !!(detail && detail.episode_id);
@@ -288,24 +288,6 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
         <CalendarGrid mode={mode} anchor={anchor} items={items} todayKey={todayKey} onEventClick={openDetail} onDayClick={openNewPost} />
         <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 8 }}>Click a day to plan a post · click a chip to reschedule, publish, or cancel · faded = draft, solid = scheduled, outlined ✓ = delivered</div>
       </div>
-
-      {/* Unscheduled drafts strip */}
-      {unscheduled.length > 0 && (
-        <div className="card card-pad" style={{ marginBottom: 14 }}>
-          <div className="label" style={{ marginBottom: 10 }}>UNSCHEDULED DRAFTS <span style={{ color: 'var(--text-4)' }}>({unscheduled.length})</span></div>
-          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            {unscheduled.map((i) => (
-              <div key={i.id} className="card" style={{ padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface-2)' }}>
-                <span style={{ width: 9, height: 9, borderRadius: '50%', background: colorOf(i.channel), flex: 'none' }} />
-                <span style={{ fontSize: 12.5, fontWeight: 600, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title || '(untitled)'}</span>
-                <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{i.channel}</span>
-                <button className="btn sm" onClick={() => openDetail(i)}><Icon name="history" size={12} /> Schedule</button>
-                <button className="btn sm" onClick={() => del(i.id)} title="Remove">✕</button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Distribute finished + approved episodes */}
       <div className="card card-pad" style={{ marginBottom: 14 }}>

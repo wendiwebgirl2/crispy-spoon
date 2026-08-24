@@ -221,11 +221,13 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const [airDate, setAirDate] = useState('');
   const [airTime, setAirTime] = useState('');
   const [showSend, setShowSend] = useState(false);
+  const [podcastDesc, setPodcastDesc] = useState('');
+  const [podcastNumber, setPodcastNumber] = useState('');
 
   const refresh = () => ep.full(cid, epId).then((f) => {
     setFull(f);
     if (f && f.music_mode) setMusicMode(f.music_mode);
-    if (f) { setAirDate(f.air_date || ''); setAirTime(f.air_time || ''); }
+    if (f) { setAirDate(f.air_date || ''); setAirTime(f.air_time || ''); setPodcastDesc(f.description || ''); setPodcastNumber(f.podcast_number || ''); }
   }).catch((e) => setErr(e.message));
 
   // Cover art + Outro card stay image-only, so they keep a filtered list. Every
@@ -265,6 +267,12 @@ function EpisodeEditor({ cid, epId, onChange }) {
     setBusy('air'); setErr('');
     try { await ep.setMeta(cid, epId, { airDate, airTime }); await refresh(); if (onChange) onChange(); }
     catch (e) { setErr(e.message || 'Could not save air date.'); }
+    finally { setBusy(''); }
+  };
+  const savePodcastMeta = async () => {
+    setBusy('podcastmeta'); setErr('');
+    try { await ep.setMeta(cid, epId, { description: podcastDesc, podcastNumber }); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not save podcast details.'); }
     finally { setBusy(''); }
   };
   const verifyChanges = async () => {
@@ -499,7 +507,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
           image. Separate from the video cover above. */}
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>Podcast art <span className="mono" style={{ color: 'var(--text-4)' }}>(square 1:1 — used for Transistor)</span></div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Podcast (Transistor) <span className="mono" style={{ color: 'var(--text-4)' }}>— square art, description &amp; episode #</span></div>
           <div className="row" style={{ gap: 6, alignItems: 'center' }}>
             {full.podcast_image_path && <button className="btn sm" onClick={async () => { try { await ep.clearPodcastImage(cid, epId); setBust(Date.now()); await refresh(); } catch (err) { setErr(err.message || 'Could not clear.'); } }}>Clear</button>}
             <span className="badge" style={{ color: full.podcast_image_path ? 'var(--ok)' : 'var(--text-4)' }}>{full.podcast_image_path ? 'set' : 'none'}</span>
@@ -512,6 +520,23 @@ function EpisodeEditor({ cid, epId, onChange }) {
         <div className="row" style={{ gap: 8, marginTop: 8 }}>
           <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files[0]; if (!f) return; setBusy('podcastart'); setErr(''); try { await ep.uploadPodcastImage(cid, epId, f); setBust(Date.now()); await refresh(); } catch (err) { setErr(err.message || 'Upload failed.'); } finally { setBusy(''); } }} style={{ fontSize: 12, maxWidth: 220 }} />
           {busy === 'podcastart' && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>Uploading…</span>}
+        </div>
+
+        {/* Description + episode number sent to Transistor at publish. These are
+            what actually populate the podcast episode — edit them here. */}
+        <div style={{ borderTop: '1px solid var(--border)', marginTop: 12, paddingTop: 12 }}>
+          <label className="col" style={{ gap: 4 }}>
+            <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Podcast description (sent to Transistor)</span>
+            <textarea value={podcastDesc} onChange={(e) => setPodcastDesc(e.target.value)} rows={4} placeholder="Episode description for the podcast…" style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+          </label>
+          <div className="row" style={{ gap: 8, marginTop: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <label className="col" style={{ gap: 4 }}>
+              <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Episode #</span>
+              <input value={podcastNumber} onChange={(e) => setPodcastNumber(e.target.value.replace(/[^\d]/g, ''))} placeholder="e.g. 12" style={{ ...inputStyle, width: 90 }} />
+            </label>
+            <button className="btn sm primary" disabled={busy === 'podcastmeta'} onClick={savePodcastMeta}><Icon name="check" size={12} /> {busy === 'podcastmeta' ? 'Saving…' : 'Save podcast details'}</button>
+          </div>
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 6 }}>Set these before publishing to Transistor. Publish creates a new podcast episode each time.</div>
         </div>
       </div>
 
