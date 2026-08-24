@@ -277,7 +277,10 @@ function EpisodeEditor({ cid, epId, onChange }) {
     try {
       const to = window.prompt('Send this episode for approval to which email?\n(Leave blank to use the brief approval contact.)', '');
       if (to === null) { setBusy(''); return; }
-      const r = await ep.sendClient(cid, epId, to.trim() || undefined);
+      // Optional custom note included in the approval email. Cancelling this
+      // prompt just sends without a note (only the email prompt aborts the send).
+      const note = window.prompt('Add an optional note for the client — it is included in the approval email. Leave blank to skip.', '');
+      const r = await ep.sendClient(cid, epId, to.trim() || undefined, (note || '').trim() || undefined);
       if (r.email && r.email.sent) alert('Sent to client.');
       else alert((r.email && r.email.error ? r.email.error + '\n\n' : '') + 'Review link: ' + r.review_link);
     } catch (e) { setErr(e.message || 'Could not send.'); }
