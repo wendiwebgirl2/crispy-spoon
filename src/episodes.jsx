@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Icon, downloadWithPrompt, buildArchiveZip } from './shared.jsx'
+import { Icon, downloadWithPrompt, buildArchiveZip, SendReviewModal } from './shared.jsx'
 import { ep, video, rec, clientToken, sched } from './dashboard-api.js'
 import { api, episodeWaveformStart, episodeWaveformStatus, episodeWaveformFileUrl } from './api.js'
 import { LookPicker } from './brief.jsx'
@@ -220,6 +220,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const [assets, setAssets] = useState([]);
   const [airDate, setAirDate] = useState('');
   const [airTime, setAirTime] = useState('');
+  const [showSend, setShowSend] = useState(false);
 
   const refresh = () => ep.full(cid, epId).then((f) => {
     setFull(f);
@@ -272,15 +273,13 @@ function EpisodeEditor({ cid, epId, onChange }) {
     catch (e) { setErr(e.message || 'Could not mark changes verified.'); }
     finally { setBusy(''); }
   };
-  const sendToClient = async () => {
+  // The "Send to client" button opens a modal with an email field and a note
+  // field; the modal's Send calls this with both (note goes into the email).
+  const doSend = async (email, note) => {
     setBusy('send'); setErr('');
     try {
-      const to = window.prompt('Send this episode for approval to which email?\n(Leave blank to use the brief approval contact.)', '');
-      if (to === null) { setBusy(''); return; }
-      // Optional custom note included in the approval email. Cancelling this
-      // prompt just sends without a note (only the email prompt aborts the send).
-      const note = window.prompt('Add an optional note for the client — it is included in the approval email. Leave blank to skip.', '');
-      const r = await ep.sendClient(cid, epId, to.trim() || undefined, (note || '').trim() || undefined);
+      const r = await ep.sendClient(cid, epId, email || undefined, note || undefined);
+      setShowSend(false);
       if (r.email && r.email.sent) alert('Sent to client.');
       else alert((r.email && r.email.error ? r.email.error + '\n\n' : '') + 'Review link: ' + r.review_link);
     } catch (e) { setErr(e.message || 'Could not send.'); }
@@ -639,7 +638,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
             {full.approval_status === 'changes_requested' && (
               <button className="btn sm" disabled={busy === 'verify'} onClick={verifyChanges} style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}><Icon name="check" size={12} /> Changes verified</button>
             )}
-            <button className="btn sm" disabled={busy === 'send'} onClick={sendToClient}><Icon name="send" size={12} /> {busy === 'send' ? 'Sending…' : (full.approval_status === 'changes_completed' ? 'Resend to client' : 'Send to client')}</button>
+            <button className="btn sm" disabled={busy === 'send'} onClick={() => { setErr(''); setShowSend(true); }}><Icon name="send" size={12} /> {busy === 'send' ? 'Sending…' : (full.approval_status === 'changes_completed' ? 'Resend to client' : 'Send to client')}</button>
             <button className="btn sm" disabled={busy === 'planner'} onClick={addToPlanner}><Icon name="history" size={12} /> Add to planner</button>
           </div>
           {/* Air date/time — record when the episode aired or was distributed. */}
@@ -659,6 +658,8 @@ function EpisodeEditor({ cid, epId, onChange }) {
           </div>
         </div>
       )}
+
+      <SendReviewModal open={showSend} title={epTitle(full)} busy={busy === 'send'} onSend={doSend} onClose={() => setShowSend(false)} />
 
       <YourAvatars cid={cid} />
     </div>

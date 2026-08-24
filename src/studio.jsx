@@ -6,7 +6,7 @@
 import React from 'react'
 import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
 import { clientToken, voice } from './dashboard-api.js'
-import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags } from './shared.jsx'
+import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
 import { LookPicker, AssetsSection } from './brief.jsx'
 
@@ -87,6 +87,8 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
 
   React.useEffect(() => { refreshCastMeta(); }, [refreshCastMeta]);
   const [castType, setCastType] = React.useState('video');   // 'video' (HeyGen) | 'audio' (ElevenLabs)
+  const [sendCast, setSendCast] = React.useState(null);      // cast being sent for review (opens the modal)
+  const [sendingCast, setSendingCast] = React.useState(false);
   const [editCast, setEditCast] = React.useState(null);
   const [editCastTitle, setEditCastTitle] = React.useState('');
   const [editCastScript, setEditCastScript] = React.useState('');
@@ -569,11 +571,15 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     } catch (e) { window.alert('Could not mark changes verified: ' + e.message); }
   };
 
-  const sendCastForReview = async (v) => {
-    const to = window.prompt('Send this cast for review to which email?\n(Leave blank to use the brief approval contact.)', '');
-    if (to === null) return;
+  // Opens the send-for-review modal (email + note) for this cast.
+  const sendCastForReview = (v) => setSendCast(v);
+  // Called by the modal's Send with the entered email + note.
+  const doSendCast = async (email, note) => {
+    if (!sendCast) return;
+    setSendingCast(true);
     try {
-      const r = await api.sendCastForReview(clientId, v.id, v.title || null, to.trim() || undefined);
+      const r = await api.sendCastForReview(clientId, sendCast.id, sendCast.title || null, email || undefined, note || undefined);
+      setSendCast(null);
       if (r && r.email && r.email.sent) {
         window.alert('Review link sent.');
       } else {
@@ -583,6 +589,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       }
       await refreshCastMeta();
     } catch (e) { window.alert('Could not send: ' + e.message); }
+    finally { setSendingCast(false); }
   };
 
   const addCastToPlanner = async (v) => {
@@ -954,6 +961,8 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 </div>
               )}
             </div>
+
+            <SendReviewModal open={!!sendCast} title={sendCast ? (sendCast.title || '') : ''} busy={sendingCast} onSend={doSendCast} onClose={() => setSendCast(null)} />
 
             {editCast && (
               <div onClick={() => setEditCast(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>

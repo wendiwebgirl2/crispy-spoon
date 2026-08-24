@@ -378,7 +378,41 @@ async function buildArchiveZip({ zipName, files = [], texts = [], manifest }) {
   return written;
 }
 
+// Send-for-review modal: collects an optional client email + an optional note
+// that the backend includes in the approval email. Used by the episode send and
+// the cast send. onSend(email, note) is called with trimmed values.
+function SendReviewModal({ open, title, busy, onSend, onClose }) {
+  const [email, setEmail] = React.useState('');
+  const [note, setNote] = React.useState('');
+  if (!open) return null;
+  const fld = {
+    background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)',
+    borderRadius: 'var(--r-sm)', fontFamily: 'var(--f-mono)', fontSize: 13, padding: '9px 11px',
+    boxSizing: 'border-box', width: '100%',
+  };
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 200 }}>
+      <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(460px, 96vw)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="label">Send for review{title ? ' · ' + title : ''}</div>
+        <label className="col" style={{ gap: 4 }}>
+          <span className="mono" style={{ color: 'var(--text-4)' }}>Client email <span style={{ opacity: 0.7 }}>(optional — blank uses the brief contact)</span></span>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" style={fld} />
+        </label>
+        <label className="col" style={{ gap: 4 }}>
+          <span className="mono" style={{ color: 'var(--text-4)' }}>Note to the client (optional)</span>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={4} placeholder="Add a short message to include in the review email…" style={{ ...fld, resize: 'vertical', fontFamily: 'inherit' }} />
+        </label>
+        <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <button className="btn sm" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn primary sm" onClick={() => onSend(email.trim(), note.trim())} disabled={busy}><Icon name="send" size={12} /> {busy ? 'Sending…' : 'Send for review'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export {
+  SendReviewModal,
   ExpressionTags,
   buildArchiveZip,
   downloadWithPrompt,

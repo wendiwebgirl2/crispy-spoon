@@ -289,8 +289,8 @@ export const api = {
   billingOverview: (qs = '') => vcReq('/billing/overview' + qs),
   setCastApproval: (id, railwayVideoId, status, title) =>
     vcReq(`/clients/${id}/casts/approval`, { method: "POST", body: JSON.stringify({ railwayVideoId, status, title }) }),
-  sendCastForReview: (id, railwayVideoId, title, email) =>
-    vcReq(`/clients/${id}/casts/send`, { method: "POST", body: JSON.stringify({ railwayVideoId, title, email }) }),
+  sendCastForReview: (id, railwayVideoId, title, email, note) =>
+    vcReq(`/clients/${id}/casts/send`, { method: "POST", body: JSON.stringify({ railwayVideoId, title, ...(email ? { email } : {}), ...(note ? { note } : {}) }) }),
   addCastToPlanner: (id, railwayVideoId, title, scheduledFor) =>
     vcReq(`/clients/${id}/casts/planner`, { method: "POST", body: JSON.stringify({ railwayVideoId, title, scheduledFor }) }),
   listAllInvites: () => vcReq(`/invites`),
