@@ -353,6 +353,7 @@ function AssetsSection({ clientId }) {
   const [kind, setKind] = useState('logo');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [lightbox, setLightbox] = useState(null);   // { url, name } for click-to-enlarge
 
   const load = () => api.listAssets(clientId).then((r) => setAssets(Array.isArray(r) ? r : [])).catch(() => setAssets([]));
   useEffect(() => { if (clientId != null) load(); }, [clientId]);
@@ -394,10 +395,11 @@ function AssetsSection({ clientId }) {
               <div key={a.id} className="card" style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ height: 80, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', display: 'grid', placeItems: 'center' }}>
                   {isImage(a)
-                    ? <img src={api.assetFileUrl(clientId, a.id)} alt={a.filename} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ? <img src={api.assetFileUrl(clientId, a.id)} alt={a.filename} title="Click to view full size" onClick={() => setLightbox({ url: api.assetFileUrl(clientId, a.id), name: a.filename })} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} />
                     : <Icon name={a.kind === 'music' ? 'mic' : a.kind === 'video' ? 'play' : 'doc'} size={20} style={{ color: 'var(--text-3)' }} />}
                 </div>
-                <div className="mono" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={a.filename}>{a.filename}</div>
+                {/* Full, legible filename — wraps instead of truncating so it can be read without hovering. */}
+                <div className="mono" style={{ fontSize: 11, lineHeight: 1.35, wordBreak: 'break-word' }} title={a.filename}>{a.filename}</div>
                 <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                   <span className="badge">{a.kind}</span>
                   <button className="icon-btn" title="Delete" onClick={() => remove(a.id)}><Icon name="close" size={12} /></button>
@@ -407,6 +409,11 @@ function AssetsSection({ clientId }) {
           </div>
         )}
       </div>
+      {lightbox && (
+        <div onClick={() => setLightbox(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.8)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 200, cursor: 'zoom-out' }}>
+          <img src={lightbox.url} alt={lightbox.name} style={{ maxWidth: '92vw', maxHeight: '92vh', borderRadius: 10, border: '1px solid var(--border)' }} />
+        </div>
+      )}
     </div>
   );
 }

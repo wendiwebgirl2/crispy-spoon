@@ -52,8 +52,17 @@ function fmtWhen(s) {
 // Requested-changes inbox. Each row links straight to the item's home view.
 function ChangesView({ onOpen }) {
   const [rows, setRows] = React.useState(null);
+  const [clearing, setClearing] = React.useState('');
   React.useEffect(() => { api.listChanges().then((r) => setRows(Array.isArray(r) ? r : [])).catch(() => setRows([])); }, []);
   const TYPE_VIEW = { script: 'scripts', cast: 'studio', episode: 'episodes' };
+  const clearChange = async (r) => {
+    if (!window.confirm('Clear this change request off the list? (marks it handled)')) return;
+    const key = r.type + '-' + r.id;
+    setClearing(key);
+    try { await api.clearChange(r.type, r.id); setRows((cur) => (cur || []).filter((x) => !(x.type === r.type && x.id === r.id))); }
+    catch (e) { alert(e.message || 'Could not clear.'); }
+    finally { setClearing(''); }
+  };
   if (rows === null) return <div className="v-pad fade-in"><div className="mono">Loading…</div></div>;
   if (!rows.length) return <div className="v-pad fade-in"><div className="mono" style={{ color: 'var(--text-3)' }}>No open change requests — nothing from clients right now.</div></div>;
   return (
@@ -72,9 +81,12 @@ function ChangesView({ onOpen }) {
               <span style={{ color: 'var(--accent)' }}>Client notes:</span> {r.approval_comment}{r.approval_by ? ' — ' + r.approval_by : ''}
             </div>
           )}
-          <div>
+          <div className="row" style={{ gap: 8 }}>
             <button className="btn sm" onClick={() => onOpen(r.client_id, TYPE_VIEW[r.type] || 'clients')}>
               Open in {TYPE_VIEW[r.type] || 'dashboard'} →
+            </button>
+            <button className="btn sm" disabled={clearing === (r.type + '-' + r.id)} onClick={() => clearChange(r)} title="Clear this change request off the list">
+              {clearing === (r.type + '-' + r.id) ? 'Clearing…' : 'Clear'}
             </button>
           </div>
         </div>

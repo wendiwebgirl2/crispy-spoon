@@ -284,6 +284,7 @@ export const api = {
     vcReq(`/clients/${id}/casts/upsert`, { method: "POST", body: JSON.stringify({ railwayVideoId, title, jobNumber, scriptId }) }),
   alerts: () => vcReq('/alerts'),
   listChanges: () => vcReq('/alerts/changes'),
+  clearChange: (type, id) => vcReq('/alerts/changes/clear', { method: 'POST', body: JSON.stringify({ type, id }) }),
   attention: () => vcReq('/alerts/attention'),
   dismissAttention: (code, id) => vcReq('/alerts/attention/dismiss', { method: 'POST', body: JSON.stringify({ code, id }) }),
   billingOverview: (qs = '') => vcReq('/billing/overview' + qs),
