@@ -740,7 +740,7 @@ function epTitle(e) {
   return t;
 }
 
-function EpRow({ cid, e, active, onOpen, onRemove, onArchive }) {
+function EpRow({ cid, e, active, onOpen, onRemove, onArchive, onBundle }) {
   return (
     <div className="card" onClick={onOpen}
       style={{ padding: 10, cursor: 'pointer', border: '1px solid ' + (active ? 'var(--accent)' : 'var(--border)'), background: active ? 'var(--surface-2)' : 'var(--surface)' }}>
@@ -767,6 +767,9 @@ function EpRow({ cid, e, active, onOpen, onRemove, onArchive }) {
         <button className="btn sm" onClick={onOpen}>{active ? 'Close' : 'Open'}</button>
         {e.hasOutput && <button className="btn sm" onClick={() => downloadWithPrompt(ep.videoFileUrl(cid, e.id), (e.title || 'episode').replace(/[^\w-]+/g, '_') + '.mp4')}><Icon name="download" size={12} /> Video</button>}
         {e.hasOutput && <button className="btn sm" onClick={() => downloadWithPrompt(ep.fileUrl(cid, e.id), (e.title || 'episode').replace(/[^\w-]+/g, '_') + '.mp3')}><Icon name="download" size={12} /> Audio</button>}
+        {onBundle && e.episode_number != null && String(e.episode_number).trim() !== '' && (
+          <button className="btn sm" onClick={onBundle} title="Download a .zip of the whole episode number — all its videos, scripts, and thumbnail"><Icon name="download" size={12} /> Bundle</button>
+        )}
         {onArchive && <button className="btn sm" onClick={onArchive} title="Download a .zip backup (media + manifest), then delete"><Icon name="download" size={12} /> Archive</button>}
         <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={onRemove}><Icon name="close" size={12} /> Delete</button>
       </div>
@@ -860,6 +863,43 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
     try { await ep.del(cid, id); if (openId === id) setOpenId(null); await load(); }
     catch (e) { setErr(e.message || 'Could not delete.'); }
   };
+  // Bundle = download a .zip of the WHOLE episode number: every episode that
+  // shares it (longform + shortform videos), its thumbnail, and all scripts for
+  // that number. Pure download, no deletion. Everything is same-origin.
+  const downloadBundle = async (e) => {
+    setErr('');
+    const num = String(e.episode_number || '').trim().replace(/^E/i, '');
+    if (!num) { setErr('This episode has no episode number to bundle by.'); return; }
+    try {
+      const eps = list.filter((x) => String(x.episode_number || '').trim().replace(/^E/i, '') === num);
+      let scripts = [];
+      try {
+        const r = await api.listScripts(cid);
+        const rows = Array.isArray(r) ? r : (r && r.scripts ? r.scripts : []);
+        scripts = rows.filter((s) => String(s.episode_number || '').trim().replace(/^E/i, '') === num);
+      } catch { /* scripts are best-effort */ }
+      const files = [];
+      let cover = null;
+      for (const x of eps) {
+        const base = (x.title || ('episode-' + x.id)).replace(/[^\w-]+/g, '_');
+        if (x.hasVideo) files.push({ url: ep.videoFileUrl(cid, x.id), name: `${base}.mp4` });
+        else if (x.hasOutput) files.push({ url: ep.fileUrl(cid, x.id), name: `${base}.mp3` });
+        if (!cover && x.hasCover) cover = { url: ep.coverUrl(cid, x.id), name: 'thumbnail.jpg' };
+      }
+      if (cover) files.push(cover);
+      const texts = scripts.map((s) => ({
+        name: `script-${(s.channel || 'script')}${s.variant ? '-v' + s.variant : ''}-${(s.title || s.topic || ('id' + s.id)).replace(/[^\w-]+/g, '_')}.txt`,
+        content: s.body || '',
+      }));
+      const n = await buildArchiveZip({
+        zipName: `episode-${num}-bundle.zip`,
+        files, texts,
+        manifest: { type: 'episode_bundle', episode_number: num, episodes: eps.map((x) => ({ id: x.id, title: x.title })), scripts: scripts.map((s) => ({ id: s.id, channel: s.channel, title: s.title })), at: new Date().toISOString() },
+      });
+      if (!n) setErr('Nothing to bundle yet for this episode number — no rendered videos or scripts found.');
+    } catch (err) { setErr('Bundle failed: ' + (err.message || err)); }
+  };
+
   // Archive = download a .zip (media + manifest) FIRST, then offer to delete.
   // Two steps so nothing is purged before the backup exists.
   const archive = async (e) => {
@@ -981,7 +1021,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {activeList.map((e) => (
               <EpRow key={e.id} cid={cid} e={e} active={openId === e.id}
-                onOpen={() => setOpenId(openId === e.id ? null : e.id)} onRemove={() => remove(e.id)} onArchive={() => archive(e)} />
+                onOpen={() => setOpenId(openId === e.id ? null : e.id)} onRemove={() => remove(e.id)} onArchive={() => archive(e)} onBundle={() => downloadBundle(e)} />
             ))}
           </div>
         )}
@@ -1000,7 +1040,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {g.items.map((e) => (
                         <EpRow key={e.id} cid={cid} e={e} active={openId === e.id}
-                          onOpen={() => setOpenId(openId === e.id ? null : e.id)} onRemove={() => remove(e.id)} onArchive={() => archive(e)} />
+                          onOpen={() => setOpenId(openId === e.id ? null : e.id)} onRemove={() => remove(e.id)} onArchive={() => archive(e)} onBundle={() => downloadBundle(e)} />
                       ))}
                     </div>
                   </div>
