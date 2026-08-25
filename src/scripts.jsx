@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { api, generateVideo, listVideos } from './api.js'
+import { clientToken } from './dashboard-api.js'
 import { Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip, SendReviewModal } from './shared.jsx'
 import { TopicsSection } from './brief.jsx'
 
@@ -162,6 +163,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchMsg, setBatchMsg] = useState('');
   const topRef = useRef(null);
+  const genLock = useRef(false);   // synchronous guard against overlapping generate() calls
   const toggleSel = (id) => setSelected((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   // Batch-cast modal: format options applied to every selected script, then a
   // client-side queue submits one render at a time (same path as single-cast).
@@ -230,6 +232,11 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
 
   const generate = async (qaBypassBy) => {
     if (!clientId || chosen.length === 0) return;
+    // Synchronous lock: blocks a second call before React's `busy` state has
+    // propagated (double-click, navigation re-fire) — prevents duplicate batches.
+    // The 428 verify-retry passes qaBypassBy and must be allowed through.
+    if (genLock.current && !qaBypassBy) return;
+    genLock.current = true;
     setBusy(true); setErr('');
     try {
       const out = await api.generate(clientId, {
@@ -257,11 +264,15 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
           if (who) { setBusy(false); return generate(who); }
         }
         setErr('Generation cancelled — brief not verified.');
+      } else if (e.message === 'duplicate_batch') {
+        // The server blocked a duplicate run — just show what's already there.
+        setErr('Scripts for this topic were just generated — showing the latest below.');
+        await refreshHistory();
       } else {
         setErr(e.message);
       }
     }
-    finally { setBusy(false); }
+    finally { setBusy(false); genLock.current = false; }
   };
 
   const addManual = async () => {
@@ -374,14 +385,22 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         const res = await api.listClientInvites(clientId);
         const rows = Array.isArray(res) ? res : (res && res.invites ? res.invites : []);
         for (const iv of rows) if (iv && iv.token) tokens.push(iv.token);
-      } catch { /* no invites → no avatars */ }
+      } catch { /* fall through to the ambient client token below */ }
+      // No invite rows (e.g. a freshly created client) — fall back to the
+      // client's ambient token, exactly as Studio does, so a set-up avatar is
+      // never missed.
+      if (tokens.length === 0) {
+        try { const tok = await clientToken(clientId); if (tok) tokens.push(tok); } catch { /* none */ }
+      }
       const found = [];
       const seen = new Set();
       for (const t of tokens) {
         try {
           const r = await api.listAvatars(t);
           for (const a of (r && r.avatars) || []) {
-            if (a.heygen_avatar_id && (!a.status || a.status === 'ready') && !seen.has(a.id)) {
+            // Any avatar with a HeyGen id is castable (match Studio) — don't
+            // filter on status, which can be a value other than 'ready'.
+            if (a.heygen_avatar_id && !seen.has(a.id)) {
               seen.add(a.id);
               found.push({ id: a.id, name: a.name || a.title || ('Avatar ' + a.id), _token: t });
             }
