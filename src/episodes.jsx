@@ -43,6 +43,29 @@ const scriptEpLabel = (s) => {
   return `${n ? `E${n} - ` : ''}${typePrefix(s.channel, s.variant)}: ${t}`;
 };
 
+// The piece kind (Longform / Shortform / TV·Radio / Blog) is encoded in the
+// episode title prefix "E{n} - {TAG}{variant}: {subject}" set by scriptEpLabel.
+// Parse it back out for grouping + labeling in the right rail.
+const pieceKind = (e) => {
+  const m = String((e && e.title) || '').match(/^E\d+\s*[-–]\s*([A-Za-z]+)(\d*)\s*:/);
+  const tag = m ? m[1].toUpperCase() : '';
+  const variant = m && m[2] ? +m[2] : 0;
+  if (tag === 'LF') return { label: 'Longform', order: 0, variant };
+  if (tag === 'SF') return { label: 'Shortform' + (variant ? ' ' + variant : ''), order: 1, variant };
+  if (tag === 'TV') return { label: 'TV / Radio' + (variant ? ' ' + variant : ''), order: 2, variant };
+  if (tag === 'BLOG') return { label: 'Blog', order: 3, variant };
+  return { label: '', order: 9, variant };
+};
+
+// The subject line without the "E{n} - {TAG}: " prefix, for compact display.
+const baseSubject = (e) => {
+  const t = String((e && e.title) || '').trim();
+  const m = t.match(/^E\d+\s*[-–]\s*[A-Za-z]+\d*\s*:\s*(.+)$/);
+  if (m) return m[1].trim();
+  const m2 = t.match(/^E\d+\s*[-–]\s*(.+)$/);
+  return (m2 ? m2[1] : t).trim() || 'Untitled episode';
+};
+
 function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = [], avatarVideos = [], assets = [], onUseAsset, onStillSec, onUpload, onSynth, onUseRecording, onUseVideo, onClearVideo, onClearSlot }) {
   const [recPick, setRecPick] = useState('');
   const [vidPick, setVidPick] = useState('');
@@ -785,6 +808,78 @@ function EpRow({ cid, e, active, onOpen, onRemove, onArchive, onBundle }) {
   );
 }
 
+// One collapsible card per episode NUMBER: collapsed shows the number + title;
+// open reveals every piece (longform, shortforms, TV/radio, blog) that shares
+// that number. Pieces with no number each get their own single-piece card.
+function EpGroupCard({ cid, group, open, onToggle, openId, setOpenId, onRemove, onArchive, onBundle }) {
+  const { epNum, items } = group;
+  const lead = items.find((e) => pieceKind(e).order === 0) || items[0]; // prefer longform for cover/title
+  const title = baseSubject(lead);
+  const anyOpenInside = items.some((e) => e.id === openId);
+  return (
+    <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid ' + ((open || anyOpenInside) ? 'var(--accent)' : 'var(--border)') }}>
+      <div className="row" onClick={onToggle}
+        style={{ gap: 10, alignItems: 'center', padding: 10, cursor: 'pointer', background: open ? 'var(--surface-2)' : 'var(--surface)' }}>
+        <div style={{ width: 44, height: 44, borderRadius: 6, background: 'var(--surface-2)', overflow: 'hidden', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {lead.hasCover ? <img src={ep.coverUrl(cid, lead.id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="play" size={16} style={{ color: 'var(--text-4)' }} />}
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {epNum ? <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', border: '1px solid var(--accent)', borderRadius: 4, padding: '0 5px', marginRight: 6 }}>E{epNum}</span> : null}
+            {title}
+          </div>
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
+            {items.length} {items.length === 1 ? 'piece' : 'pieces'}{epNum ? '' : ' · no episode #'}
+          </div>
+        </div>
+        <Icon name="arrow-r" size={14} style={{ color: 'var(--text-4)', flex: 'none', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+      </div>
+      {open && (
+        <div style={{ borderTop: '1px solid var(--border)', padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {epNum && onBundle && (
+            <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => onBundle(lead)}
+              title="Download a .zip of the whole episode number — all its videos, scripts, and thumbnail"><Icon name="download" size={12} /> Download bundle (E{epNum})</button>
+          )}
+          {items.map((e) => (
+            <PieceRow key={e.id} cid={cid} e={e} active={openId === e.id}
+              onOpen={() => setOpenId(openId === e.id ? null : e.id)}
+              onRemove={() => onRemove(e.id)} onArchive={() => onArchive(e)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A single piece inside an open EpGroupCard: type badge + subject + status,
+// with the per-piece action buttons (Open / Video / Audio / Archive / Delete).
+function PieceRow({ cid, e, active, onOpen, onRemove, onArchive }) {
+  const kind = pieceKind(e);
+  return (
+    <div className="card" style={{ padding: 8, border: '1px solid ' + (active ? 'var(--accent)' : 'var(--border)'), background: active ? 'var(--surface-2)' : 'var(--surface)' }}>
+      <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+        <span className="mono" style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', flex: 'none' }}>{kind.label || 'Piece'}</span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{baseSubject(e)}</div>
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 10.5 }}>
+            {String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}
+          </div>
+          {(e.air_date || e.air_time) && (
+            <div className="mono" style={{ color: 'var(--ok)', fontSize: 10.5, marginTop: 1 }}><Icon name="check" size={9} /> Aired {fmtAired(e.air_date, e.air_time)}</div>
+          )}
+        </div>
+      </div>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+        <button className="btn sm" onClick={onOpen}>{active ? 'Close' : 'Open'}</button>
+        {e.hasOutput && <button className="btn sm" onClick={() => downloadWithPrompt(ep.videoFileUrl(cid, e.id), (e.title || 'episode').replace(/[^\w-]+/g, '_') + '.mp4')}><Icon name="download" size={12} /> Video</button>}
+        {e.hasOutput && <button className="btn sm" onClick={() => downloadWithPrompt(ep.fileUrl(cid, e.id), (e.title || 'episode').replace(/[^\w-]+/g, '_') + '.mp3')}><Icon name="download" size={12} /> Audio</button>}
+        {onArchive && <button className="btn sm" onClick={onArchive} title="Download a .zip backup (media + manifest), then delete"><Icon name="download" size={12} /> Archive</button>}
+        <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={onRemove}><Icon name="close" size={12} /> Delete</button>
+      </div>
+    </div>
+  );
+}
+
 function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed, onBackToStudio }) {
   const cid = activeClientId;
   const [list, setList] = useState([]);
@@ -965,6 +1060,28 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
     // eslint-disable-next-line
   }, [list, schedule]);
 
+  // Group the active list by episode NUMBER so every piece that shares a number
+  // (longform + shortforms + TV/radio + blog) collapses into one card. Pieces
+  // with no number each stand alone.
+  const epGroups = React.useMemo(() => {
+    const map = new Map();
+    const solo = [];
+    for (const e of activeList) {
+      const n = String(e.episode_number || '').trim().replace(/^E/i, '');
+      if (!n) { solo.push({ key: 'solo-' + e.id, epNum: '', items: [e], recent: String(e.created_at || '') }); continue; }
+      if (!map.has(n)) map.set(n, { key: 'ep-' + n, epNum: n, items: [], recent: '' });
+      const g = map.get(n);
+      g.items.push(e);
+      if (String(e.created_at || '') > g.recent) g.recent = String(e.created_at || '');
+    }
+    const groups = [...map.values(), ...solo];
+    for (const g of groups) g.items.sort((a, b) => (pieceKind(a).order - pieceKind(b).order) || (pieceKind(a).variant - pieceKind(b).variant));
+    groups.sort((a, b) => String(b.recent).localeCompare(String(a.recent)));
+    return groups;
+  }, [activeList]);
+  const [openGroups, setOpenGroups] = useState(() => new Set());
+  const toggleGroup = (key) => setOpenGroups((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+
   if (cid == null) {
     return (
       <div className="v-pad">
@@ -1027,9 +1144,11 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
           <div className="mono" style={{ color: 'var(--text-3)' }}>No active episodes — see Archive below.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {activeList.map((e) => (
-              <EpRow key={e.id} cid={cid} e={e} active={openId === e.id}
-                onOpen={() => setOpenId(openId === e.id ? null : e.id)} onRemove={() => remove(e.id)} onArchive={() => archive(e)} onBundle={() => downloadBundle(e)} />
+            {epGroups.map((g) => (
+              <EpGroupCard key={g.key} cid={cid} group={g}
+                open={openGroups.has(g.key)} onToggle={() => toggleGroup(g.key)}
+                openId={openId} setOpenId={setOpenId}
+                onRemove={remove} onArchive={archive} onBundle={downloadBundle} />
             ))}
           </div>
         )}
