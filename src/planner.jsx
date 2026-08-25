@@ -221,6 +221,11 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
     setDistDate(w.d || ymd(midnight())); setDistTime(w.t || '09:00');
   };
   const toggleDistChannel = (key) => setDistChannels((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  // Remove an episode from the Distribute list by marking it aired (today).
+  const markAired = async (epi) => {
+    if (!window.confirm(`Remove "${epi.title}" from Distribute? It will be marked aired today.`)) return;
+    try { await epApi.setMeta(cid, epi.id, { airDate: ymd(midnight()) }); load(); } catch (e) { setErr(e.message); }
+  };
   const saveDistribute = async () => {
     const chans = [...distChannels];
     if (!chans.length && distFeed === !!dist.feedInclude) { setErr('Pick at least one channel, or change the podcast-feed setting.'); return; }
@@ -310,7 +315,10 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
                     <span className="mono" style={{ fontSize: 11, color: epi.feedInclude ? 'var(--ok)' : 'var(--text-4)' }}>{epi.feedInclude ? '● podcast feed' : '○ feed off'}</span>
                     {scheduledCount > 0 && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{scheduledCount} scheduled</span>}
                   </div>
-                  <button className="btn primary sm" style={{ marginTop: 'auto' }} onClick={() => openDistribute(epi)}><Icon name="send" size={12} /> Schedule</button>
+                  <div className="row" style={{ gap: 6, marginTop: 'auto' }}>
+                    <button className="btn primary sm" style={{ flex: 1 }} onClick={() => openDistribute(epi)}><Icon name="send" size={12} /> Schedule</button>
+                    <button className="btn sm" onClick={() => markAired(epi)} title="Mark aired &amp; remove from this list">✕</button>
+                  </div>
                 </div>
               );
             })}
