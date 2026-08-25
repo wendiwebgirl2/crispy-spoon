@@ -29,7 +29,7 @@ const HEADER_TITLES = {
   invitations:     { title: 'Invitations',    sub: 'notifications sent to clients — live status' },
   planner:         { title: 'Planner',         sub: 'production status + publishing schedule' },
   scripts:         { title: 'Scripts',         sub: 'Claude-generated copy from the client brief' },
-  studio:          { title: 'Studio',          sub: 'cast a script into a HeyGen render' },
+  studio:          { title: 'Studio',          sub: 'cast a script with your avatar' },
   episodes:        { title: 'Episodes',        sub: 'stitch audio + generate video for the selected client' },
   recordings:      { title: 'Recordings',      sub: 'R2 masters + HeyGen renders for the active token' },
   onboarding:      { title: 'On-site record',  sub: 'record an avatar in person, no email needed' },
@@ -413,7 +413,7 @@ function App() {
             else setView(target); // scripts | episodes
           }} onSendTopicToScripts={(t) => { setScriptTopicRequest(t); setView('scripts'); }} />}
           {view === 'invitations' && <InvitationsView clientFilter={invitesClient} focusId={inviteFocus} onFocusConsumed={() => setInviteFocus(null)} />}
-          {view === 'planner' && <PlannerView activeClientId={activeClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
+          {view === 'planner' && <PlannerView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
           {view === 'scripts' && <ScriptsView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} topicRequest={scriptTopicRequest} onTopicConsumed={() => setScriptTopicRequest(null)} scriptRequest={scriptRequest} onScriptRequestConsumed={() => setScriptRequest(null)} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
           {view === 'studio' && <StudioView key={studioNonce} onNavigate={setView} openStep={studioStep} castRequest={castRequest} onCastConsumed={() => setCastRequest(null)} activeClientId={activeClientId} onSelectClient={setActiveClientId} />}
           {view === 'episodes' && <EpisodesView activeClientId={activeClientId} onBackToStudio={goStudio} episodeRequest={episodeRequest} onEpisodeRequestConsumed={() => setEpisodeRequest(null)} />}

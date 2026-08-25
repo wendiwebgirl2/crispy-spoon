@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Icon } from './shared.jsx'
 import { sched, ep as epApi } from './dashboard-api.js'
+import { api } from './api.js'
 import { createPortal } from 'react-dom'
 
 // Render modals at <body> so an ancestor's transform/scroll (.fade-in / .view)
@@ -124,8 +125,10 @@ function CalendarGrid({ mode, anchor, items, todayKey, onEventClick, onDayClick 
   );
 }
 
-const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
+const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStudio }) => {
   const cid = activeClientId;
+  const [clientList, setClientList] = useState([]);   // for the "pick a client" dropdown when none is selected
+  useEffect(() => { if (cid == null) api.listClients().then((cs) => setClientList(Array.isArray(cs) ? cs : [])).catch(() => setClientList([])); }, [cid]);
   const [items, setItems] = useState([]);
   const [channels, setChannels] = useState([]);
   const [approved, setApproved] = useState([]);   // approved scripts (optional attach on manual posts)
@@ -259,7 +262,15 @@ const PlannerView = ({ activeClientId, onCastScript, onBackToStudio }) => {
       <div className="v-pad">
         <div className="card card-pad" style={{ borderStyle: 'dashed' }}>
           <div className="label" style={{ marginBottom: 6 }}>PLANNER</div>
-          <div className="mono" style={{ color: 'var(--text-3)' }}>Select a client first — the planner is per client.</div>
+          <div className="mono" style={{ color: 'var(--text-3)', marginBottom: 10 }}>The planner is per client — pick one to view its schedule.</div>
+          <select
+            value=""
+            onChange={(e) => { const id = Number(e.target.value); if (id && onSelectClient) onSelectClient(id); }}
+            style={{ height: 38, padding: '0 12px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 14, minWidth: 240 }}
+          >
+            <option value="">Pick a client…</option>
+            {clientList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
         </div>
       </div>
     );
