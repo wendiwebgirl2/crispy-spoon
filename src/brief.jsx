@@ -372,6 +372,8 @@ function AssetsSection({ clientId }) {
     try { await api.deleteAsset(clientId, id); await load(); } catch (ex) { setErr(ex.message); }
   };
   const isImage = (a) => (a.mime || '').startsWith('image/') || ['logo', 'background'].includes(a.kind);
+  const isVideo = (a) => (a.mime || '').startsWith('video/') || a.kind === 'video';
+  const isAudio = (a) => (a.mime || '').startsWith('audio/') || ['music', 'audio'].includes(a.kind);
 
   return (
     <div style={{ marginTop: 28 }}>
@@ -395,11 +397,15 @@ function AssetsSection({ clientId }) {
               <div key={a.id} className="card" style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ height: 80, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', display: 'grid', placeItems: 'center' }}>
                   {isImage(a)
-                    ? <img src={api.assetFileUrl(clientId, a.id)} alt={a.filename} title="Click to view full size" onClick={() => setLightbox({ url: api.assetFileUrl(clientId, a.id), name: a.filename })} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} />
-                    : <Icon name={a.kind === 'music' ? 'mic' : a.kind === 'video' ? 'play' : 'doc'} size={20} style={{ color: 'var(--text-3)' }} />}
+                    ? <img src={api.assetFileUrl(clientId, a.id)} alt={a.filename} title="Click to view full size" onClick={() => setLightbox({ type: 'image', url: api.assetFileUrl(clientId, a.id), name: a.filename })} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} />
+                    : isVideo(a)
+                      ? <video src={api.assetFileUrl(clientId, a.id)} preload="metadata" muted title="Click to play full size" onClick={() => setLightbox({ type: 'video', url: api.assetFileUrl(clientId, a.id), name: a.filename })} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} />
+                      : <Icon name={isAudio(a) ? 'mic' : 'doc'} size={20} style={{ color: 'var(--text-3)' }} />}
                 </div>
                 {/* Full, legible filename — wraps instead of truncating so it can be read without hovering. */}
                 <div className="mono" style={{ fontSize: 11, lineHeight: 1.35, wordBreak: 'break-word' }} title={a.filename}>{a.filename}</div>
+                {/* Audio: inline player so it can be previewed right in the card. */}
+                {isAudio(a) && <audio controls preload="none" src={api.assetFileUrl(clientId, a.id)} style={{ width: '100%', height: 32 }} />}
                 <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                   <span className="badge">{a.kind}</span>
                   <button className="icon-btn" title="Delete" onClick={() => remove(a.id)}><Icon name="close" size={12} /></button>
@@ -411,7 +417,9 @@ function AssetsSection({ clientId }) {
       </div>
       {lightbox && (
         <div onClick={() => setLightbox(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.8)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 200, cursor: 'zoom-out' }}>
-          <img src={lightbox.url} alt={lightbox.name} style={{ maxWidth: '92vw', maxHeight: '92vh', borderRadius: 10, border: '1px solid var(--border)' }} />
+          {lightbox.type === 'video'
+            ? <video src={lightbox.url} controls autoPlay onClick={(e) => e.stopPropagation()} style={{ maxWidth: '92vw', maxHeight: '92vh', borderRadius: 10, border: '1px solid var(--border)', background: '#000' }} />
+            : <img src={lightbox.url} alt={lightbox.name} style={{ maxWidth: '92vw', maxHeight: '92vh', borderRadius: 10, border: '1px solid var(--border)' }} />}
         </div>
       )}
     </div>
