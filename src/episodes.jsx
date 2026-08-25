@@ -753,16 +753,23 @@ function EpRow({ cid, e, active, onOpen, onRemove, onArchive, onBundle }) {
             {e.job_number ? <span className="mono" style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px', marginRight: 5 }}>Job {e.job_number}</span> : null}
             {epTitle(e)}
           </div>
-          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
-            {String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}
-          </div>
-          {(e.air_date || e.air_time) && (
-            <div className="mono" style={{ color: 'var(--ok)', fontSize: 11, marginTop: 2 }}>
-              <Icon name="check" size={10} /> Aired {fmtAired(e.air_date, e.air_time)}
-            </div>
+          {active && (
+            <>
+              <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
+                {String(e.created_at || '').slice(0, 10)} · {e.status || 'draft'}{e.hasOutput ? ' · produced' : ''}
+              </div>
+              {(e.air_date || e.air_time) && (
+                <div className="mono" style={{ color: 'var(--ok)', fontSize: 11, marginTop: 2 }}>
+                  <Icon name="check" size={10} /> Aired {fmtAired(e.air_date, e.air_time)}
+                </div>
+              )}
+            </>
           )}
         </div>
+        {/* Chevron shows collapsed/expanded; click the row to toggle. */}
+        <Icon name="arrow-r" size={14} style={{ color: 'var(--text-4)', flex: 'none', transform: active ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
       </div>
+      {active && (
       <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }} onClick={(ev) => ev.stopPropagation()}>
         <button className="btn sm" onClick={onOpen}>{active ? 'Close' : 'Open'}</button>
         {e.hasOutput && <button className="btn sm" onClick={() => downloadWithPrompt(ep.videoFileUrl(cid, e.id), (e.title || 'episode').replace(/[^\w-]+/g, '_') + '.mp4')}><Icon name="download" size={12} /> Video</button>}
@@ -773,6 +780,7 @@ function EpRow({ cid, e, active, onOpen, onRemove, onArchive, onBundle }) {
         {onArchive && <button className="btn sm" onClick={onArchive} title="Download a .zip backup (media + manifest), then delete"><Icon name="download" size={12} /> Archive</button>}
         <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={onRemove}><Icon name="close" size={12} /> Delete</button>
       </div>
+      )}
     </div>
   );
 }
