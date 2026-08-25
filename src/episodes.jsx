@@ -227,7 +227,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const refresh = () => ep.full(cid, epId).then((f) => {
     setFull(f);
     if (f && f.music_mode) setMusicMode(f.music_mode);
-    if (f) { setAirDate(f.air_date || ''); setAirTime(f.air_time || ''); setPodcastDesc(f.description || ''); setPodcastNumber(f.podcast_number || ''); }
+    if (f) { setAirDate(f.air_date || ''); setAirTime(f.air_time || ''); setPodcastDesc(f.description || f.script_description || ''); setPodcastNumber((f.podcast_number || f.script_episode_number || '').toString().replace(/[^\d]/g, '')); }
   }).catch((e) => setErr(e.message));
 
   // Cover art + Outro card stay image-only, so they keep a filtered list. Every

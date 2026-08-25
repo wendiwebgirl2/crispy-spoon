@@ -83,10 +83,14 @@ function CalendarGrid({ mode, anchor, items, todayKey, onEventClick, onDayClick 
   }
   const curMonth = anchor.getMonth();
   const cellMin = mode === 'week' ? 220 : 96;
+  // Minimum width per day column so the days stay readable; if 7 columns don't
+  // fit the screen, the calendar scrolls horizontally instead of squishing.
+  const colMin = mode === 'week' ? 200 : 130;
 
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-md)', overflow: 'hidden' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+      <div style={{ overflowX: 'auto' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(7, minmax(${colMin}px, 1fr))`, minWidth: 7 * colMin }}>
         {WEEKDAYS.map((w) => (
           <div key={w} style={{ padding: '7px 0', textAlign: 'center', fontSize: 11, letterSpacing: 0.4, color: 'var(--text-4)', fontFamily: 'var(--f-mono)', borderBottom: '1px solid var(--border)' }}>{w}</div>
         ))}
@@ -114,6 +118,7 @@ function CalendarGrid({ mode, anchor, items, todayKey, onEventClick, onDayClick 
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );
