@@ -86,6 +86,18 @@ const typePrefix = (channel, variant) => {
 const epPrefix = (s) => { const n = String(s.episode_number || '').trim().replace(/^E/i, ''); return n ? `E${n} - ` : ''; };
 const castTitleFor = (s) => `${epPrefix(s)}${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || 'Untitled'}`;
 
+// Shared input/select style for the batch-cast modal.
+const inputStyle = { background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '8px 10px', fontFamily: 'inherit', fontSize: 13, boxSizing: 'border-box' };
+
+// Delivery → HeyGen motion prompt (mirrors Studio's single-cast controls).
+const DELIVERY_PROMPTS = {
+  calm: 'calm, measured delivery; steady and composed; subtle natural movement',
+  warm: 'warm, friendly delivery with a natural smile; relaxed and engaged; gentle head movement',
+  energetic: 'upbeat, energetic delivery; lively hand gestures and animated facial expression; confident and dynamic',
+  laughing: 'joyful, laughing delivery; genuine laughter and a big warm smile; playful and animated',
+  serious: 'serious, authoritative delivery; composed and confident; steady gaze with minimal smiling',
+};
+
 // Per-channel accent colors so longform / shortform / blog cards are
 // distinguishable at a glance. Applied to badges and a left card stripe.
 const CHANNEL_COLOR = { longform: '#2e5f8f', shortform: '#b8852a', tvradio: '#8a4a8f', blog: '#5d8c3a' };
@@ -151,6 +163,17 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [batchMsg, setBatchMsg] = useState('');
   const topRef = useRef(null);
   const toggleSel = (id) => setSelected((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // Batch-cast modal: format options applied to every selected script, then a
+  // client-side queue submits one render at a time (same path as single-cast).
+  const [castOpen, setCastOpen] = useState(false);
+  const [castAvatars, setCastAvatars] = useState([]);       // [{ id, name, _token }]
+  const [castAvatarId, setCastAvatarId] = useState(null);
+  const [castLoadingAv, setCastLoadingAv] = useState(false);
+  const [castAspect, setCastAspect] = useState('auto');     // 'auto' | '16:9' | '9:16' | '1:1'
+  const [castEngine, setCastEngine] = useState('auto');     // 'auto' | 'avatar_v' | 'avatar_iv'
+  const [castExpr, setCastExpr] = useState('low');          // 'low' | 'medium' | 'high'
+  const [castDelivery, setCastDelivery] = useState('calm');
+  const [castProgress, setCastProgress] = useState(null);   // { done, total, failed: [] }
 
   // manual entry
   const [manualOpen, setManualOpen] = useState(false);
@@ -339,48 +362,81 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     } catch (e) { setErr('Topic archive failed: ' + (e.message || e)); }
   };
 
-  // Multi-select → batch cast. Picks the client's first ready avatar and fires a
-  // HeyGen render per selected script (auto-render). Guarded by a confirm since
-  // it spends render credits. Best-effort mirror so each cast carries job/script.
-  const castSelected = async () => {
-    const items = history.filter((h) => selected.has(h.id) && h.body && h.body.trim());
-    if (!items.length) return;
-    if (!window.confirm(`Start ${items.length} HeyGen render${items.length > 1 ? 's' : ''} now? This runs immediately and uses render credits.`)) return;
-    setBatchBusy(true); setBatchMsg('Finding a ready avatar…'); setErr('');
+  // Load the client's ready avatars, merged across ALL invite tokens (avatars
+  // recorded under one invite can live under a different mirrored record — same
+  // approach Studio uses so the list is never wrongly empty). Each entry keeps
+  // its own token, which the render call needs.
+  const loadCastAvatars = async () => {
+    setCastLoadingAv(true);
     try {
       const tokens = [];
       try {
         const res = await api.listClientInvites(clientId);
         const rows = Array.isArray(res) ? res : (res && res.invites ? res.invites : []);
         for (const iv of rows) if (iv && iv.token) tokens.push(iv.token);
-      } catch { /* fall through to no-avatar message */ }
-      let avatar = null;
+      } catch { /* no invites → no avatars */ }
+      const found = [];
+      const seen = new Set();
       for (const t of tokens) {
         try {
           const r = await api.listAvatars(t);
-          const avs = (r && r.avatars) || [];
-          const ready = avs.find((a) => a.heygen_avatar_id && (!a.status || a.status === 'ready'));
-          if (ready) { avatar = { ...ready, _token: t }; break; }
+          for (const a of (r && r.avatars) || []) {
+            if (a.heygen_avatar_id && (!a.status || a.status === 'ready') && !seen.has(a.id)) {
+              seen.add(a.id);
+              found.push({ id: a.id, name: a.name || a.title || ('Avatar ' + a.id), _token: t });
+            }
+          }
         } catch { /* try next token */ }
       }
-      if (!avatar) { setErr('No ready avatar for this client — build a twin in Studio before batch casting.'); setBatchMsg(''); setBatchBusy(false); return; }
-      let done = 0;
-      for (const h of items) {
-        setBatchMsg(`Casting ${done + 1} of ${items.length}…`);
-        try {
-          const beforeRes = await listVideos(avatar._token).catch(() => ({ videos: [] }));
-          const before = new Set((beforeRes.videos || []).map((v) => v.id));
-          await generateVideo(h.body, { token: avatar._token, avatarId: avatar.id, title: castTitleFor(h), aspectRatio: h.channel === 'shortform' ? '9:16' : '16:9', engine: 'auto' });
-          const afterRes = await listVideos(avatar._token).catch(() => ({ videos: [] }));
-          const fresh = (afterRes.videos || []).find((v) => !before.has(v.id));
-          if (fresh) { try { await api.castUpsert(clientId, fresh.id, castTitleFor(h), h.job_number || undefined, h.id); } catch { /* mirror best-effort */ } }
-          done++;
-        } catch { /* skip this one, keep going */ }
+      setCastAvatars(found);
+      if (found.length && !found.some((a) => a.id === castAvatarId)) setCastAvatarId(found[0].id);
+      return found;
+    } finally { setCastLoadingAv(false); }
+  };
+
+  // Open the batch-cast options modal for the selected scripts.
+  const openCastModal = async () => {
+    const items = history.filter((h) => selected.has(h.id) && h.body && h.body.trim());
+    if (!items.length) return;
+    setErr(''); setCastProgress(null); setCastOpen(true);
+    loadCastAvatars();
+  };
+
+  // Run the queue: submit one render per selected script with the chosen format
+  // options, sequentially (same proven path as single-cast). Failures are
+  // collected and reported per item instead of silently skipped.
+  const runCast = async () => {
+    const items = history.filter((h) => selected.has(h.id) && h.body && h.body.trim());
+    if (!items.length) return;
+    const avatar = castAvatars.find((a) => a.id === castAvatarId);
+    if (!avatar) { setErr('Pick an avatar to cast with.'); return; }
+    setBatchBusy(true); setErr('');
+    const failed = [];
+    let done = 0;
+    setCastProgress({ done: 0, total: items.length, failed });
+    for (const h of items) {
+      const aspect = castAspect !== 'auto' ? castAspect : (h.channel === 'shortform' ? '9:16' : '16:9');
+      try {
+        const beforeRes = await listVideos(avatar._token).catch(() => ({ videos: [] }));
+        const before = new Set((beforeRes.videos || []).map((v) => v.id));
+        await generateVideo(h.body, {
+          token: avatar._token, avatarId: avatar.id, title: castTitleFor(h),
+          aspectRatio: aspect, engine: castEngine, expressiveness: castExpr,
+          motionPrompt: DELIVERY_PROMPTS[castDelivery] || undefined,
+        });
+        const afterRes = await listVideos(avatar._token).catch(() => ({ videos: [] }));
+        const fresh = (afterRes.videos || []).find((v) => !before.has(v.id));
+        if (fresh) { try { await api.castUpsert(clientId, fresh.id, castTitleFor(h), h.job_number || undefined, h.id); } catch { /* mirror best-effort */ } }
+        done++;
+      } catch (e) {
+        failed.push({ title: castTitleFor(h), error: e.message || 'render failed' });
       }
-      setBatchMsg(`Started ${done} of ${items.length} render${items.length > 1 ? 's' : ''}. Track them in Studio.`);
-      setSelected(new Set());
-      await refreshHistory();
-    } finally { setBatchBusy(false); }
+      setCastProgress({ done, total: items.length, failed: [...failed] });
+    }
+    setBatchBusy(false);
+    setBatchMsg(`Queued ${done} of ${items.length} cast${items.length > 1 ? 's' : ''}. Track them in Studio.`);
+    if (!failed.length) { setCastOpen(false); setSelected(new Set()); }
+    await refreshHistory();
   };
 
   const APPROVAL_LABEL = { pending: 'pending approval', changes_requested: 'changes added', changes_completed: 'changes verified', approved: 'approved', approved_with_changes: 'approved w/ changes', in_production: 'in production' };
@@ -615,7 +671,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
             {batchMsg && <span className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>{batchMsg}</span>}
             {selected.size > 0 && (
               <>
-                <button className="btn primary sm" disabled={batchBusy} onClick={castSelected} style={{ opacity: batchBusy ? 0.6 : 1 }}>
+                <button className="btn primary sm" disabled={batchBusy} onClick={openCastModal} style={{ opacity: batchBusy ? 0.6 : 1 }}>
                   <Icon name="sparkle" size={12} /> {batchBusy ? 'Casting…' : `Cast selected (${selected.size})`}
                 </button>
                 <button className="btn sm" disabled={batchBusy} onClick={() => setSelected(new Set())}>Clear</button>
@@ -833,6 +889,86 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         onSend={doSendApproval}
         onClose={() => setSendScript(null)}
       />
+
+      {/* Batch-cast options modal: one set of format options applied to every
+          selected script, then a client-side queue submits the renders. */}
+      {castOpen && (
+        <div onClick={() => { if (!batchBusy) setCastOpen(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 200 }}>
+          <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(520px, 96vw)', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="label">Cast {selected.size} script{selected.size === 1 ? '' : 's'} — format options</div>
+
+            <label className="col" style={{ gap: 4 }}>
+              <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Avatar</span>
+              {castLoadingAv ? (
+                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>Loading avatars…</span>
+              ) : castAvatars.length ? (
+                <select value={castAvatarId || ''} onChange={(e) => setCastAvatarId(Number(e.target.value) || e.target.value)} style={inputStyle}>
+                  {castAvatars.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              ) : (
+                <span className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>No ready avatar for this client — build a twin in Studio first.</span>
+              )}
+            </label>
+
+            <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
+              <label className="col" style={{ gap: 4 }}>
+                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Aspect</span>
+                <div className="row" style={{ gap: 6 }}>
+                  {['auto', '16:9', '9:16', '1:1'].map((a) => (
+                    <button key={a} className={'btn sm' + (castAspect === a ? ' primary' : '')} onClick={() => setCastAspect(a)}>{a === 'auto' ? 'Auto' : a}</button>
+                  ))}
+                </div>
+                {castAspect === 'auto' && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 10 }}>Shortform → 9:16, others → 16:9</span>}
+              </label>
+            </div>
+
+            <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
+              <label className="col" style={{ gap: 4 }}>
+                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Engine</span>
+                <select value={castEngine} onChange={(e) => setCastEngine(e.target.value)} style={{ ...inputStyle, width: 150 }}>
+                  <option value="auto">Auto</option>
+                  <option value="avatar_v">Avatar V</option>
+                  <option value="avatar_iv">Avatar IV</option>
+                </select>
+              </label>
+              <label className="col" style={{ gap: 4 }}>
+                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Expressiveness</span>
+                <select value={castExpr} onChange={(e) => setCastExpr(e.target.value)} style={{ ...inputStyle, width: 130 }}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+              <label className="col" style={{ gap: 4 }}>
+                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Delivery</span>
+                <select value={castDelivery} onChange={(e) => setCastDelivery(e.target.value)} style={{ ...inputStyle, width: 140 }}>
+                  {['calm', 'warm', 'energetic', 'laughing', 'serious'].map((d) => <option key={d} value={d}>{d[0].toUpperCase() + d.slice(1)}</option>)}
+                </select>
+              </label>
+            </div>
+
+            {castProgress && (
+              <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                {batchBusy ? `Casting ${castProgress.done + 1} of ${castProgress.total}…` : `Queued ${castProgress.done} of ${castProgress.total}.`}
+                {castProgress.failed.length > 0 && (
+                  <div style={{ color: 'var(--accent)', marginTop: 6 }}>
+                    {castProgress.failed.length} failed:
+                    {castProgress.failed.map((f, i) => <div key={i} style={{ fontSize: 11 }}>• {f.title} — {f.error}</div>)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Casting spends render credits. Keep this tab open until all are queued (a few seconds each) — the renders then finish on their own.</div>
+            <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn sm" onClick={() => setCastOpen(false)} disabled={batchBusy}>{castProgress && !batchBusy ? 'Close' : 'Cancel'}</button>
+              <button className="btn primary sm" onClick={runCast} disabled={batchBusy || castLoadingAv || !castAvatars.length}>
+                <Icon name="sparkle" size={12} /> {batchBusy ? 'Casting…' : `Cast ${selected.size}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
