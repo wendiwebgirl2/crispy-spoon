@@ -223,11 +223,12 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const [showSend, setShowSend] = useState(false);
   const [podcastDesc, setPodcastDesc] = useState('');
   const [podcastNumber, setPodcastNumber] = useState('');
+  const [internalNotes, setInternalNotes] = useState('');
 
   const refresh = () => ep.full(cid, epId).then((f) => {
     setFull(f);
     if (f && f.music_mode) setMusicMode(f.music_mode);
-    if (f) { setAirDate(f.air_date || ''); setAirTime(f.air_time || ''); setPodcastDesc(f.description || f.script_description || ''); setPodcastNumber((f.podcast_number || f.script_episode_number || '').toString().replace(/[^\d]/g, '')); }
+    if (f) { setAirDate(f.air_date || ''); setAirTime(f.air_time || ''); setPodcastDesc(f.description || f.script_description || ''); setPodcastNumber((f.podcast_number || f.script_episode_number || '').toString().replace(/[^\d]/g, '')); setInternalNotes(f.internal_notes || ''); }
   }).catch((e) => setErr(e.message));
 
   // Cover art + Outro card stay image-only, so they keep a filtered list. Every
@@ -273,6 +274,12 @@ function EpisodeEditor({ cid, epId, onChange }) {
     setBusy('podcastmeta'); setErr('');
     try { await ep.setMeta(cid, epId, { description: podcastDesc, podcastNumber }); await refresh(); }
     catch (e) { setErr(e.message || 'Could not save podcast details.'); }
+    finally { setBusy(''); }
+  };
+  const saveInternalNotes = async () => {
+    setBusy('internalnotes'); setErr('');
+    try { await ep.setMeta(cid, epId, { internalNotes }); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not save notes.'); }
     finally { setBusy(''); }
   };
   const verifyChanges = async () => {
@@ -704,6 +711,16 @@ function EpisodeEditor({ cid, epId, onChange }) {
           </div>
         </div>
       )}
+
+      {/* Internal production notes — private to the team, dashboard-only. Never
+          published to any channel. Distinct from the podcast description. */}
+      <div className="card card-pad" style={{ marginBottom: 10 }}>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Internal notes <span className="mono" style={{ color: 'var(--text-4)' }}>(private — never published)</span></div>
+          <button className="btn sm primary" disabled={busy === 'internalnotes'} onClick={saveInternalNotes}><Icon name="check" size={12} /> {busy === 'internalnotes' ? 'Saving…' : 'Save notes'}</button>
+        </div>
+        <textarea value={internalNotes} onChange={(e) => setInternalNotes(e.target.value)} rows={4} placeholder="Episode-specific notes for your team — production reminders, client context, to-dos…" style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit', marginTop: 8, width: '100%' }} />
+      </div>
 
       <SendReviewModal open={showSend} title={epTitle(full)} busy={busy === 'send'} onSend={doSend} onClose={() => setShowSend(false)} />
 
