@@ -745,18 +745,18 @@ function OnboardingCard({ clientId }) {
 
   return (
     <div className="card card-pad" style={{ marginBottom: 16, borderColor: complete ? 'var(--ok)' : 'var(--border-strong)' }}>
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 14, cursor: 'pointer' }} onClick={() => setOpen((o) => !o)}>
-        <div className="row" style={{ gap: 10, alignItems: 'center', minWidth: 0 }}>
-          <span style={{ color: 'var(--text-3)', fontSize: 12, width: 12 }}>{open ? '▾' : '▸'}</span>
-          <div className="label" style={{ margin: 0 }}>ONBOARDING</div>
-          {complete
-            ? <span className="mono" style={{ color: 'var(--ok)', fontWeight: 600, fontSize: 13 }}>{'✓'} 100% Onboarded</span>
-            : <span className="mono" style={{ color: 'var(--text-3)', fontSize: 13 }}>{data ? `${pct}% complete · ${data.done}/${data.total} tasks` : 'Loading…'}</span>}
-        </div>
-        <div style={{ flex: '0 0 140px', width: 140, maxWidth: 180 }}>
-          <div style={{ height: 8, background: 'var(--surface-3)', borderRadius: 100, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${pct}%`, background: barColor, transition: 'width .3s' }} />
+      <div onClick={() => setOpen((o) => !o)} style={{ cursor: 'pointer' }}>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div className="row" style={{ gap: 8, alignItems: 'center', minWidth: 0 }}>
+            <span style={{ color: 'var(--text-3)', fontSize: 12, width: 12 }}>{open ? '▾' : '▸'}</span>
+            <div className="label" style={{ margin: 0 }}>ONBOARDING</div>
           </div>
+          {complete
+            ? <span className="mono" style={{ color: 'var(--ok)', fontWeight: 600, fontSize: 11.5, whiteSpace: 'nowrap' }}>{'✓'} 100% Onboarded</span>
+            : <span className="mono" style={{ color: 'var(--text-3)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{data ? `${pct}% · ${data.done}/${data.total}` : 'Loading…'}</span>}
+        </div>
+        <div style={{ marginTop: 8, height: 8, background: 'var(--surface-3)', borderRadius: 100, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: barColor, transition: 'width .3s' }} />
         </div>
       </div>
 
