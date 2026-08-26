@@ -289,6 +289,7 @@ export const api = {
   dismissAttention: (code, id) => vcReq('/alerts/attention/dismiss', { method: 'POST', body: JSON.stringify({ code, id }) }),
   myTasks: () => vcReq('/alerts/my-tasks'),
   getActivity: (qs = '') => vcReq('/activity' + qs),
+  productionReport: (qs = '') => vcReq('/report/production' + qs),
   billingOverview: (qs = '') => vcReq('/billing/overview' + qs),
   setCastApproval: (id, railwayVideoId, status, title) =>
     vcReq(`/clients/${id}/casts/approval`, { method: "POST", body: JSON.stringify({ railwayVideoId, status, title }) }),

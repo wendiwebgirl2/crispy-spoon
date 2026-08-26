@@ -15,12 +15,14 @@ import { EpisodesView } from './episodes.jsx'
 import { OnboardingView } from './onboarding.jsx'
 import { SettingsView } from './settings.jsx'
 import { ActivityLogView } from './activity.jsx'
+import { ProductionReportView } from './report.jsx'
 
 const NAV = [
   { id: 'clients',       label: 'Clients',        icon: 'avatars' },
   { id: 'studio',        label: 'Studio',         icon: 'studio',   countKey: 'rendering' },
   { id: 'planner',       label: 'Planner',        icon: 'history',  countKey: 'planner' },
   { id: 'onboarding',    label: 'Record on-site', icon: 'mic' },
+  { id: 'report',        label: 'Production',     icon: 'chart', roles: ['admin', 'manager'] },
   { id: 'billing',       label: 'Billing',        icon: 'sliders' },
 ];
 
@@ -38,6 +40,7 @@ const HEADER_TITLES = {
   billing:         { title: 'Billing',         sub: 'plans, usage, and invoices' },
   changes:         { title: 'Client changes',  sub: 'requested changes across every client — newest first' },
   attention:       { title: 'Needs attention',  sub: 'clients & tasks waiting on you — newest first' },
+  report:          { title: 'Production report', sub: 'all production in a date range — printable' },
   activity:        { title: 'Activity log',    sub: 'every action across the dashboard — newest first' },
 };
 
@@ -328,7 +331,7 @@ function App() {
 
         <div className="side-section">WORKSPACE</div>
         <nav className="side-nav">
-          {NAV.map(n => (
+          {NAV.filter((n) => !n.roles || (me && n.roles.includes(me.role))).map(n => (
             <button
               key={n.id}
               className={'nav-item' + ((view === n.id || (n.id === 'clients' && soloClientId != null && view === 'brief')) ? ' active' : '')}
@@ -490,6 +493,7 @@ function App() {
           {view === 'changes' && <ChangesView onOpen={(clientId, targetView) => { setActiveClientId(clientId); setView(targetView); }} />}
           {view === 'attention' && <AttentionView onOpen={openAttentionItem} filter={attnFilter} />}
           {view === 'activity' && <ActivityLogView me={me} />}
+          {view === 'report' && <ProductionReportView />}
           {view === 'billing' && <BillingView />}
         </section>
       </main>

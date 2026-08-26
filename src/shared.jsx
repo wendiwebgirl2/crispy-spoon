@@ -30,6 +30,7 @@ const Icon = ({ name, size = 16, stroke = 1.6, style }) => {
     case 'globe':     return <svg {...common}><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18"/></svg>;
     case 'shield':    return <svg {...common}><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>;
     case 'sliders':   return <svg {...common}><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h14M18 18h2"/><circle cx="16" cy="6" r="2" fill="currentColor"/><circle cx="8" cy="12" r="2" fill="currentColor"/><circle cx="16" cy="18" r="2" fill="currentColor"/></svg>;
+    case 'chart':     return <svg {...common}><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6" fill="currentColor" stroke="none"/><rect x="12" y="7" width="3" height="10" fill="currentColor" stroke="none"/><rect x="17" y="14" width="3" height="3" fill="currentColor" stroke="none"/></svg>;
     case 'history':   return <svg {...common}><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>;
     case 'lang':      return <svg {...common}><path d="m3 5 8-3 8 3-8 3-8-3z"/><path d="M3 5v6c0 4 4 7 8 8 4-1 8-4 8-8V5"/></svg>;
     case 'bell':      return <svg {...common}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>;
