@@ -78,6 +78,15 @@ function DistributionCard({ clientId }) {
     catch (e) { setErr(e.message || 'Could not remove channel.'); }
   };
 
+  const toggle2fa = async (c) => {
+    const next = !c.twofa_verified;
+    let name = '';
+    if (next) { name = ensureOperatorName(); if (!name) return; }
+    setErr('');
+    try { await api.verifyCredential2fa(clientId, c.id, next, name); await load(); }
+    catch (e) { setErr(e.message || 'Could not update 2FA status.'); }
+  };
+
   const inp = { background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontFamily: 'var(--f-mono)', fontSize: 13, padding: '8px 10px', boxSizing: 'border-box', width: '100%' };
 
   return (
@@ -109,6 +118,10 @@ function DistributionCard({ clientId }) {
             {c.url && <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.url}</div>}
             {c.username && <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>{c.username}</div>}
             {revealed[c.id] && <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12 }}>pw: {revealed[c.id]}</div>}
+            <label className="row" onClick={(e) => e.stopPropagation()} style={{ gap: 6, alignItems: 'center', cursor: 'pointer', marginTop: 4, color: c.twofa_verified ? 'var(--ok)' : 'var(--accent)' }}>
+              <input type="checkbox" checked={!!c.twofa_verified} onChange={() => toggle2fa(c)} style={{ accentColor: 'var(--ok)', cursor: 'pointer' }} />
+              <span className="mono" style={{ fontSize: 11.5 }}>{c.twofa_verified ? `2FA verified${c.twofa_verified_by ? ' \u00b7 ' + c.twofa_verified_by : ''}` : '2FA not verified'}</span>
+            </label>
           </div>
           <div className="row" style={{ gap: 6 }}>
             {c.hasSecret && <button className="btn sm" onClick={() => reveal(c.id)}>{revealed[c.id] ? 'Hide' : 'Password'}</button>}
@@ -684,6 +697,129 @@ function TopicsSection({ clientId, onSendTopicToScripts, reloadSignal, sendLabel
   );
 }
 
+// Onboarding checklist — a collapsible card pinned to the top of the brief.
+// Tracks the post-agreement setup tasks: percentage complete, per-task assignee
+// (from the dashboard user list), and a date/time + name stamp when a task is
+// marked done. The "channels" task is derived from truth (every distribution
+// channel must be 2FA-verified); the "2FA session" task surfaces the booking
+// page. Incomplete tasks read red, completed read green.
+function OnboardingCard({ clientId }) {
+  const [data, setData] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [err, setErr] = useState('');
+  const [open, setOpen] = useState(true);
+  const [newLabel, setNewLabel] = useState('');
+  const [showSched, setShowSched] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setData(null); setErr(''); setShowSched(false);
+    if (clientId == null) return;
+    api.getOnboarding(clientId).then(setData).catch((e) => setErr(e.message || 'Could not load onboarding.'));
+    api.listUsers().then((u) => setUsers(Array.isArray(u) ? u : [])).catch(() => {});
+  }, [clientId]);
+
+  const apply = (promise) => { setErr(''); return promise.then(setData).catch((e) => setErr(e.message || 'Could not update.')); };
+  const setAssignee = (t, v) => apply(api.updateOnboardingTask(clientId, t.id, { assignee: v }));
+  const toggleNa = (t) => apply(api.updateOnboardingTask(clientId, t.id, { na: !t.na }));
+  const toggleDone = (t) => {
+    if (t.type === 'derived') return;
+    if (!t.done) { const name = ensureOperatorName(); if (!name) return; return apply(api.updateOnboardingTask(clientId, t.id, { done: true, name })); }
+    return apply(api.updateOnboardingTask(clientId, t.id, { done: false }));
+  };
+  const addTask = async () => {
+    const l = newLabel.trim(); if (!l) return;
+    setBusy(true); setErr('');
+    try { const d = await api.addOnboardingTask(clientId, l); setData(d); setNewLabel(''); }
+    catch (e) { setErr(e.message || 'Could not add task.'); } finally { setBusy(false); }
+  };
+  const removeTask = (t) => apply(api.deleteOnboardingTask(clientId, t.id));
+  const copyLink = () => { if (data && data.bookingUrl) navigator.clipboard?.writeText(data.bookingUrl); };
+
+  if (clientId == null) return null;
+
+  const pct = (data && data.percent) || 0;
+  const complete = !!(data && data.complete);
+  const barColor = complete ? 'var(--ok)' : 'var(--accent)';
+  const sel = { background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontFamily: 'var(--f-mono)', fontSize: 12, padding: '5px 8px', maxWidth: 150 };
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 16, borderColor: complete ? 'var(--ok)' : 'var(--border-strong)' }}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 14, cursor: 'pointer' }} onClick={() => setOpen((o) => !o)}>
+        <div className="row" style={{ gap: 10, alignItems: 'center', minWidth: 0 }}>
+          <span style={{ color: 'var(--text-3)', fontSize: 12, width: 12 }}>{open ? '▾' : '▸'}</span>
+          <div className="label" style={{ margin: 0 }}>ONBOARDING</div>
+          {complete
+            ? <span className="mono" style={{ color: 'var(--ok)', fontWeight: 600, fontSize: 13 }}>{'✓'} 100% Onboarded</span>
+            : <span className="mono" style={{ color: 'var(--text-3)', fontSize: 13 }}>{data ? `${pct}% complete · ${data.done}/${data.total} tasks` : 'Loading…'}</span>}
+        </div>
+        <div style={{ flex: '0 0 140px', width: 140, maxWidth: 180 }}>
+          <div style={{ height: 8, background: 'var(--surface-3)', borderRadius: 100, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${pct}%`, background: barColor, transition: 'width .3s' }} />
+          </div>
+        </div>
+      </div>
+
+      {err && <div className="mono" style={{ color: 'var(--accent)', marginTop: 10 }}>{err}</div>}
+
+      {open && data && (
+        <div style={{ marginTop: 8 }}>
+          {data.tasks.map((t) => {
+            const done = t.done;
+            const color = done ? 'var(--ok)' : 'var(--accent)';
+            return (
+              <div key={t.id} className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '9px 0', borderTop: '1px solid var(--border)' }}>
+                {t.type === 'derived' ? (
+                  <span title="Verified automatically from your connected channels" style={{ flex: '0 0 auto', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 5, border: `1.5px solid ${color}`, color, fontSize: 12 }}>{done ? '✓' : '↻'}</span>
+                ) : (
+                  <input type="checkbox" checked={done} onChange={() => toggleDone(t)} disabled={t.na} style={{ flex: '0 0 auto', width: 18, height: 18, accentColor: 'var(--ok)', cursor: t.na ? 'default' : 'pointer' }} />
+                )}
+                <div style={{ flex: '1 1 240px', minWidth: 200 }}>
+                  <div style={{ fontSize: 13.5, color: t.na ? 'var(--text-4)' : (done ? 'var(--ok)' : 'var(--text)'), textDecoration: t.na ? 'line-through' : 'none', fontWeight: done ? 600 : 500 }}>
+                    {t.label}{t.is_custom ? <span className="mono" style={{ color: 'var(--text-4)', fontWeight: 400, fontSize: 11 }}> {'·'} custom</span> : null}
+                  </div>
+                  {t.type === 'derived' && (
+                    <div className="mono" style={{ fontSize: 11.5, color, marginTop: 2 }}>
+                      {t.derived.total === 0 ? 'No channels added yet — add them in Distribution below.' : `${t.derived.verified}/${t.derived.total} channels 2FA-verified${done ? '' : ' — verify each in Distribution below'}`}
+                    </div>
+                  )}
+                  {done && t.completed_by && (
+                    <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>{'✓'} {t.completed_by} {'·'} {String(t.completed_at).slice(0, 16).replace('T', ' ')}</div>
+                  )}
+                  {t.type === 'booking' && (
+                    <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                      <a className="btn sm" href={data.bookingUrl} target="_blank" rel="noopener">Open booking page</a>
+                      <button className="btn sm" onClick={copyLink}>Copy link</button>
+                      <button className="btn sm" onClick={() => setShowSched((v) => !v)}>{showSched ? 'Hide scheduler' : 'Show scheduler'}</button>
+                    </div>
+                  )}
+                  {t.type === 'booking' && showSched && (
+                    <iframe src={data.bookingUrl} title="2FA setup booking" style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', width: '100%', height: 520, marginTop: 8 }} />
+                  )}
+                </div>
+                <select value={t.assignee || ''} onChange={(e) => setAssignee(t, e.target.value)} style={sel} title="Assign to">
+                  <option value="">Unassigned</option>
+                  {users.map((u) => <option key={u.id || u.username} value={u.username}>{u.username}</option>)}
+                  {t.assignee && !users.some((u) => u.username === t.assignee) ? <option value={t.assignee}>{t.assignee}</option> : null}
+                </select>
+                {t.type !== 'derived' && (
+                  <button className="btn sm" onClick={() => toggleNa(t)} title="Mark not applicable" style={{ opacity: t.na ? 1 : 0.55 }}>{t.na ? 'N/A ✓' : 'N/A'}</button>
+                )}
+                {t.is_custom ? <button className="btn sm" onClick={() => removeTask(t)} title="Remove custom task">{'×'}</button> : null}
+              </div>
+            );
+          })}
+
+          <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+            <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addTask(); }} placeholder="Add a custom onboarding task…" style={{ flex: '1 1 260px', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 13, padding: '8px 10px' }} />
+            <button className="btn sm primary" onClick={addTask} disabled={busy || !newLabel.trim()}>{busy ? 'Adding…' : 'Add task'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BriefView({ clientId, onSendTopicToScripts }) {
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
@@ -760,6 +896,8 @@ function BriefView({ clientId, onSendTopicToScripts }) {
           </button>
         </div>
       </div>
+
+      <OnboardingCard clientId={clientId} />
 
       <div className="card card-pad" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', borderColor: form.qa_verified_at ? 'var(--ok)' : 'var(--border)' }}>
         <div style={{ flex: 1, minWidth: 240 }}>
