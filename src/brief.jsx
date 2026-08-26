@@ -711,12 +711,14 @@ function OnboardingCard({ clientId }) {
   const [newLabel, setNewLabel] = useState('');
   const [showSched, setShowSched] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     setData(null); setErr(''); setShowSched(false);
     if (clientId == null) return;
     api.getOnboarding(clientId).then(setData).catch((e) => setErr(e.message || 'Could not load onboarding.'));
     api.listUsers().then((u) => setUsers(Array.isArray(u) ? u : [])).catch(() => {});
+    api.me().then((m) => setIsAdmin(!!(m && m.role === 'admin'))).catch(() => {});
   }, [clientId]);
 
   const apply = (promise) => { setErr(''); return promise.then(setData).catch((e) => setErr(e.message || 'Could not update.')); };
@@ -797,7 +799,7 @@ function OnboardingCard({ clientId }) {
                     <iframe src={data.bookingUrl} title="2FA setup booking" style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', width: '100%', height: 520, marginTop: 8 }} />
                   )}
                 </div>
-                <select value={t.assignee || ''} onChange={(e) => setAssignee(t, e.target.value)} style={sel} title="Assign to">
+                <select value={t.assignee || ''} onChange={(e) => setAssignee(t, e.target.value)} disabled={!isAdmin} style={{ ...sel, opacity: isAdmin ? 1 : 0.6 }} title={isAdmin ? 'Assign to' : 'Only admins can assign'}>
                   <option value="">Unassigned</option>
                   {users.map((u) => <option key={u.id || u.username} value={u.username}>{u.username}</option>)}
                   {t.assignee && !users.some((u) => u.username === t.assignee) ? <option value={t.assignee}>{t.assignee}</option> : null}

@@ -14,6 +14,7 @@ import { RecordingsView } from './recordings.jsx'
 import { EpisodesView } from './episodes.jsx'
 import { OnboardingView } from './onboarding.jsx'
 import { SettingsView } from './settings.jsx'
+import { ActivityLogView } from './activity.jsx'
 
 const NAV = [
   { id: 'clients',       label: 'Clients',        icon: 'avatars' },
@@ -37,6 +38,7 @@ const HEADER_TITLES = {
   billing:         { title: 'Billing',         sub: 'plans, usage, and invoices' },
   changes:         { title: 'Client changes',  sub: 'requested changes across every client — newest first' },
   attention:       { title: 'Needs attention',  sub: 'clients & tasks waiting on you — newest first' },
+  activity:        { title: 'Activity log',    sub: 'every action across the dashboard — newest first' },
 };
 
 // Local 12-hour, user-local time formatter for attention timestamps. SQLite
@@ -107,7 +109,7 @@ const ATTN_META = {
 // Category display order within a client — most urgent first.
 const ATTN_ORDER = ['failed', 'rendered', 'approved', 'invite', 'pending'];
 
-function AttentionView({ onOpen }) {
+function AttentionView({ onOpen, filter }) {
   const [data, setData] = React.useState(null);
   const [openClient, setOpenClient] = React.useState(null);
   const [busy, setBusy] = React.useState(null);
@@ -133,16 +135,23 @@ function AttentionView({ onOpen }) {
   };
 
   if (data === null) return <div className="v-pad fade-in"><div className="mono">Loading…</div></div>;
-  if (!data.clients.length) return <div className="v-pad fade-in"><div className="mono" style={{ color: 'var(--text-3)' }}>All caught up — nothing needs your attention right now.</div></div>;
+  // A sidebar badge can open this view filtered to a single category.
+  const view = !filter ? data : (() => {
+    const clients = data.clients
+      .map((c) => ({ ...c, items: c.items.filter((x) => x.type === filter) }))
+      .filter((c) => c.items.length);
+    return { total: clients.reduce((n, c) => n + c.items.length, 0), clients };
+  })();
+  if (!view.clients.length) return <div className="v-pad fade-in"><div className="mono" style={{ color: 'var(--text-3)' }}>All caught up — nothing needs your attention right now.</div></div>;
 
-  const current = openClient != null ? data.clients.find((c) => c.clientId === openClient) : null;
+  const current = openClient != null ? view.clients.find((c) => c.clientId === openClient) : null;
 
   // ——— Landing: one card per client with its open-alert count ———
   if (!current) {
     return (
       <div className="fade-in" style={{ padding: 'var(--pad)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 'var(--gap)', maxWidth: 900 }}>
-          {data.clients.map((c) => {
+          {view.clients.map((c) => {
             const counts = {};
             for (const it of c.items) counts[it.type] = (counts[it.type] || 0) + 1;
             return (
@@ -252,13 +261,39 @@ function App() {
     if (soloClientId != null) { setActiveClientId((cur) => (cur == null ? soloClientId : cur)); setView((v) => (v === 'clients' ? 'brief' : v)); }
   }, [soloClientId]);
   const [alerts, setAlerts] = React.useState(null);
+  const [myTasks, setMyTasks] = React.useState([]);
+  const [attnFilter, setAttnFilter] = React.useState(null);
+  const prevAttnRef = React.useRef(null);
+  // Short chime via Web Audio — plays when the needs-attention count rises.
+  const chime = React.useCallback(() => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'sine'; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+      o.start(); o.stop(ctx.currentTime + 0.36);
+      o.onended = () => { try { ctx.close(); } catch { /* ignore */ } };
+    } catch { /* ignore */ }
+  }, []);
   React.useEffect(() => {
     let live = true;
-    const load = () => api.alerts().then((a) => { if (live) setAlerts(a); }).catch(() => {});
-    load();
-    const t = setInterval(load, 60000);
+    const load = () => api.alerts().then((a) => {
+      if (!live) return;
+      setAlerts(a);
+      const cur = a && typeof a.attention === 'number' ? a.attention : 0;
+      if (prevAttnRef.current !== null && cur > prevAttnRef.current) chime();
+      prevAttnRef.current = cur;
+    }).catch(() => {});
+    const loadTasks = () => api.myTasks().then((t) => { if (live) setMyTasks(Array.isArray(t) ? t : []); }).catch(() => {});
+    load(); loadTasks();
+    const t = setInterval(() => { load(); loadTasks(); }, 60000);
     return () => { live = false; clearInterval(t); };
-  }, [view]);
+  }, [view, chime]);
   const [activeClientName, setActiveClientName] = React.useState('');
   React.useEffect(() => {
     if (!activeClientId) { setActiveClientName(''); return; }
@@ -325,7 +360,7 @@ function App() {
             <div className="side-nav">
               <button
                 className={'nav-item' + (view === 'attention' ? ' active' : '')}
-                onClick={() => setView('attention')}
+                onClick={() => { setAttnFilter(null); setView('attention'); }}
                 title="Needs attention"
               >
                 <Icon name="bell" size={16} stroke={1.6} className="nav-icon" style={{ color: view === 'attention' ? 'var(--accent)' : 'var(--text-3)' }} />
@@ -335,24 +370,51 @@ function App() {
             </div>
             <div className="side-nav">
               {[
-                { k: 'changes', label: 'Changes from client', color: 'var(--warn)', go: () => setView('changes') },
-                { k: 'pending', label: 'Pending approval', color: 'var(--accent)' },
-                { k: 'in_production', label: 'In production', color: 'var(--text-2)' },
-                { k: 'approved', label: 'Approved', color: 'var(--ok)' },
-                { k: 'invites_recorded', label: 'Invites recorded', color: 'var(--text-3)' },
+                { k: 'changes', label: 'Changes from client', color: 'var(--warn)', go: () => { setAttnFilter(null); setView('changes'); }, active: view === 'changes' },
+                { k: 'pending', label: 'Pending approval', color: 'var(--accent)', go: () => { setAttnFilter('pending'); setView('attention'); }, active: view === 'attention' && attnFilter === 'pending' },
+                { k: 'in_production', label: 'In production', color: 'var(--text-2)', go: () => { setAttnFilter(null); setView('attention'); }, active: false },
+                { k: 'approved', label: 'Approved', color: 'var(--ok)', go: () => { setAttnFilter('approved'); setView('attention'); }, active: view === 'attention' && attnFilter === 'approved' },
+                { k: 'invites_recorded', label: 'Invites recorded', color: 'var(--text-3)', go: () => { setAttnFilter('invite'); setView('attention'); }, active: view === 'attention' && attnFilter === 'invite' },
               ].map((a) => (
-                <div key={a.k} className={'nav-item' + (a.go && view === 'changes' && a.k === 'changes' ? ' active' : '')}
-                  onClick={a.go} style={{ cursor: a.go ? 'pointer' : 'default' }}>
+                <div key={a.k} className={'nav-item' + (a.active ? ' active' : '')}
+                  onClick={a.go} style={{ cursor: 'pointer' }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: a.color, flex: 'none', marginRight: 8 }} />
                   <span style={{ fontSize: 12 }}>{a.label}</span>
                   <span className="nav-count" style={{ background: 'transparent', color: a.color, fontWeight: 700 }}>{alerts[a.k] ?? 0}</span>
                 </div>
               ))}
             </div>
+            {myTasks.length > 0 && (
+              <>
+                <div className="side-section" style={{ marginTop: 14 }}>MY TASKS</div>
+                <div className="side-nav">
+                  {myTasks.slice(0, 8).map((tk) => (
+                    <div key={tk.id} className="nav-item" style={{ cursor: 'pointer' }}
+                      onClick={() => { setActiveClientId(tk.client_id); setAttnFilter(null); setView('brief'); }}
+                      title={tk.label + ' · ' + tk.client_name}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flex: 'none', marginRight: 8 }} />
+                      <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{tk.label}</span>
+                      <span className="nav-count" style={{ background: 'transparent', color: 'var(--text-4)', fontWeight: 600, fontSize: 10 }}>{tk.client_name}</span>
+                    </div>
+                  ))}
+                  {myTasks.length > 8 && <div className="nav-item" style={{ cursor: 'default', color: 'var(--text-4)', fontSize: 11 }}>+{myTasks.length - 8} more</div>}
+                </div>
+              </>
+            )}
           </>
         )}
 
         <div className="side-nav" style={{ marginTop: 'auto' }}>
+          {me && me.role === 'admin' && (
+            <button
+              className={'nav-item' + (view === 'activity' ? ' active' : '')}
+              onClick={() => setView('activity')}
+              title="Activity log (admin)"
+            >
+              <Icon name="history" size={16} className="nav-icon" style={{ color: view === 'activity' ? 'var(--accent)' : 'var(--text-3)' }} />
+              <span>Activity log</span>
+            </button>
+          )}
           <button
             className={'nav-item' + (view === 'settings' ? ' active' : '')}
             onClick={() => setView('settings')}
@@ -426,7 +488,8 @@ function App() {
           )}
           {view === 'settings' && <SettingsView />}
           {view === 'changes' && <ChangesView onOpen={(clientId, targetView) => { setActiveClientId(clientId); setView(targetView); }} />}
-          {view === 'attention' && <AttentionView onOpen={openAttentionItem} />}
+          {view === 'attention' && <AttentionView onOpen={openAttentionItem} filter={attnFilter} />}
+          {view === 'activity' && <ActivityLogView me={me} />}
           {view === 'billing' && <BillingView />}
         </section>
       </main>
