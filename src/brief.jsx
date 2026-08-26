@@ -897,27 +897,9 @@ function BriefView({ clientId, onSendTopicToScripts }) {
         </div>
       </div>
 
-      <OnboardingCard clientId={clientId} />
-
-      <div className="card card-pad" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', borderColor: form.qa_verified_at ? 'var(--ok)' : 'var(--border)' }}>
-        <div style={{ flex: 1, minWidth: 240 }}>
-          <div className="label" style={{ marginBottom: 4 }}>INTERNAL QUALITY CHECK</div>
-          {form.qa_verified_at ? (
-            <div className="mono" style={{ fontSize: 13, color: 'var(--text-2)' }}>
-              I have reviewed the information for this client and verified it for accuracy.
-              <div style={{ color: 'var(--ok)', marginTop: 4 }}>✓ {form.qa_verified_by} · {String(form.qa_verified_at).slice(0, 16).replace('T', ' ')}</div>
-            </div>
-          ) : (
-            <div className="mono" style={{ fontSize: 13, color: 'var(--text-3)' }}>
-              Not yet verified. Confirm you have reviewed this client's information for accuracy.
-            </div>
-          )}
-        </div>
-        {form.qa_verified_at
-          ? <button className="btn sm" onClick={clearQA}>Clear</button>
-          : <button className="btn primary sm" onClick={verifyQA}><Icon name="check" size={13} /> I have reviewed &amp; verified</button>}
-      </div>
-
+      <div className="row" style={{ gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        {/* CENTER COLUMN */}
+        <div style={{ flex: '1 1 560px', minWidth: 0 }}>
       {err && (
         <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--accent)' }}>
           <div className="mono" style={{ color: 'var(--accent)' }}>{err}</div>
@@ -977,6 +959,33 @@ function BriefView({ clientId, onSendTopicToScripts }) {
       {/* Topics moved to the Scripts page; Assets moved to the Studio Assets step. */}
 
       <AvatarsSection clientId={clientId} />
+
+          {/* Internal quality check — moved to the bottom of the center column */}
+      <div className="card card-pad" style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', borderColor: form.qa_verified_at ? 'var(--ok)' : 'var(--border)' }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div className="label" style={{ marginBottom: 4 }}>INTERNAL QUALITY CHECK</div>
+          {form.qa_verified_at ? (
+            <div className="mono" style={{ fontSize: 13, color: 'var(--text-2)' }}>
+              I have reviewed the information for this client and verified it for accuracy.
+              <div style={{ color: 'var(--ok)', marginTop: 4 }}>✓ {form.qa_verified_by} · {String(form.qa_verified_at).slice(0, 16).replace('T', ' ')}</div>
+            </div>
+          ) : (
+            <div className="mono" style={{ fontSize: 13, color: 'var(--text-3)' }}>
+              Not yet verified. Confirm you have reviewed this client's information for accuracy.
+            </div>
+          )}
+        </div>
+        {form.qa_verified_at
+          ? <button className="btn sm" onClick={clearQA}>Clear</button>
+          : <button className="btn primary sm" onClick={verifyQA}><Icon name="check" size={13} /> I have reviewed &amp; verified</button>}
+      </div>
+        </div>
+
+        {/* RIGHT RAIL — onboarding checklist (collapsible) */}
+        <aside style={{ flex: '1 1 300px', minWidth: 260, maxWidth: 360, position: 'sticky', top: 16, alignSelf: 'flex-start' }}>
+          <OnboardingCard clientId={clientId} />
+        </aside>
+      </div>
     </div>
   );
 }
