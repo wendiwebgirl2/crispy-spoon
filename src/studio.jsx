@@ -119,6 +119,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [delivery, setDelivery] = React.useState('calm');
   const [customMotion, setCustomMotion] = React.useState('');
   const [generating, setGenerating] = React.useState(false);
+  const genLock = React.useRef(false);   // synchronous guard against overlapping generate() calls (mirrors scripts.jsx)
   const [queue, setQueue] = React.useState([]);
   const [zoom, setZoom] = React.useState(false);   // cast-preview full-size lightbox
 
@@ -735,6 +736,8 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
 
   const generate = async () => {
     if (!script.trim() || !token) return;
+    if (genLock.current) return;   // block overlapping re-fires (double/triple click) before state disables the button
+    genLock.current = true;
     setGenerating(true);
     try {
       const before = new Set(queue.map((q) => q.id));
@@ -760,8 +763,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     } catch (e) {
       console.error('generate failed:', e.message);
       alert(e.message || 'Cast failed — the video could not be generated.');
+    } finally {
+      setGenerating(false);
+      genLock.current = false;
     }
-    setGenerating(false);
   };
 
   const ModeToggle = () => (
