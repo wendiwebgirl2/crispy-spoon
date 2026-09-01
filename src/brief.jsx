@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { api } from './api.js'
 import { Icon, ensureOperatorName } from './shared.jsx'
 
@@ -521,7 +522,7 @@ function VoiceSettings({ avatar, onClose, onSaved }) {
       onChange={(e) => { set(Number(e.target.value)); setSaved(false); }} />
   );
 
-  return (
+  return createPortal(
     <div style={overlay} onClick={onClose}>
       <div style={card} onClick={(e) => e.stopPropagation()}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
@@ -578,7 +579,28 @@ function VoiceSettings({ avatar, onClose, onSaved }) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
+  );
+}
+
+function LooksModal({ avatar, onClose, onSet }) {
+  const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'grid', placeItems: 'center', padding: 16 };
+  const card = { background: 'var(--surface)', color: 'var(--text)', width: 'min(560px, 94vw)', maxHeight: '88vh', overflowY: 'auto', borderRadius: 10, padding: 20, boxShadow: '0 12px 40px rgba(0,0,0,0.35)' };
+  return createPortal(
+    <div style={overlay} onClick={onClose}>
+      <div style={card} onClick={(e) => e.stopPropagation()}>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>Avatar look</div>
+          <button className="btn sm" onClick={onClose} aria-label="Close"><Icon name="close" size={14} /></button>
+        </div>
+        <div className="mono" style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 14 }}>
+          {avatar._name || avatar.name || 'Avatar'} — pick the HeyGen look this avatar renders with. Changing it does not touch the cloned voice.
+        </div>
+        <LookPicker avatar={avatar} onSet={onSet} />
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -632,10 +654,10 @@ function AvatarsSection({ clientId }) {
                 </div>
                 <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={a._name}>{a._name}</div>
                 <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{a.created_at ? String(a.created_at).slice(0, 10) : 'ready'}</div>
-                <button className="btn sm" onClick={() => setOpenLooks(openLooks === a.id ? null : a.id)} style={{ marginTop: 2 }}>
-                  <Icon name="sliders" size={12} /> {openLooks === a.id ? 'Hide looks' : 'Looks'}
+                <button className="btn sm" onClick={() => setOpenLooks(a.id)} style={{ marginTop: 2 }}>
+                  <Icon name="sliders" size={12} /> Looks
                 </button>
-                {openLooks === a.id && <LookPicker avatar={a} onSet={() => { setOpenLooks(null); setRefreshKey((k) => k + 1); }} />}
+                {openLooks === a.id && <LooksModal avatar={a} onClose={() => setOpenLooks(null)} onSet={() => { setOpenLooks(null); setRefreshKey((k) => k + 1); }} />}
                 <button className="btn sm" onClick={() => setOpenVoice(a.id)}>
                   <Icon name="sparkle" size={12} /> Voice
                 </button>
@@ -871,7 +893,7 @@ function OnboardingCard({ clientId }) {
       {err && <div className="mono" style={{ color: 'var(--accent)', marginTop: 10 }}>{err}</div>}
 
       {open && data && (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 8, maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', paddingRight: 4 }}>
           {data.tasks.map((t) => {
             const done = t.done;
             const color = done ? 'var(--ok)' : 'var(--accent)';
