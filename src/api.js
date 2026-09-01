@@ -345,6 +345,7 @@ export const api = {
   listAssets: (id) => vcReq(`/clients/${id}/assets`),
   deleteAsset: (id, assetId) => vcReq(`/clients/${id}/assets/${assetId}`, { method: "DELETE" }),
   assetFileUrl: (id, assetId) => `${VC_BASE}/clients/${id}/assets/${assetId}/file`,
+  renderMontage: (id, payload) => vcReq(`/clients/${id}/montage/render`, { method: "POST", body: JSON.stringify(payload) }),
   uploadAsset: async (id, kind, file) => {
     const fd = new FormData();
     fd.append("kind", kind);

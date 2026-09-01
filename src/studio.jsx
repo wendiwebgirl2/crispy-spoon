@@ -399,6 +399,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       { id: 'recordings', label: 'Recordings',    desc: 'Client masters & cue:cast renders',  icon: 'play',    go: () => onNavigate?.('recordings') },
       { id: 'cast',       label: 'Cast a script', desc: 'Quick-render an avatar video',        icon: 'sparkle', go: () => { if (activeClientId) selectClientInline(activeClientId); setStep('render'); } },
       { id: 'assets',     label: 'Assets',        desc: 'Logos, music, backgrounds & fonts',  icon: 'upload',  go: () => setStep('assets') },
+      { id: 'montage',    label: 'Montage',       desc: 'Slideshow video from images + music', icon: 'play',    go: () => setStep('montage') },
       { id: 'planner',    label: 'Planner',       desc: 'Approved episodes ready to publish', icon: 'history', go: () => onNavigate?.('planner') },
       { id: 'episodes',   label: 'Episodes',      desc: 'Stitch audio + video episodes',      icon: 'studio',  go: () => onNavigate?.('episodes') },
     ];
@@ -428,6 +429,22 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
             </button>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (step === 'montage') {
+    return (
+      <div className="fade-in" style={{ padding: 'var(--pad)', overflow: 'auto', height: '100%' }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn sm" onClick={() => onNavigate('clients')}><Icon name="arrow-l" size={12} /> Clients</button>
+          <button className="btn sm" onClick={() => setStep('home')}><Icon name="arrow-l" size={12} /> Studio</button>
+        </div>
+        <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, letterSpacing: '-0.01em', margin: '18px 0 4px' }}>Montage</h1>
+        <div className="mono" style={{ color: 'var(--text-4)', marginBottom: 4 }}>Build a slideshow video from product images, uploads, or AI-generated art — with music and motion.</div>
+        {activeClientId != null
+          ? <MontageBuilder clientId={activeClientId} />
+          : <div className="mono" style={{ color: 'var(--text-3)', marginTop: 16 }}>Pick a client first to build a montage.</div>}
       </div>
     );
   }
@@ -1727,3 +1744,194 @@ const VideoRow = ({ video, avatars = [] }) => {
 };
 
 export default StudioView;
+
+
+// ————————————————————————————————————————————————————————————————
+// MONTAGE BUILDER — ordered images (asset library / upload / AI) rendered into
+// a Ken Burns + crossfade slideshow video with an optional music bed. The
+// result is saved to the client's Assets (kind: video), so it downloads here
+// AND can be dropped into an episode via the Episodes "use asset" flow.
+// ————————————————————————————————————————————————————————————————
+function MontageBuilder({ clientId }) {
+  const [assets, setAssets] = React.useState([]);
+  const [items, setItems] = React.useState([]);          // {type:'asset',assetId,name} | {type:'ai',prompt}
+  const [aspect, setAspect] = React.useState('16:9');
+  const [perImageSec, setPerImageSec] = React.useState(3.5);
+  const [transitionSec, setTransitionSec] = React.useState(0.7);
+  const [kenBurns, setKenBurns] = React.useState(true);
+  const [musicAssetId, setMusicAssetId] = React.useState('');
+  const [title, setTitle] = React.useState('');
+  const [aiPrompt, setAiPrompt] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  const [result, setResult] = React.useState(null);
+
+  const load = () => api.listAssets(clientId).then((r) => setAssets(Array.isArray(r) ? r : [])).catch(() => setAssets([]));
+  React.useEffect(() => { if (clientId != null) load(); }, [clientId]);
+
+  const isImage = (a) => (a.mime || '').startsWith('image/') || ['logo', 'background'].includes(a.kind);
+  const isAudio = (a) => (a.mime || '').startsWith('audio/') || ['music', 'audio'].includes(a.kind);
+  const imageAssets = assets.filter(isImage);
+  const musicAssets = assets.filter(isAudio);
+
+  const addAsset = (a) => setItems((x) => [...x, { type: 'asset', assetId: a.id, name: a.filename }]);
+  const addAi = () => { const p = aiPrompt.trim(); if (!p) return; setItems((x) => [...x, { type: 'ai', prompt: p }]); setAiPrompt(''); };
+  const removeItem = (i) => setItems((x) => x.filter((_, k) => k !== i));
+  const move = (i, d) => setItems((x) => { const n = [...x]; const j = i + d; if (j < 0 || j >= n.length) return n; [n[i], n[j]] = [n[j], n[i]]; return n; });
+
+  const onUpload = async (e) => {
+    const file = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!file) return;
+    const audio = (file.type || '').startsWith('audio/');
+    setUploading(true); setErr('');
+    try { const a = await api.uploadAsset(clientId, audio ? 'music' : 'background', file); await load(); if (!audio) addAsset(a); }
+    catch (ex) { setErr(ex.message || 'Upload failed'); }
+    finally { setUploading(false); }
+  };
+
+  const render = async () => {
+    if (!items.length) { setErr('Add at least one image.'); return; }
+    setBusy(true); setErr(''); setResult(null);
+    try {
+      const r = await api.renderMontage(clientId, {
+        title: title.trim() || undefined, aspect,
+        perImageSec: Number(perImageSec), transitionSec: Number(transitionSec),
+        kenBurns, musicAssetId: musicAssetId || undefined, items,
+      });
+      setResult(r.asset); await load();
+    } catch (ex) { setErr(ex.message || 'Render failed'); }
+    finally { setBusy(false); }
+  };
+
+  const est = items.length ? Math.max(0, items.length * Number(perImageSec) - Math.max(0, items.length - 1) * Number(transitionSec)) : 0;
+  const fld = { height: 34, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 };
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 'var(--gap)', marginTop: 20, alignItems: 'start' }}>
+      {/* LEFT — the ordered montage + ways to add to it */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="card card-pad">
+          <div className="label" style={{ marginBottom: 10 }}>MONTAGE &middot; {items.length} {items.length === 1 ? 'image' : 'images'} &middot; ~{est.toFixed(1)}s</div>
+          {items.length === 0
+            ? <div className="mono" style={{ color: 'var(--text-4)' }}>Nothing added yet. Pick from the library, upload, or generate with AI below.</div>
+            : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {items.map((it, i) => (
+                  <div key={i} className="card" style={{ padding: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span className="badge">{i + 1}</span>
+                    <div style={{ width: 54, height: 40, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      {it.type === 'asset'
+                        ? <img src={api.assetFileUrl(clientId, it.assetId)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <Icon name="sparkle" size={16} style={{ color: 'var(--accent)' }} />}
+                    </div>
+                    <div className="mono" style={{ fontSize: 12, flex: 1, minWidth: 0, wordBreak: 'break-word' }}>
+                      {it.type === 'asset' ? it.name : <>AI: {it.prompt}</>}
+                    </div>
+                    <button className="icon-btn" title="Up" disabled={i === 0} onClick={() => move(i, -1)}><Icon name="arrow-l" size={12} style={{ transform: 'rotate(90deg)' }} /></button>
+                    <button className="icon-btn" title="Down" disabled={i === items.length - 1} onClick={() => move(i, 1)}><Icon name="arrow-l" size={12} style={{ transform: 'rotate(-90deg)' }} /></button>
+                    <button className="icon-btn" title="Remove" onClick={() => removeItem(i)}><Icon name="close" size={12} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+        </div>
+
+        {/* AI image */}
+        <div className="card card-pad">
+          <div className="label" style={{ marginBottom: 8 }}>ADD AI IMAGE</div>
+          <div className="row" style={{ gap: 8 }}>
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="e.g. sleek product on a marble surface, soft studio light"
+              onKeyDown={(e) => { if (e.key === 'Enter') addAi(); }} style={{ ...fld, flex: 1 }} />
+            <button className="btn sm" onClick={addAi} disabled={!aiPrompt.trim()}><Icon name="sparkle" size={13} /> Add</button>
+          </div>
+          <div className="mono" style={{ color: 'var(--text-4)', marginTop: 6, fontSize: 11 }}>Generated with OpenAI at render time.</div>
+        </div>
+
+        {/* From library */}
+        <div className="card card-pad">
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div className="label">FROM LIBRARY</div>
+            <label className="btn sm" style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
+              <Icon name="upload" size={13} /> {uploading ? 'Uploading…' : 'Upload image'}
+              <input type="file" accept="image/*" onChange={onUpload} disabled={uploading} style={{ display: 'none' }} />
+            </label>
+          </div>
+          {imageAssets.length === 0
+            ? <div className="mono" style={{ color: 'var(--text-4)' }}>No image assets yet — upload above.</div>
+            : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 10 }}>
+                {imageAssets.map((a) => (
+                  <button key={a.id} className="card" onClick={() => addAsset(a)} title={'Add ' + a.filename}
+                    style={{ padding: 6, cursor: 'pointer', color: 'inherit', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ height: 60, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)' }}>
+                      <img src={api.assetFileUrl(clientId, a.id)} alt={a.filename} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    <div className="mono" style={{ fontSize: 10, lineHeight: 1.3, wordBreak: 'break-word' }}>{a.filename}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+        </div>
+      </div>
+
+      {/* RIGHT — settings + render + result */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, position: 'sticky', top: 0 }}>
+        <div className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="label">SETTINGS</div>
+          <div>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 4 }}>TITLE</div>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Montage" style={{ ...fld, width: '100%' }} />
+          </div>
+          <div>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 4 }}>ASPECT</div>
+            <div className="row" style={{ gap: 6 }}>
+              {['16:9', '1:1', '9:16'].map((a) => (
+                <button key={a} className="btn sm" onClick={() => setAspect(a)}
+                  style={{ flex: 1, background: aspect === a ? 'var(--surface-2)' : 'transparent', borderColor: aspect === a ? 'var(--border-strong)' : 'var(--border)' }}>{a}</button>
+              ))}
+            </div>
+          </div>
+          <div className="row" style={{ gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 4 }}>SEC / IMAGE</div>
+              <input type="number" min="1.5" step="0.5" value={perImageSec} onChange={(e) => setPerImageSec(e.target.value)} style={{ ...fld, width: '100%' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 4 }}>CROSSFADE</div>
+              <input type="number" min="0.2" step="0.1" value={transitionSec} onChange={(e) => setTransitionSec(e.target.value)} style={{ ...fld, width: '100%' }} />
+            </div>
+          </div>
+          <label className="row" style={{ gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+            <input type="checkbox" checked={kenBurns} onChange={(e) => setKenBurns(e.target.checked)} />
+            <span style={{ fontSize: 13 }}>Ken Burns motion (slow zoom)</span>
+          </label>
+          <div>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 4 }}>MUSIC BED (optional)</div>
+            <select value={musicAssetId} onChange={(e) => setMusicAssetId(e.target.value)} style={{ ...fld, width: '100%' }}>
+              <option value="">No music</option>
+              {musicAssets.map((a) => <option key={a.id} value={a.id}>{a.filename}</option>)}
+            </select>
+          </div>
+          <button className="btn" onClick={render} disabled={busy || !items.length}>
+            <Icon name="play" size={14} /> {busy ? 'Rendering…' : 'Render montage'}
+          </button>
+          {err && <div className="mono" style={{ color: 'var(--accent)' }}>{err}</div>}
+          {busy && <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>AI images + video render can take up to a minute.</div>}
+        </div>
+
+        {result && (
+          <div className="card card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="label">RESULT</div>
+            <video controls src={api.assetFileUrl(clientId, result.id)} style={{ width: '100%', borderRadius: 8, background: '#000' }} />
+            <div className="row" style={{ gap: 8 }}>
+              <a className="btn sm" href={api.assetFileUrl(clientId, result.id)} download target="_blank" rel="noopener noreferrer"><Icon name="download" size={13} /> Download</a>
+            </div>
+            <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Saved to Assets — you can drop it into an episode from the Episodes tab.</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
