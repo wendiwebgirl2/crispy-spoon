@@ -135,6 +135,39 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [bgAssets, setBgAssets] = React.useState([]);
   const [token, setToken] = React.useState(null);
 
+  // —— background picker (color / brand image / gradient / video) ——
+  const [bgMode, setBgMode] = React.useState('none');
+  const [gradFrom, setGradFrom] = React.useState('#141428');
+  const [gradTo, setGradTo] = React.useState('#4a4a6a');
+  const [gradDir, setGradDir] = React.useState('to bottom');
+  const [bgBusy, setBgBusy] = React.useState('');
+  const reloadBgAssets = () => (activeClientId ? api.listAssets(activeClientId).then((r) => setBgAssets((Array.isArray(r) ? r : []).filter((a) => a.kind === 'background'))).catch(() => {}) : Promise.resolve());
+  const pickBgColor = (c) => { setBackgroundColor(c); setBackgroundAssetId(null); };
+  const pickBgAsset = (id) => { setBackgroundAssetId(id); setBackgroundColor(null); };
+  const clearBg = () => { setBackgroundColor(null); setBackgroundAssetId(null); };
+  const uploadBg = async (file) => {
+    if (!file || !activeClientId) return;
+    setBgBusy('upload');
+    try { const a = await api.uploadAsset(activeClientId, 'background', file); await reloadBgAssets(); const nid = a && (a.id || (a.asset && a.asset.id)); if (nid) pickBgAsset(nid); }
+    catch (e) { console.warn('background upload failed:', e); } finally { setBgBusy(''); }
+  };
+  const makeGradient = async () => {
+    if (!activeClientId) return;
+    setBgBusy('gradient');
+    try {
+      const cv = document.createElement('canvas'); cv.width = 1280; cv.height = 720;
+      const ctx = cv.getContext('2d');
+      const pts = gradDir === 'to right' ? [0, 0, cv.width, 0] : gradDir === 'to bottom right' ? [0, 0, cv.width, cv.height] : [0, 0, 0, cv.height];
+      const g = ctx.createLinearGradient(pts[0], pts[1], pts[2], pts[3]);
+      g.addColorStop(0, gradFrom); g.addColorStop(1, gradTo);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, cv.width, cv.height);
+      const blob = await new Promise((res) => cv.toBlob(res, 'image/png'));
+      const file = new File([blob], `gradient-${Date.now()}.png`, { type: 'image/png' });
+      const a = await api.uploadAsset(activeClientId, 'background', file); await reloadBgAssets();
+      const nid = a && (a.id || (a.asset && a.asset.id)); if (nid) pickBgAsset(nid);
+    } catch (e) { console.warn('gradient generate failed:', e); } finally { setBgBusy(''); }
+  };
+
   React.useEffect(() => {
     api.listClients().then(setClients).catch(() => setClients([]));
   }, []);
@@ -988,9 +1021,14 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   <ExpressionTags value={editCastScript} onChange={setEditCastScript} textareaRef={editCastScriptRef} />
                   <div className="row" style={{ gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Recast format</span>
-                    {['16:9', '9:16', '1:1'].map((a) => (
-                      <button key={a} className={'btn sm' + (editCastAspect === a ? ' primary' : '')} onClick={() => setEditCastAspect(a)}>{a}</button>
-                    ))}
+                    {['16:9', '9:16', '1:1'].map((a) => {
+                      const disabled = a === '1:1' && engine === 'avatar_v';
+                      return (
+                      <button key={a} disabled={disabled} title={disabled ? 'Avatar V does not support square (1:1)' : undefined}
+                        style={disabled ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+                        className={'btn sm' + (editCastAspect === a ? ' primary' : '')} onClick={() => setEditCastAspect(a)}>{a}</button>
+                      );
+                    })}
                   </div>
                   <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
                     <button className="btn sm" onClick={saveCastEdit}>Save title</button>
@@ -1087,17 +1125,84 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 style={{ marginBottom: 22, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <Icon name="globe" size={13} /> Edit avatar in HeyGen
               </a>
+              <div className="label" style={{ marginBottom: 10 }}>BACKGROUND</div>
+              <div className="row" style={{ gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
+                {[['none', 'None'], ['color', 'Color'], ['image', 'Image'], ['gradient', 'Gradient'], ['video', 'Video']].map(([m, lbl]) => (
+                  <button key={m} onClick={() => { setBgMode(m); if (m === 'none') clearBg(); }} className="btn sm"
+                    style={{ background: bgMode === m ? 'var(--surface-2)' : 'transparent', borderColor: bgMode === m ? 'var(--accent)' : 'var(--border)', color: bgMode === m ? 'var(--text)' : 'var(--text-2)' }}>{lbl}</button>
+                ))}
+              </div>
+              {bgMode === 'color' && (
+                <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 22 }}>
+                  <input type="color" value={backgroundColor || '#141428'} onChange={(e) => pickBgColor(e.target.value)} style={{ width: 44, height: 32, padding: 0, border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }} />
+                  <span className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>{backgroundColor || 'pick a color'}</span>
+                </div>
+              )}
+              {bgMode === 'image' && (
+                <div style={{ marginBottom: 22 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))', gap: 6, marginBottom: 8 }}>
+                    {bgAssets.filter((a) => !(a.mime || '').startsWith('video/')).map((a) => (
+                      <button key={a.id} onClick={() => pickBgAsset(a.id)} title={a.filename}
+                        style={{ padding: 0, height: 52, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', background: 'var(--surface-2)', border: backgroundAssetId === a.id ? '2px solid var(--accent)' : '1px solid var(--border)' }}>
+                        <img src={api.assetFileUrl(activeClientId, a.id)} alt={a.filename} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </button>
+                    ))}
+                  </div>
+                  <label className="btn sm" style={{ cursor: 'pointer' }}>
+                    <Icon name="upload" size={12} /> {bgBusy === 'upload' ? 'Uploading…' : 'Upload image'}
+                    <input type="file" accept="image/*" hidden onChange={(e) => e.target.files[0] && uploadBg(e.target.files[0])} />
+                  </label>
+                </div>
+              )}
+              {bgMode === 'gradient' && (
+                <div style={{ marginBottom: 22 }}>
+                  <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+                    <input type="color" value={gradFrom} onChange={(e) => setGradFrom(e.target.value)} style={{ width: 36, height: 30, padding: 0, border: '1px solid var(--border)', borderRadius: 6 }} />
+                    <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)' }}>→</span>
+                    <input type="color" value={gradTo} onChange={(e) => setGradTo(e.target.value)} style={{ width: 36, height: 30, padding: 0, border: '1px solid var(--border)', borderRadius: 6 }} />
+                    <select value={gradDir} onChange={(e) => setGradDir(e.target.value)} style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12 }}>
+                      <option value="to bottom">↓ Vertical</option>
+                      <option value="to right">→ Horizontal</option>
+                      <option value="to bottom right">↘ Diagonal</option>
+                    </select>
+                  </div>
+                  <div style={{ height: 40, borderRadius: 6, marginBottom: 8, border: '1px solid var(--border)', background: `linear-gradient(${gradDir}, ${gradFrom}, ${gradTo})` }} />
+                  <button className="btn sm" onClick={makeGradient} disabled={bgBusy === 'gradient'}>{bgBusy === 'gradient' ? 'Generating…' : 'Use this gradient'}</button>
+                </div>
+              )}
+              {bgMode === 'video' && (
+                <div style={{ marginBottom: 22 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))', gap: 6, marginBottom: 8 }}>
+                    {bgAssets.filter((a) => (a.mime || '').startsWith('video/')).map((a) => (
+                      <button key={a.id} onClick={() => pickBgAsset(a.id)} title={a.filename}
+                        style={{ padding: 0, height: 52, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', background: 'var(--surface-2)', border: backgroundAssetId === a.id ? '2px solid var(--accent)' : '1px solid var(--border)' }}>
+                        <video src={api.assetFileUrl(activeClientId, a.id)} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </button>
+                    ))}
+                  </div>
+                  <label className="btn sm" style={{ cursor: 'pointer' }}>
+                    <Icon name="upload" size={12} /> {bgBusy === 'upload' ? 'Uploading…' : 'Upload video'}
+                    <input type="file" accept="video/*" hidden onChange={(e) => e.target.files[0] && uploadBg(e.target.files[0])} />
+                  </label>
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--text-4)', marginTop: 6 }}>Plays as a looping background behind the avatar.</div>
+                </div>
+              )}
               <div className="label" style={{ marginBottom: 10 }}>ASPECT RATIO</div>
               <div className="row" style={{ gap: 4, marginBottom: 22 }}>
-                {['16:9', '9:16', '1:1'].map(r => (
-                  <button key={r} onClick={() => setAspectRatio(r)} className="btn sm"
+                {['16:9', '9:16', '1:1'].map(r => {
+                  const disabled = r === '1:1' && engine === 'avatar_v';
+                  return (
+                  <button key={r} disabled={disabled} onClick={() => setAspectRatio(r)} className="btn sm"
+                    title={disabled ? 'Avatar V does not support square (1:1) - use Auto or Avatar IV' : undefined}
                     style={{
                       flex: 1, justifyContent: 'center',
+                      opacity: disabled ? 0.4 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
                       background: aspectRatio === r ? 'var(--surface-2)' : 'transparent',
                       borderColor: aspectRatio === r ? 'var(--accent)' : 'var(--border)',
                       color: aspectRatio === r ? 'var(--text)' : 'var(--text-2)'
                     }}>{r}</button>
-                ))}
+                  );
+                })}
               </div>
               <div className="label" style={{ marginBottom: 10 }}>CAPTIONS</div>
               <button onClick={() => setCaption((v) => !v)} className="row"
@@ -1110,7 +1215,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
               <div className="label" style={{ marginBottom: 10 }}>RENDER ENGINE</div>
               <div className="row" style={{ gap: 4, marginBottom: 6 }}>
                 {[{ k: 'auto', t: 'Auto' }, { k: 'avatar_v', t: 'Avatar V' }, { k: 'avatar_iv', t: 'Avatar IV' }].map(o => (
-                  <button key={o.k} onClick={() => setEngine(o.k)} className="btn sm"
+                  <button key={o.k} onClick={() => { setEngine(o.k); if (o.k === 'avatar_v' && aspectRatio === '1:1') setAspectRatio('16:9'); }} className="btn sm"
                     style={{
                       flex: 1, justifyContent: 'center',
                       background: engine === o.k ? 'var(--surface-2)' : 'transparent',
