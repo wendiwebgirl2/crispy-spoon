@@ -61,6 +61,32 @@ export async function apiPostJson(path, body) {
   return parse(resp);
 }
 
+export async function apiPutJson(path, body) {
+  const resp = await fetch(API_BASE + path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return parse(resp);
+}
+
+// Voice preview returns raw audio (audio/mpeg), not JSON. Returns an object URL
+// the caller can drop into an <audio>; throws with the API error text on
+// failure (e.g. an unsupported v3 setting).
+export async function previewVoiceBlob(token, avatarId, body) {
+  const resp = await fetch(
+    API_BASE + "/api/avatars/" + encodeURIComponent(token) + "/" + encodeURIComponent(avatarId) + "/voice-preview",
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }
+  );
+  const ct = resp.headers.get("content-type") || "";
+  if (!ct.includes("audio")) {
+    let msg = "HTTP " + resp.status;
+    try { const j = await resp.json(); msg = j.error || msg; } catch { /* keep */ }
+    throw new Error(msg);
+  }
+  return URL.createObjectURL(await resp.blob());
+}
+
 // For multipart uploads (e.g. recordings). Pass a FormData instance;
 // the browser sets the multipart boundary header itself.
 export async function apiPostForm(path, formData) {
@@ -264,6 +290,8 @@ export const api = {
   deleteVideo: (videoId, token) => apiDelete("/api/videos/" + encodeURIComponent(token) + "/" + encodeURIComponent(videoId)),
   listAvatarLooks: (token, groupId) => apiGet("/api/avatars/" + encodeURIComponent(token) + "/looks?group_id=" + encodeURIComponent(groupId)),
   setAvatarLook: (token, avatarId, heygenAvatarId, imageUrl) => apiPostJson("/api/avatars/" + encodeURIComponent(token) + "/set-look", { avatar_id: avatarId, heygen_avatar_id: heygenAvatarId, image_url: imageUrl || null }),
+  setAvatarVoice: (token, avatarId, settings) => apiPutJson("/api/avatars/" + encodeURIComponent(token) + "/" + encodeURIComponent(avatarId) + "/voice", settings),
+  previewAvatarVoice: (token, avatarId, body) => previewVoiceBlob(token, avatarId, body),
   getClient: (id) => vcReq(`/clients/${id}`),
   createClient: (payload) => vcReq("/clients", { method: "POST", body: JSON.stringify(payload) }),
   renameClient: (id, payload) => vcReq(`/clients/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),

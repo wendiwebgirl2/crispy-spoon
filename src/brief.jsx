@@ -481,10 +481,109 @@ function LookPicker({ avatar, onSet }) {
   );
 }
 
+function VoiceSettings({ avatar, onSaved }) {
+  const isEleven = avatar.voice_id && !/^[0-9a-f]{32}$/i.test(String(avatar.voice_id));
+  const [v3, setV3] = useState(!!avatar.voice_v3);
+  const [stability, setStability] = useState(avatar.voice_stability != null ? Number(avatar.voice_stability) : 0.5);
+  const [similarity, setSimilarity] = useState(avatar.voice_similarity != null ? Number(avatar.voice_similarity) : 0.75);
+  const [style, setStyle] = useState(avatar.voice_style != null ? Number(avatar.voice_style) : 0.0);
+  const [speed, setSpeed] = useState(avatar.voice_speed != null ? Number(avatar.voice_speed) : 1.0);
+  const [boost, setBoost] = useState(avatar.voice_speaker_boost == null ? true : !!avatar.voice_speaker_boost);
+  const [text, setText] = useState("[excited] Here is a quick preview of this voice. [whispers] Even the quiet parts come through. [laughs] Sounds good.");
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  const payload = () => ({
+    voice_v3: v3 ? 1 : 0,
+    voice_stability: Number(stability),
+    voice_similarity: Number(similarity),
+    voice_style: Number(style),
+    voice_speed: Number(speed),
+    voice_speaker_boost: boost ? 1 : 0,
+  });
+
+  const doPreview = async () => {
+    setErr(''); setBusy('preview');
+    try {
+      const url = await api.previewAvatarVoice(avatar._token, avatar.id, { ...payload(), text });
+      const audio = new Audio(url); await audio.play();
+    } catch (e) { setErr(e.message || 'Preview failed'); }
+    finally { setBusy(''); }
+  };
+  const doSave = async () => {
+    setErr(''); setSaved(false); setBusy('save');
+    try { await api.setAvatarVoice(avatar._token, avatar.id, payload()); setSaved(true); if (onSaved) onSaved(); }
+    catch (e) { setErr(e.message || 'Save failed'); }
+    finally { setBusy(''); }
+  };
+
+  if (!isEleven) {
+    return <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 6 }}>
+      This avatar's voice is still on HeyGen. Rebuild the twin on ElevenLabs to unlock v3 + voice settings.
+    </div>;
+  }
+
+  const lbl = { fontSize: 11, color: 'var(--text-4)' };
+  const row = (label, node) => (
+    <label className="col" style={{ gap: 2, marginTop: 6 }}>
+      <span className="mono" style={lbl}>{label}</span>{node}
+    </label>
+  );
+  const slider = (val, set, min, max, step) => (
+    <input type="range" min={min} max={max} step={step} value={val} onChange={(e) => { set(Number(e.target.value)); setSaved(false); }} />
+  );
+
+  return (
+    <div className="col" style={{ gap: 4, marginTop: 8, padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-2)' }}>
+      <label className="row" style={{ gap: 6, alignItems: 'center' }}>
+        <input type="checkbox" checked={v3} onChange={(e) => { setV3(e.target.checked); setSaved(false); }} />
+        <span style={{ fontSize: 12, fontWeight: 600 }}>ElevenLabs v3 (expressive + audio tags)</span>
+      </label>
+
+      {v3 ? row('Stability',
+        <div className="row" style={{ gap: 4 }}>
+          {[['Creative', 0], ['Natural', 0.5], ['Robust', 1]].map(([name, val]) => (
+            <button key={name} type="button" className={'btn sm' + (Number(stability) === val ? ' primary' : '')}
+              onClick={() => { setStability(val); setSaved(false); }}>{name}</button>
+          ))}
+        </div>
+      ) : row('Stability: ' + Number(stability).toFixed(2), slider(stability, setStability, 0, 1, 0.05))}
+
+      {row('Similarity: ' + Number(similarity).toFixed(2), slider(similarity, setSimilarity, 0, 1, 0.05))}
+      {row('Style / exaggeration: ' + Number(style).toFixed(2), slider(style, setStyle, 0, 1, 0.05))}
+      {row('Speed / pace: ' + Number(speed).toFixed(2) + '×', slider(speed, setSpeed, 0.5, 2, 0.05))}
+
+      <label className="row" style={{ gap: 6, alignItems: 'center', marginTop: 6 }}>
+        <input type="checkbox" checked={boost} onChange={(e) => { setBoost(e.target.checked); setSaved(false); }} />
+        <span style={{ fontSize: 12 }}>Speaker boost</span>
+      </label>
+
+      {row('Preview script (v3 audio tags in [brackets])',
+        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2}
+          style={{ fontSize: 12, padding: 6, borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', resize: 'vertical' }} />
+      )}
+
+      <div className="row" style={{ gap: 6, marginTop: 6, alignItems: 'center' }}>
+        <button className="btn sm" onClick={doPreview} disabled={busy === 'preview'}>
+          <Icon name="sparkle" size={12} /> {busy === 'preview' ? 'Synthesizing…' : 'Preview'}
+        </button>
+        <button className="btn sm primary" onClick={doSave} disabled={busy === 'save'}>
+          {busy === 'save' ? 'Saving…' : 'Save voice settings'}
+        </button>
+        {saved && <span className="mono" style={{ fontSize: 11, color: 'var(--ok, #3a3)' }}>Saved</span>}
+      </div>
+      {err && <div className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{err}</div>}
+      <div className="mono" style={{ fontSize: 10, color: 'var(--text-4)' }}>Preview is instant and does not spend a render.</div>
+    </div>
+  );
+}
+
 function AvatarsSection({ clientId }) {
   const [avatars, setAvatars] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openLooks, setOpenLooks] = useState(null);
+  const [openVoice, setOpenVoice] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -534,6 +633,10 @@ function AvatarsSection({ clientId }) {
                   <Icon name="sliders" size={12} /> {openLooks === a.id ? 'Hide looks' : 'Looks'}
                 </button>
                 {openLooks === a.id && <LookPicker avatar={a} onSet={() => { setOpenLooks(null); setRefreshKey((k) => k + 1); }} />}
+                <button className="btn sm" onClick={() => setOpenVoice(openVoice === a.id ? null : a.id)}>
+                  <Icon name="sparkle" size={12} /> {openVoice === a.id ? 'Hide voice' : 'Voice'}
+                </button>
+                {openVoice === a.id && <VoiceSettings avatar={a} onSaved={() => setRefreshKey((k) => k + 1)} />}
               </div>
             ))}
           </div>
@@ -992,4 +1095,4 @@ function BriefView({ clientId, onSendTopicToScripts }) {
   );
 }
 
-export { BriefView, LookPicker, TopicsSection, AssetsSection }
+export { BriefView, LookPicker, TopicsSection, AssetsSection, VoiceSettings }
