@@ -12,6 +12,7 @@ const MENU = [
   { id: 'episodes', label: 'Past Episodes', icon: 'history', badge: 'pastEpisodes' },
   { id: 'avatars', label: 'Avatars', icon: 'avatars' },
   { id: 'topics', label: 'Topic Suggestions', icon: 'sparkle' },
+  { id: 'contract', label: 'Agreement', icon: 'doc' },
   { id: 'account', label: 'Account', icon: 'settings' },
   { id: 'help', label: 'Help', icon: 'chat' },
 ];
@@ -300,6 +301,50 @@ function Help() {
   );
 }
 
+
+// ---- Agreement (read-only signed contract) --------------------------------
+function ContractSection({ title, body }) {
+  if (!body || !String(body).trim()) return null;
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div className="label" style={{ marginBottom: 4 }}>{title}</div>
+      <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, color: 'var(--text-2)' }}>{body}</div>
+    </div>
+  );
+}
+function Contract() {
+  const [data, setData] = React.useState(null);
+  const [err, setErr] = React.useState('');
+  React.useEffect(() => { api.portalContract().then(setData).catch((e) => setErr(e.message)); }, []);
+  return (
+    <div className="fade-in">
+      <SectionHead title="Your agreement" sub="Your signed cue:cast service agreement." />
+      {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
+      {!data ? <Empty>Loading…</Empty>
+        : !data.exists ? <Empty>No signed agreement on file yet. Once you sign, your copy appears here.</Empty>
+        : (
+          <div style={card}>
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+              <strong style={{ fontSize: 18 }}>{data.service_name || 'cue:cast'}</strong>
+              {data.cost && <span className="mono" style={{ color: 'var(--accent)', fontSize: 16, fontWeight: 700 }}>{data.cost}</span>}
+            </div>
+            {data.summary && <div className="mono" style={{ color: 'var(--text-3)', fontSize: 13, marginTop: 4 }}>{data.summary}</div>}
+            <ContractSection title="TERMS" body={data.terms} />
+            <ContractSection title="BILLING" body={data.billing} />
+            <ContractSection title="ADDITIONAL TERMS" body={data.extra} />
+            <div style={{ borderTop: '1px solid var(--border)', marginTop: 16, paddingTop: 12 }}>
+              <div className="mono" style={{ fontSize: 12, color: 'var(--ok)' }}>
+                ✓ Signed by {data.signer_name}{data.signer_title ? (', ' + data.signer_title) : ''}{data.signed_at ? (' · ' + String(data.signed_at).slice(0, 16).replace('T', ' ')) : ''}
+              </div>
+              {data.agency_signed_by && <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Countersigned by {data.agency_signed_by} (cue:creative)</div>}
+              <a className="btn sm" style={{ marginTop: 12 }} href={api.portalContractPdfUrl()} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Download PDF</a>
+            </div>
+          </div>
+        )}
+    </div>
+  );
+}
+
 // ---- Shell -----------------------------------------------------------------
 export default function PortalApp({ me }) {
   const [view, setView] = React.useState('approve');
@@ -344,6 +389,7 @@ export default function PortalApp({ me }) {
         {view === 'episodes' && <PastEpisodes />}
         {view === 'avatars' && <Avatars onChanged={refreshSummary} />}
         {view === 'topics' && <Topics />}
+        {view === 'contract' && <Contract />}
         {view === 'account' && <Account />}
         {view === 'help' && <Help />}
       </main>

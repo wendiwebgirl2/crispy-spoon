@@ -825,6 +825,155 @@ function TopicsSection({ clientId, onSendTopicToScripts, reloadSignal, sendLabel
   );
 }
 
+// Contract builder — customize the cue:cast service agreement for this client,
+// send a branded sign link, and file the signed copy. Opened from the first
+// onboarding item. Editable while unsigned; read-only once signed (Void to redo).
+function ContractModal({ clientId, onClose, onChanged }) {
+  const [c, setC] = useState(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [email, setEmail] = useState('');
+  const [sent, setSent] = useState(null);
+
+  useEffect(() => {
+    api.getContract(clientId).then((d) => { setC(d); setEmail(''); }).catch((e) => setErr(e.message || 'Could not load the contract.'));
+  }, [clientId]);
+
+  const set = (k, v) => { setC((p) => ({ ...p, [k]: v })); setSaved(false); };
+  const signed = c && c.status === 'signed';
+  const editable = c && !signed;
+
+  const save = async () => {
+    setBusy('save'); setErr('');
+    try {
+      const d = await api.saveContract(clientId, { service_name: c.service_name, cost: c.cost, summary: c.summary, terms: c.terms, billing: c.billing, extra: c.extra });
+      setC(d); setSaved(true); onChanged && onChanged();
+      return d;
+    } catch (e) { setErr(e.message || 'Could not save.'); throw e; } finally { setBusy(''); }
+  };
+  const send = async () => {
+    setBusy('send'); setErr(''); setSent(null);
+    try {
+      await api.saveContract(clientId, { service_name: c.service_name, cost: c.cost, summary: c.summary, terms: c.terms, billing: c.billing, extra: c.extra });
+      const d = await api.sendContract(clientId, email.trim());
+      setC(d.contract || c); setSent(d); onChanged && onChanged();
+    } catch (e) { setErr(e.message || 'Could not send.'); } finally { setBusy(''); }
+  };
+  const voidIt = async () => {
+    if (!window.confirm('Void this agreement and start a fresh draft? The signed copy will no longer be shown to the client.')) return;
+    setBusy('void'); setErr('');
+    try { const d = await api.voidContract(clientId); setC(d); setSent(null); onChanged && onChanged(); }
+    catch (e) { setErr(e.message || 'Could not void.'); } finally { setBusy(''); }
+  };
+  const countersign = async () => {
+    const name = ensureOperatorName(); if (!name) return;
+    setBusy('cs'); setErr('');
+    try { const d = await api.countersignContract(clientId, name); setC(d); onChanged && onChanged(); }
+    catch (e) { setErr(e.message || 'Could not countersign.'); } finally { setBusy(''); }
+  };
+  const copyLink = () => { if (c && c.sign_url) { navigator.clipboard?.writeText(c.sign_url); setSaved(false); } };
+
+  const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'grid', placeItems: 'center', padding: 16 };
+  const cardS = { background: 'var(--surface)', color: 'var(--text)', width: 'min(720px, 96vw)', maxHeight: '92vh', overflowY: 'auto', borderRadius: 10, padding: 22, boxShadow: '0 12px 40px rgba(0,0,0,0.35)' };
+  const lbl = { fontSize: 12, color: 'var(--text-3)', margin: '14px 0 5px', display: 'block' };
+  const inp = { width: '100%', boxSizing: 'border-box', fontSize: 14, padding: '9px 11px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)' };
+  const ta = { ...inp, resize: 'vertical', lineHeight: 1.5 };
+  const statusPill = () => {
+    const map = { none: ['Not started', 'var(--text-3)'], draft: ['Draft', 'var(--text-3)'], sent: ['Sent — awaiting signature', 'var(--accent)'], signed: ['Signed', 'var(--ok)'] };
+    const [t, col] = map[(c && c.status) || 'none'] || map.none;
+    return <span className="mono" style={{ fontSize: 11.5, fontWeight: 600, color: col }}>{t}</span>;
+  };
+
+  return createPortal(
+    <div style={overlay} onClick={onClose}>
+      <div style={cardS} onClick={(e) => e.stopPropagation()}>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>Client contract</div>
+            {c && statusPill()}
+          </div>
+          <button className="btn sm" onClick={onClose} aria-label="Close"><Icon name="close" size={14} /></button>
+        </div>
+        <div className="mono" style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 8 }}>
+          cue:cast service agreement — matches the cue:creative brand. {signed ? 'Signed and filed.' : 'Customize, then send the client a link to sign online.'}
+        </div>
+
+        {err && <div className="mono" style={{ color: 'var(--accent)', marginTop: 6 }}>{err}</div>}
+
+        {!c ? <div className="mono" style={{ color: 'var(--text-3)', padding: '20px 0' }}>Loading…</div> : (
+          <>
+            {signed && (
+              <div style={{ padding: 12, borderRadius: 'var(--r-md)', border: '1px solid var(--ok)', background: 'color-mix(in oklch, var(--ok) 8%, transparent)', margin: '10px 0' }}>
+                <div className="mono" style={{ fontSize: 12.5, color: 'var(--ok)' }}>
+                  ✓ Signed by {c.signer_name}{c.signer_title ? (', ' + c.signer_title) : ''}{c.signed_at ? (' · ' + String(c.signed_at).slice(0, 16).replace('T', ' ')) : ''}
+                </div>
+                {c.agency_signed_by && <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>Countersigned by {c.agency_signed_by}</div>}
+              </div>
+            )}
+
+            <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: '2 1 320px' }}>
+                <label style={lbl}>Service name</label>
+                <input style={inp} value={c.service_name || ''} disabled={!editable} onChange={(e) => set('service_name', e.target.value)} />
+              </div>
+              <div style={{ flex: '1 1 160px' }}>
+                <label style={lbl}>Cost</label>
+                <input style={inp} value={c.cost || ''} disabled={!editable} placeholder="$1,600/month" onChange={(e) => set('cost', e.target.value)} />
+              </div>
+            </div>
+
+            <label style={lbl}>Summary line</label>
+            <input style={inp} value={c.summary || ''} disabled={!editable} onChange={(e) => set('summary', e.target.value)} />
+
+            <label style={lbl}>Terms</label>
+            <textarea style={ta} rows={6} value={c.terms || ''} disabled={!editable} onChange={(e) => set('terms', e.target.value)} />
+
+            <label style={lbl}>Billing</label>
+            <textarea style={ta} rows={4} value={c.billing || ''} disabled={!editable} onChange={(e) => set('billing', e.target.value)} />
+
+            <label style={lbl}>Add anything else (optional)</label>
+            <textarea style={ta} rows={3} value={c.extra || ''} disabled={!editable} placeholder="Any extra terms or notes specific to this client…" onChange={(e) => set('extra', e.target.value)} />
+
+            <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>
+              {editable && <button className="btn primary" onClick={save} disabled={busy === 'save'}><Icon name="check" size={13} /> {busy === 'save' ? 'Saving…' : 'Save'}</button>}
+              {saved && <span className="mono" style={{ fontSize: 12, color: 'var(--ok)' }}>Saved</span>}
+              <a className="btn" href={api.contractPdfUrl(clientId)} target="_blank" rel="noreferrer"><Icon name="download" size={13} /> View PDF</a>
+            </div>
+
+            {!signed && (
+              <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                <label style={{ ...lbl, marginTop: 0 }}>Send for signature</label>
+                <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input style={{ ...inp, flex: '1 1 240px' }} value={email} placeholder="client email (blank = use email on file)" onChange={(e) => setEmail(e.target.value)} />
+                  <button className="btn primary" onClick={send} disabled={busy === 'send'}><Icon name="send" size={13} /> {busy === 'send' ? 'Sending…' : (c.status === 'sent' ? 'Resend link' : 'Save & send')}</button>
+                </div>
+                {sent && (
+                  <div className="mono" style={{ fontSize: 12, marginTop: 8, color: sent.email && sent.email.sent ? 'var(--ok)' : 'var(--text-3)' }}>
+                    {sent.email && sent.email.sent ? '✓ Email sent.' : (sent.email && (sent.email.error || sent.email.skipped) ? ('Email not sent: ' + (sent.email.error || sent.email.skipped) + ' — copy the link below.') : 'Link ready.')}
+                  </div>
+                )}
+                {c.sign_url && (
+                  <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+                    <input style={{ ...inp, flex: '1 1 260px', fontFamily: 'var(--f-mono)', fontSize: 12 }} readOnly value={c.sign_url} onFocus={(e) => e.target.select()} />
+                    <button className="btn sm" onClick={copyLink}>Copy link</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>
+              {signed && !c.agency_signed_by && <button className="btn" onClick={countersign} disabled={busy === 'cs'}>{busy === 'cs' ? 'Signing…' : 'Countersign as cue:creative'}</button>}
+              {(signed || c.status === 'sent') && <button className="btn" onClick={voidIt} disabled={busy === 'void'} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>{busy === 'void' ? 'Voiding…' : 'Void & redo'}</button>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // Onboarding checklist — a collapsible card pinned to the top of the brief.
 // Tracks the post-agreement setup tasks: percentage complete, per-task assignee
 // (from the dashboard user list), and a date/time + name stamp when a task is
@@ -840,6 +989,7 @@ function OnboardingCard({ clientId }) {
   const [showSched, setShowSched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [contractOpen, setContractOpen] = useState(false);
 
   useEffect(() => {
     setData(null); setErr(''); setShowSched(false);
@@ -897,6 +1047,25 @@ function OnboardingCard({ clientId }) {
           {data.tasks.map((t) => {
             const done = t.done;
             const color = done ? 'var(--ok)' : 'var(--accent)';
+            if (t.type === 'contract') {
+              const cs = t.contract || {};
+              const sMap = { none: 'Not started', draft: 'Draft saved', sent: 'Sent — awaiting signature', signed: 'Signed' };
+              const sLabel = sMap[cs.status || 'none'] || 'Not started';
+              return (
+                <div key={t.id} className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '9px 0', borderTop: '1px solid var(--border)' }}>
+                  <span title="Client contract" style={{ flex: '0 0 auto', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 5, border: `1.5px solid ${color}`, color }}><Icon name={done ? 'check' : 'doc'} size={12} /></span>
+                  <div style={{ flex: '1 1 240px', minWidth: 200 }}>
+                    <div style={{ fontSize: 13.5, color: done ? 'var(--ok)' : 'var(--text)', fontWeight: 600 }}>{t.label}</div>
+                    <div className="mono" style={{ fontSize: 11.5, color, marginTop: 2 }}>
+                      {sLabel}{cs.signed_at ? ` · ${cs.signer_name || ''} · ${String(cs.signed_at).slice(0, 16).replace('T', ' ')}` : ''}
+                    </div>
+                    <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                      <button className="btn sm primary" onClick={() => setContractOpen(true)}>{cs.status === 'signed' ? 'View contract' : 'Customize & send'}</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
             return (
               <div key={t.id} className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '9px 0', borderTop: '1px solid var(--border)' }}>
                 {t.type === 'derived' ? (
@@ -946,6 +1115,7 @@ function OnboardingCard({ clientId }) {
           </div>
         </div>
       )}
+      {contractOpen && <ContractModal clientId={clientId} onClose={() => setContractOpen(false)} onChanged={() => api.getOnboarding(clientId).then(setData).catch(() => {})} />}
     </div>
   );
 }
