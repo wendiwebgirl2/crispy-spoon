@@ -293,6 +293,7 @@ const ComposeView = ({ onClose }) => {
             <select value={kind} onChange={(e) => setKind(e.target.value)} style={inputStyle}>
               <option value="record">Record digital twin</option>
               <option value="onboarding">Onboarding form</option>
+              <option value="twofa">2FA verification</option>
             </select>
           </div>
           <div style={{ width: 120 }}>
