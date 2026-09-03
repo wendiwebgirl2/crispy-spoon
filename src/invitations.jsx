@@ -19,14 +19,14 @@ const STATUS_TONE = {
   disabled:  { fg: 'var(--text-4)' },
 };
 
-const InvitationsView = ({ focusId, onFocusConsumed, clientFilter } = {}) => {
+const InvitationsView = ({ focusId, onFocusConsumed, clientFilter, onClearClient, activeClientId } = {}) => {
   const [mode, setMode] = useState('list'); // 'list' | 'compose'
-  if (mode === 'compose') return <ComposeView onClose={() => setMode('list')} />;
-  return <InvitationsList onCompose={() => setMode('compose')} focusId={focusId} onFocusConsumed={onFocusConsumed} clientFilter={clientFilter} />;
+  if (mode === 'compose') return <ComposeView onClose={() => setMode('list')} activeClientId={activeClientId} />;
+  return <InvitationsList onCompose={() => setMode('compose')} focusId={focusId} onFocusConsumed={onFocusConsumed} clientFilter={clientFilter} onClearClient={onClearClient} />;
 };
 
 // —— List ————————————————————————————————————————————————————————————
-const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter }) => {
+const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter, onClearClient }) => {
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -126,6 +126,11 @@ const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter }) 
               : <>Every <em>invitation</em>, across clients.</>}
           </h1>
           <div className="mono" style={{ color: 'var(--text-3)' }}>Open record links — newest first. Recorded ones drop off automatically.</div>
+          {clientName && onClearClient && (
+            <button className="btn sm" onClick={onClearClient} style={{ marginTop: 10 }}>
+              <Icon name="close" size={12} /> All clients
+            </button>
+          )}
         </div>
         <button className="btn primary" onClick={onCompose}>
           <Icon name="send" size={14} stroke={2.2} /> New invitation
@@ -188,9 +193,9 @@ const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter }) 
 };
 
 // —— Compose (real) ——————————————————————————————————————————————————
-const ComposeView = ({ onClose }) => {
+const ComposeView = ({ onClose, activeClientId }) => {
   const [clients, setClients] = useState([]);
-  const [clientId, setClientId] = useState('');
+  const [clientId, setClientId] = useState(activeClientId != null ? String(activeClientId) : '');
   const [email, setEmail] = useState('');
   const [label, setLabel] = useState('');
   const [days, setDays] = useState(7);
@@ -231,7 +236,9 @@ const ComposeView = ({ onClose }) => {
   };
 
   const recordUrl = created?.token
-    ? 'https://record.cuecreative.com/record.html?token=' + encodeURIComponent(created.token)
+    ? (kind === 'twofa'
+        ? 'https://record.cuecreative.com/2fa-setup.html'
+        : 'https://record.cuecreative.com/record.html?token=' + encodeURIComponent(created.token))
     : '';
 
   if (created) {
@@ -241,7 +248,7 @@ const ComposeView = ({ onClose }) => {
         <div className="card card-pad" style={{ maxWidth: 560 }}>
           <div className="label" style={{ color: 'var(--ok)', marginBottom: 8 }}>INVITE CREATED</div>
           <div className="mono" style={{ color: 'var(--text-3)', marginBottom: 12 }}>
-            {created.email?.sent ? <>Emailed to <span style={{ color: 'var(--ok)' }}>{created.to}</span>. You can also copy the link below.</> : created.to ? <>Couldn't auto-email {created.to}{created.email?.error ? <> — <span style={{ color: 'var(--accent)' }}>{created.email.error}</span></> : null}. Copy the link below to share it.</> : 'Share this record link with the client.'}
+            {created.email?.sent ? <>Emailed to <span style={{ color: 'var(--ok)' }}>{created.to}</span>. You can also copy the link below.</> : created.to ? <>Couldn't auto-email {created.to}{created.email?.error ? <> — <span style={{ color: 'var(--accent)' }}>{created.email.error}</span></> : null}. Copy the link below to share it.</> : 'Share this link with the client.'}
           </div>
           <div className="mono" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: 12, fontSize: 12, wordBreak: 'break-all', marginBottom: 12 }}>
             {recordUrl}

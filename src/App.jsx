@@ -19,6 +19,7 @@ import { ProductionReportView } from './report.jsx'
 
 const NAV = [
   { id: 'clients',       label: 'Clients',        icon: 'avatars' },
+  { id: 'invitations',   label: 'Invitations',    icon: 'send' },
   { id: 'studio',        label: 'Studio',         icon: 'studio',   countKey: 'rendering' },
   { id: 'planner',       label: 'Planner',        icon: 'history',  countKey: 'planner' },
   { id: 'onboarding',    label: 'Record on-site', icon: 'mic' },
@@ -338,6 +339,7 @@ function App() {
               onClick={() => {
                 if (n.id === 'studio') return goStudio();
                 if (n.id === 'clients' && soloClientId != null) { setActiveClientId(soloClientId); return setView('brief'); }
+                if (n.id === 'invitations') { setInvitesClient(activeClientId); return setView('invitations'); }
                 setView(n.id);
               }}
               title={n.label}
@@ -477,7 +479,7 @@ function App() {
             else if (target === 'invitations') { setInvitesClient(cid); setView('invitations'); }
             else setView(target); // scripts | episodes
           }} onSendTopicToScripts={(t) => { setScriptTopicRequest(t); setView('scripts'); }} />}
-          {view === 'invitations' && <InvitationsView clientFilter={invitesClient} focusId={inviteFocus} onFocusConsumed={() => setInviteFocus(null)} />}
+          {view === 'invitations' && <InvitationsView clientFilter={invitesClient} focusId={inviteFocus} onFocusConsumed={() => setInviteFocus(null)} onClearClient={() => setInvitesClient(null)} activeClientId={activeClientId} />}
           {view === 'planner' && <PlannerView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
           {view === 'scripts' && <ScriptsView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} topicRequest={scriptTopicRequest} onTopicConsumed={() => setScriptTopicRequest(null)} scriptRequest={scriptRequest} onScriptRequestConsumed={() => setScriptRequest(null)} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
           {view === 'studio' && <StudioView key={studioNonce} onNavigate={setView} openStep={studioStep} castRequest={castRequest} onCastConsumed={() => setCastRequest(null)} activeClientId={activeClientId} onSelectClient={setActiveClientId} />}
