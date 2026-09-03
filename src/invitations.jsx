@@ -216,7 +216,7 @@ const ComposeView = ({ onClose, defaultClientId }) => {
     if (!clientId) { setEmail(''); return; }
     let live = true;
     api.getBrief(clientId)
-      .then((b) => { if (live) setEmail((b && b.email) || ''); })
+      .then((b) => { if (live) setEmail((b && (b.approval_email || b.email)) || ''); })
       .catch(() => {});
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
