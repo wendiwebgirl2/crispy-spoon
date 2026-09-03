@@ -210,6 +210,18 @@ const ComposeView = ({ onClose, defaultClientId }) => {
       .catch((e) => setErr(e.message || 'Could not load clients.'));
   }, []);
 
+  // Idiot-proofing: auto-fill the client's email from their Brief whenever a
+  // client is picked (still editable). Repopulates on client change.
+  useEffect(() => {
+    if (!clientId) { setEmail(''); return; }
+    let live = true;
+    api.getBrief(clientId)
+      .then((b) => { if (live) setEmail((b && b.email) || ''); })
+      .catch(() => {});
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId]);
+
   const inputStyle = {
     background: 'var(--surface-2)', color: 'var(--text)',
     border: '1px solid var(--border)', borderRadius: 'var(--r-sm)',
@@ -219,10 +231,13 @@ const ComposeView = ({ onClose, defaultClientId }) => {
 
   const create = async () => {
     if (!clientId) { setErr('Pick a client first.'); return; }
+    const em = email.trim();
+    if (!em) { setErr("No email on file for this client. Add the client's email above (or on their Brief) before sending an invite."); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { setErr("That doesn't look like a valid email address."); return; }
     setBusy(true); setErr('');
     try {
       const res = await api.createInvite(clientId, {
-        clientEmail: email.trim() || null,
+        clientEmail: em,
         label: label.trim() || null,
         days: Number(days) || 7,
         kind,
@@ -287,7 +302,7 @@ const ComposeView = ({ onClose, defaultClientId }) => {
           </select>
         </div>
         <div>
-          <div className="label" style={{ marginBottom: 6 }}>CLIENT EMAIL (optional)</div>
+          <div className="label" style={{ marginBottom: 6 }}>CLIENT EMAIL <span style={{ color: 'var(--text-4)', fontWeight: 400 }}>(auto-filled from the brief — editable)</span></div>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@company.com" style={inputStyle} />
         </div>
         <div className="row" style={{ gap: 12 }}>
