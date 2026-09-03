@@ -19,9 +19,9 @@ const STATUS_TONE = {
   disabled:  { fg: 'var(--text-4)' },
 };
 
-const InvitationsView = ({ focusId, onFocusConsumed, clientFilter, onClearClient, activeClientId } = {}) => {
-  const [mode, setMode] = useState('list'); // 'list' | 'compose'
-  if (mode === 'compose') return <ComposeView onClose={() => setMode('list')} activeClientId={activeClientId} />;
+const InvitationsView = ({ focusId, onFocusConsumed, clientFilter, onClearClient, startCompose } = {}) => {
+  const [mode, setMode] = useState(startCompose ? 'compose' : 'list'); // 'list' | 'compose'
+  if (mode === 'compose') return <ComposeView onClose={() => setMode('list')} defaultClientId={clientFilter} />;
   return <InvitationsList onCompose={() => setMode('compose')} focusId={focusId} onFocusConsumed={onFocusConsumed} clientFilter={clientFilter} onClearClient={onClearClient} />;
 };
 
@@ -193,9 +193,9 @@ const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter, on
 };
 
 // —— Compose (real) ——————————————————————————————————————————————————
-const ComposeView = ({ onClose, activeClientId }) => {
+const ComposeView = ({ onClose, defaultClientId }) => {
   const [clients, setClients] = useState([]);
-  const [clientId, setClientId] = useState(activeClientId != null ? String(activeClientId) : '');
+  const [clientId, setClientId] = useState(defaultClientId != null ? String(defaultClientId) : '');
   const [email, setEmail] = useState('');
   const [label, setLabel] = useState('');
   const [days, setDays] = useState(7);
