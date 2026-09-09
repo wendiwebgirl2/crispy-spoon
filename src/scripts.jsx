@@ -11,8 +11,21 @@ import { TopicsSection } from './brief.jsx'
 const CHANNEL_FALLBACK = [
   { key: 'longform',  label: 'Longform (5–7 min)', variants: 1 },
   { key: 'shortform', label: 'Shortform (under 1 min)', variants: 3 },
+  { key: 'static',    label: 'Static post', variants: 1 },
   { key: 'tvradio',   label: 'TV / Radio spot', variants: 3 },
   { key: 'blog',      label: 'Blog post', variants: 1 },
+];
+
+// One topic in, the whole week's episode out: longform + all 3 shortforms +
+// the blog, generated together under one batch so they share an episode and
+// (per the deadline-ladder feature) approving the longform blankets the rest.
+// Replaces the old per-channel checkbox picker with 4 fixed generation types
+// plus the manual "write your own" entry below.
+const GENERATION_PRESETS = [
+  { key: 'episode', label: 'Episode', desc: 'Longform + 3 shortforms + blog — one topic, the whole week', channels: ['longform', 'shortform', 'blog'] },
+  { key: 'static',  label: 'Static post', desc: 'One caption for a single image or graphic post', channels: ['static'] },
+  { key: 'tvradio', label: 'TV / Radio spot', desc: ':15 / :30 / :60 broadcast versions', channels: ['tvradio'] },
+  { key: 'blog',    label: 'Blog post', desc: 'A one-off blog post outside the weekly episode', channels: ['blog'] },
 ];
 
 // Length helpers. Module scope so both the batch result cards and the history
@@ -104,7 +117,7 @@ const DELIVERY_PROMPTS = {
 const CHANNEL_COLOR = { longform: '#2e5f8f', shortform: '#b8852a', tvradio: '#8a4a8f', blog: '#5d8c3a' };
 // Channels that carry social hashtags. Keep in sync with `social: true` in
 // voicecast/src/scripts/channels.js.
-const SOCIAL_CHANNELS = new Set(['shortform', 'tvradio']);
+const SOCIAL_CHANNELS = new Set(['shortform', 'tvradio', 'static']);
 const chColor = (ch) => CHANNEL_COLOR[ch] || 'var(--text-4)';
 const chBadgeStyle = (ch) => ({ color: chColor(ch), borderColor: chColor(ch), background: 'color-mix(in srgb, ' + chColor(ch) + ' 10%, white)' });
 const chStripe = (ch) => ({ borderLeft: '3px solid ' + chColor(ch) });
@@ -131,7 +144,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [clientId, setClientId] = useState(null);
   const [brief, setBrief] = useState(null);
   const [channels, setChannels] = useState(CHANNEL_FALLBACK);
-  const [picked, setPicked] = useState({ longform: true, shortform: true, blog: false });
+  const [preset, setPreset] = useState('episode');
   const [topic, setTopic] = useState('');
   const [jobNumber, setJobNumber] = useState('');
   const [episodeNumber, setEpisodeNumber] = useState('');
@@ -195,7 +208,12 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     setJobNumber(t.job_number || '');
     setEpisodeNumber(t.episode_number || '');
     if (Array.isArray(t.channels) && t.channels.length) {
-      setPicked({ longform: t.channels.includes('longform'), shortform: t.channels.includes('shortform'), tvradio: t.channels.includes('tvradio'), blog: t.channels.includes('blog') });
+      // The Topics queue hands off a raw channel list — map it to the closest
+      // generation preset (an Episode topic wins if longform is in the mix).
+      if (t.channels.includes('longform')) setPreset('episode');
+      else if (t.channels.includes('static')) setPreset('static');
+      else if (t.channels.includes('tvradio')) setPreset('tvradio');
+      else if (t.channels.includes('blog')) setPreset('blog');
     }
     if (t.extra != null) setExtra(t.extra);
     setPendingTopicId(t.id ?? null);
@@ -223,8 +241,11 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     api.channels(clientId).then(ch => { if (Array.isArray(ch) && ch.length) setChannels(ch); }).catch(() => {});
   }, [clientId]);
 
-  const toggle = (k) => setPicked(p => ({ ...p, [k]: !p[k] }));
-  const chosen = channels.filter(c => picked[c.key]).map(c => c.key);
+  const activePreset = GENERATION_PRESETS.find((p) => p.key === preset) || GENERATION_PRESETS[0];
+  // Only channels the server actually knows about (guards a stale bundle
+  // running against a backend that hasn't picked up a new channel yet).
+  const chosen = activePreset.channels.filter((k) => channels.some((c) => c.key === k));
+  const chosenScriptCount = chosen.reduce((n, k) => n + ((channels.find((c) => c.key === k) || {}).variants || 1), 0);
 
   const refreshHistory = async () => {
     try { const s = await api.listScripts(clientId); setHistory(s || []); } catch { /* noop */ }
@@ -583,17 +604,22 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
           </div>
         )}
 
-        {/* channels */}
-        <div className="label" style={{ marginBottom: 8 }}>CHANNELS</div>
-        <div className="row" style={{ gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
-          {channels.map(c => (
-            <button key={c.key} onClick={() => toggle(c.key)} className="btn sm"
+        {/* generation type */}
+        <div className="label" style={{ marginBottom: 8 }}>GENERATE</div>
+        <div className="row" style={{ gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
+          {GENERATION_PRESETS.map((p) => (
+            <button key={p.key} onClick={() => setPreset(p.key)} className="btn sm"
               style={{
-                background: picked[c.key] ? 'var(--surface-2)' : 'transparent',
-                borderColor: picked[c.key] ? 'var(--accent)' : 'var(--border)',
-                color: picked[c.key] ? 'var(--text)' : 'var(--text-2)'
+                display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
+                padding: '9px 14px', height: 'auto', minWidth: 150, textAlign: 'left',
+                background: preset === p.key ? 'var(--surface-2)' : 'transparent',
+                borderColor: preset === p.key ? 'var(--accent)' : 'var(--border)',
+                color: preset === p.key ? 'var(--text)' : 'var(--text-2)',
               }}>
-              {picked[c.key] && <Icon name="check" size={12} style={{ color: 'var(--accent)' }} />} {c.label}{c.variants > 1 ? ` ×${c.variants}` : ''}
+              <span style={{ fontWeight: 700 }}>
+                {preset === p.key && <Icon name="check" size={12} style={{ color: 'var(--accent)' }} />} {p.label}
+              </span>
+              <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 400 }}>{p.desc}</span>
             </button>
           ))}
         </div>
@@ -628,7 +654,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         <div className="row" style={{ gap: 10, marginBottom: 28 }}>
           <button className="btn primary lg" onClick={() => generate()} disabled={busy || !chosen.length}
             style={{ opacity: (busy || !chosen.length) ? 0.5 : 1 }}>
-            {busy ? <>Generating…</> : <><Icon name="sparkle" size={14} /> Generate {chosen.length || ''} script{chosen.length === 1 ? '' : 's'}</>}
+            {busy ? <>Generating…</> : <><Icon name="sparkle" size={14} /> Generate {chosenScriptCount || ''} script{chosenScriptCount === 1 ? '' : 's'}</>}
           </button>
           <button className="btn" onClick={() => setManualOpen(o => !o)}>
             <Icon name="doc" size={13} /> Write your own
