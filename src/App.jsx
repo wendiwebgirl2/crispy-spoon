@@ -7,6 +7,7 @@ import { BriefView } from './brief.jsx'
 import { ClientDetailView } from './client-detail.jsx'
 import { InvitationsView } from './invitations.jsx'
 import { PlannerView } from './planner.jsx'
+import { EpisodeLogView } from './episode-log.jsx'
 import { ScriptsView } from './scripts.jsx'
 import { BillingView } from './billing.jsx'
 import StudioView from './studio.jsx'
@@ -103,6 +104,7 @@ function ChangesView({ onOpen }) {
 // "Needs attention" inbox — clients and tasks waiting on the operator,
 // grouped by client. Each row links straight to the item's home view.
 const ATTN_META = {
+  overdue:  { color: 'var(--warn)',   label: 'Overdue' },
   approved: { color: 'var(--ok)',     label: 'Approved' },
   pending:  { color: 'var(--accent)', label: 'Pending' },
   rendered: { color: 'var(--accent)', label: 'Ready' },
@@ -110,7 +112,7 @@ const ATTN_META = {
   invite:   { color: 'var(--text-3)', label: 'Invite' },
 };
 // Category display order within a client — most urgent first.
-const ATTN_ORDER = ['failed', 'rendered', 'approved', 'invite', 'pending'];
+const ATTN_ORDER = ['overdue', 'failed', 'rendered', 'approved', 'invite', 'pending'];
 
 function AttentionView({ onOpen, filter }) {
   const [data, setData] = React.useState(null);
@@ -373,6 +375,7 @@ function App() {
             </div>
             <div className="side-nav">
               {[
+                { k: 'overdue', label: 'Overdue', color: 'var(--warn)', go: () => { setAttnFilter('overdue'); setView('attention'); }, active: view === 'attention' && attnFilter === 'overdue' },
                 { k: 'changes', label: 'Changes from client', color: 'var(--warn)', go: () => { setAttnFilter(null); setView('changes'); }, active: view === 'changes' },
                 { k: 'pending', label: 'Pending approval', color: 'var(--accent)', go: () => { setAttnFilter('pending'); setView('attention'); }, active: view === 'attention' && attnFilter === 'pending' },
                 { k: 'in_production', label: 'In production', color: 'var(--text-2)', go: () => { setAttnFilter(null); setView('attention'); }, active: false },
@@ -479,6 +482,7 @@ function App() {
           }} onSendTopicToScripts={(t) => { setScriptTopicRequest(t); setView('scripts'); }} />}
           {view === 'invitations' && <InvitationsView clientFilter={invitesClient} focusId={inviteFocus} onFocusConsumed={() => setInviteFocus(null)} />}
           {view === 'planner' && <PlannerView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
+          {view === 'episode-log' && <EpisodeLogView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} />}
           {view === 'scripts' && <ScriptsView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} topicRequest={scriptTopicRequest} onTopicConsumed={() => setScriptTopicRequest(null)} scriptRequest={scriptRequest} onScriptRequestConsumed={() => setScriptRequest(null)} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
           {view === 'studio' && <StudioView key={studioNonce} onNavigate={setView} openStep={studioStep} castRequest={castRequest} onCastConsumed={() => setCastRequest(null)} activeClientId={activeClientId} onSelectClient={setActiveClientId} />}
           {view === 'episodes' && <EpisodesView activeClientId={activeClientId} onBackToStudio={goStudio} episodeRequest={episodeRequest} onEpisodeRequestConsumed={() => setEpisodeRequest(null)} />}

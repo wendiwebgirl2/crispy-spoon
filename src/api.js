@@ -295,6 +295,9 @@ export const api = {
   getClient: (id) => vcReq(`/clients/${id}`),
   createClient: (payload) => vcReq("/clients", { method: "POST", body: JSON.stringify(payload) }),
   renameClient: (id, payload) => vcReq(`/clients/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  // Episode Log cadence: week-1 anchor date + the fixed weekday the blog goes out.
+  // Same PATCH /clients/:id endpoint as renameClient — only the fields present change.
+  updateClientCadence: (id, { startDate, blogDay }) => vcReq(`/clients/${id}`, { method: "PATCH", body: JSON.stringify({ startDate, blogDay }) }),
   deleteClient: (id) => vcReq(`/clients/${id}`, { method: "DELETE" }),
   getBrief: (id) => vcReq(`/clients/${id}/brief`),
   putBrief: (id, payload) => vcReq(`/clients/${id}/brief`, { method: "PUT", body: JSON.stringify(payload) }),

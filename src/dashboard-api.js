@@ -74,6 +74,15 @@ export const sched = {
   approvedScripts: (cid) => get(`/api/clients/${cid}/scripts`),
 };
 
+// Episode Log — weeks/airings computed from the schedule + deadline-ladder
+// status. The ladder itself is a global editable default (see ladder.js on
+// the server), mounted per-client like the consent-text settings route.
+export const episodeLog = {
+  get: (cid) => get(`/api/clients/${cid}/episode-log`),
+  getLadder: (cid) => get(`/api/clients/${cid}/episode-log/ladder`),
+  putLadder: (cid, ladder) => put(`/api/clients/${cid}/episode-log/ladder`, { ladder }),
+};
+
 export async function clientToken(cid) {
   const invs = await get(`/api/clients/${cid}/invites`).catch(() => []);
   const rows = Array.isArray(invs) ? invs : (invs.invites || []);

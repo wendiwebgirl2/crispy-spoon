@@ -402,6 +402,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       { id: 'montage',    label: 'Montage',       desc: 'Slideshow video from images + music', icon: 'play',    go: () => setStep('montage') },
       { id: 'planner',    label: 'Planner',       desc: 'Approved episodes ready to publish', icon: 'history', go: () => onNavigate?.('planner') },
       { id: 'episodes',   label: 'Episodes',      desc: 'Stitch audio + video episodes',      icon: 'studio',  go: () => onNavigate?.('episodes') },
+      { id: 'episode-log', label: 'Episode Log',  desc: 'Week/episode/air date & deadline status', icon: 'history', go: () => onNavigate?.('episode-log') },
     ];
     return (
       <div className="fade-in" style={{ padding: 'var(--pad)', overflow: 'auto', height: '100%' }}>

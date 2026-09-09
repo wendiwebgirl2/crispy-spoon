@@ -7,12 +7,13 @@ import { BriefView } from './brief.jsx'
 // casts + assets). The buttons navigate to those pages with this client
 // selected, so there are no duplicate inline copies to keep in sync.
 const NAV = [
-  { id: 'brief',       label: 'Brief',    icon: 'doc' },
-  { id: 'invitations', label: 'Invites',  icon: 'send' },
-  { id: 'scripts',     label: 'Scripts',  icon: 'doc' },
-  { id: 'casts',       label: 'Casts',    icon: 'sparkle' },
-  { id: 'episodes',    label: 'Episodes', icon: 'history' },
-  { id: 'assets',      label: 'Assets',   icon: 'upload' },
+  { id: 'brief',       label: 'Brief',       icon: 'doc' },
+  { id: 'invitations', label: 'Invites',     icon: 'send' },
+  { id: 'scripts',     label: 'Scripts',     icon: 'doc' },
+  { id: 'casts',       label: 'Casts',       icon: 'sparkle' },
+  { id: 'episodes',    label: 'Episodes',    icon: 'history' },
+  { id: 'episode-log', label: 'Episode Log', icon: 'history' },
+  { id: 'assets',      label: 'Assets',      icon: 'upload' },
 ];
 
 function ClientDetailView({ client, onBack, onOpenStudio, onNavigate, onSendTopicToScripts }) {
