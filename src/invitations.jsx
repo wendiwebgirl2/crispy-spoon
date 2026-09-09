@@ -19,14 +19,14 @@ const STATUS_TONE = {
   disabled:  { fg: 'var(--text-4)' },
 };
 
-const InvitationsView = ({ focusId, onFocusConsumed, clientFilter } = {}) => {
-  const [mode, setMode] = useState('list'); // 'list' | 'compose'
-  if (mode === 'compose') return <ComposeView onClose={() => setMode('list')} />;
-  return <InvitationsList onCompose={() => setMode('compose')} focusId={focusId} onFocusConsumed={onFocusConsumed} clientFilter={clientFilter} />;
+const InvitationsView = ({ focusId, onFocusConsumed, clientFilter, onClearClient, startCompose } = {}) => {
+  const [mode, setMode] = useState(startCompose ? 'compose' : 'list'); // 'list' | 'compose'
+  if (mode === 'compose') return <ComposeView onClose={() => setMode('list')} defaultClientId={clientFilter} />;
+  return <InvitationsList onCompose={() => setMode('compose')} focusId={focusId} onFocusConsumed={onFocusConsumed} clientFilter={clientFilter} onClearClient={onClearClient} />;
 };
 
 // —— List ————————————————————————————————————————————————————————————
-const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter }) => {
+const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter, onClearClient }) => {
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -126,6 +126,11 @@ const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter }) 
               : <>Every <em>invitation</em>, across clients.</>}
           </h1>
           <div className="mono" style={{ color: 'var(--text-3)' }}>Open record links — newest first. Recorded ones drop off automatically.</div>
+          {clientName && onClearClient && (
+            <button className="btn sm" onClick={onClearClient} style={{ marginTop: 10 }}>
+              <Icon name="close" size={12} /> All clients
+            </button>
+          )}
         </div>
         <button className="btn primary" onClick={onCompose}>
           <Icon name="send" size={14} stroke={2.2} /> New invitation
@@ -188,9 +193,9 @@ const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter }) 
 };
 
 // —— Compose (real) ——————————————————————————————————————————————————
-const ComposeView = ({ onClose }) => {
+const ComposeView = ({ onClose, defaultClientId }) => {
   const [clients, setClients] = useState([]);
-  const [clientId, setClientId] = useState('');
+  const [clientId, setClientId] = useState(defaultClientId != null ? String(defaultClientId) : '');
   const [email, setEmail] = useState('');
   const [label, setLabel] = useState('');
   const [days, setDays] = useState(7);
@@ -205,6 +210,18 @@ const ComposeView = ({ onClose }) => {
       .catch((e) => setErr(e.message || 'Could not load clients.'));
   }, []);
 
+  // Idiot-proofing: auto-fill the client's email from their Brief whenever a
+  // client is picked (still editable). Repopulates on client change.
+  useEffect(() => {
+    if (!clientId) { setEmail(''); return; }
+    let live = true;
+    api.getBrief(clientId)
+      .then((b) => { if (live) setEmail((b && (b.approval_email || b.email)) || ''); })
+      .catch(() => {});
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId]);
+
   const inputStyle = {
     background: 'var(--surface-2)', color: 'var(--text)',
     border: '1px solid var(--border)', borderRadius: 'var(--r-sm)',
@@ -214,10 +231,13 @@ const ComposeView = ({ onClose }) => {
 
   const create = async () => {
     if (!clientId) { setErr('Pick a client first.'); return; }
+    const em = email.trim();
+    if (!em) { setErr("No email on file for this client. Add the client's email above (or on their Brief) before sending an invite."); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { setErr("That doesn't look like a valid email address."); return; }
     setBusy(true); setErr('');
     try {
       const res = await api.createInvite(clientId, {
-        clientEmail: email.trim() || null,
+        clientEmail: em,
         label: label.trim() || null,
         days: Number(days) || 7,
         kind,
@@ -231,7 +251,9 @@ const ComposeView = ({ onClose }) => {
   };
 
   const recordUrl = created?.token
-    ? 'https://record.cuecreative.com/record.html?token=' + encodeURIComponent(created.token)
+    ? (kind === 'twofa'
+        ? 'https://record.cuecreative.com/2fa-setup.html'
+        : 'https://record.cuecreative.com/record.html?token=' + encodeURIComponent(created.token))
     : '';
 
   if (created) {
@@ -241,7 +263,7 @@ const ComposeView = ({ onClose }) => {
         <div className="card card-pad" style={{ maxWidth: 560 }}>
           <div className="label" style={{ color: 'var(--ok)', marginBottom: 8 }}>INVITE CREATED</div>
           <div className="mono" style={{ color: 'var(--text-3)', marginBottom: 12 }}>
-            {created.email?.sent ? <>Emailed to <span style={{ color: 'var(--ok)' }}>{created.to}</span>. You can also copy the link below.</> : created.to ? <>Couldn't auto-email {created.to}{created.email?.error ? <> — <span style={{ color: 'var(--accent)' }}>{created.email.error}</span></> : null}. Copy the link below to share it.</> : 'Share this record link with the client.'}
+            {created.email?.sent ? <>Emailed to <span style={{ color: 'var(--ok)' }}>{created.to}</span>. You can also copy the link below.</> : created.to ? <>Couldn't auto-email {created.to}{created.email?.error ? <> — <span style={{ color: 'var(--accent)' }}>{created.email.error}</span></> : null}. Copy the link below to share it.</> : 'Share this link with the client.'}
           </div>
           <div className="mono" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: 12, fontSize: 12, wordBreak: 'break-all', marginBottom: 12 }}>
             {recordUrl}
@@ -280,7 +302,7 @@ const ComposeView = ({ onClose }) => {
           </select>
         </div>
         <div>
-          <div className="label" style={{ marginBottom: 6 }}>CLIENT EMAIL (optional)</div>
+          <div className="label" style={{ marginBottom: 6 }}>CLIENT EMAIL <span style={{ color: 'var(--text-4)', fontWeight: 400 }}>(auto-filled from the brief — editable)</span></div>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@company.com" style={inputStyle} />
         </div>
         <div className="row" style={{ gap: 12 }}>

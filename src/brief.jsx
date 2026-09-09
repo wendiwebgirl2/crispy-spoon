@@ -444,6 +444,7 @@ function LookPicker({ avatar, onSet }) {
   const [looks, setLooks] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const [zoom, setZoom] = useState(null); // { url, name } to view a look full size
   useEffect(() => {
     let live = true;
     (async () => {
@@ -470,14 +471,27 @@ function LookPicker({ avatar, onSet }) {
        : (looks && looks.length) ? (
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {looks.map((l) => (
-            <button key={l.id} onClick={() => pick(l.id)} title={l.name || 'Use this look'}
-              style={{ padding: 0, width: 44, height: 44, borderRadius: 5, overflow: 'hidden', cursor: 'pointer', background: 'var(--surface-2)',
-                border: avatar.heygen_avatar_id === l.id ? '2px solid var(--accent)' : '1px solid var(--border)' }}>
-              {l.image_url ? <img src={l.image_url} alt={l.name || 'look'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="avatars" size={14} />}
-            </button>
+            <div key={l.id} style={{ position: 'relative', width: 44, height: 44 }}>
+              <button onClick={() => pick(l.id)} title={l.name || 'Use this look'}
+                style={{ padding: 0, width: 44, height: 44, borderRadius: 5, overflow: 'hidden', cursor: 'pointer', background: 'var(--surface-2)',
+                  border: avatar.heygen_avatar_id === l.id ? '2px solid var(--accent)' : '1px solid var(--border)' }}>
+                {l.image_url ? <img src={l.image_url} alt={l.name || 'look'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="avatars" size={14} />}
+              </button>
+              {l.image_url && (
+                <button onClick={(e) => { e.stopPropagation(); setZoom({ url: l.image_url, name: l.name || 'Look' }); }} title="View full size"
+                  style={{ position: 'absolute', top: 1, right: 1, width: 16, height: 16, padding: 0, display: 'grid', placeItems: 'center', borderRadius: 4, border: 'none', background: 'rgba(20,17,15,0.72)', color: '#fff', cursor: 'zoom-in' }}>
+                  <Icon name="search" size={10} />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       ) : <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>No looks found in HeyGen.</div>}
+      {zoom && (
+        <div onClick={() => setZoom(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.8)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 200, cursor: 'zoom-out' }}>
+          <img src={zoom.url} alt={zoom.name} style={{ maxWidth: '92vw', maxHeight: '92vh', borderRadius: 10, border: '1px solid var(--border)' }} />
+        </div>
+      )}
     </div>
   );
 }

@@ -20,6 +20,7 @@ import { ProductionReportView } from './report.jsx'
 
 const NAV = [
   { id: 'clients',       label: 'Clients',        icon: 'avatars' },
+  { id: 'invitations',   label: 'Invitations',    icon: 'send' },
   { id: 'studio',        label: 'Studio',         icon: 'studio',   countKey: 'rendering' },
   { id: 'planner',       label: 'Planner',        icon: 'history',  countKey: 'planner' },
   { id: 'onboarding',    label: 'Record on-site', icon: 'mic' },
@@ -238,6 +239,8 @@ function App() {
   const [episodeRequest, setEpisodeRequest] = React.useState(null);
   const [inviteFocus, setInviteFocus] = React.useState(null);
   const [invitesClient, setInvitesClient] = React.useState(null);
+  const [invitesNonce, setInvitesNonce] = React.useState(0);
+  const [invitesStartCompose, setInvitesStartCompose] = React.useState(false);
 
   // Deep-open an item from the "Needs attention" inbox — route by kind so the
   // target view opens the actual episode/script/cast/recording, not just its tab.
@@ -340,6 +343,7 @@ function App() {
               onClick={() => {
                 if (n.id === 'studio') return goStudio();
                 if (n.id === 'clients' && soloClientId != null) { setActiveClientId(soloClientId); return setView('brief'); }
+                if (n.id === 'invitations') { setInvitesClient(null); setInvitesStartCompose(true); setInvitesNonce((k) => k + 1); return setView('invitations'); }
                 setView(n.id);
               }}
               title={n.label}
@@ -477,10 +481,10 @@ function App() {
             setActiveClientId(cid);
             if (target === 'casts') { setCastRequest({ clientId: cid }); setView('studio'); }
             else if (target === 'assets') { goStudio('assets'); }
-            else if (target === 'invitations') { setInvitesClient(cid); setView('invitations'); }
+            else if (target === 'invitations') { setInvitesClient(cid); setInvitesStartCompose(false); setInvitesNonce((k) => k + 1); setView('invitations'); }
             else setView(target); // scripts | episodes
           }} onSendTopicToScripts={(t) => { setScriptTopicRequest(t); setView('scripts'); }} />}
-          {view === 'invitations' && <InvitationsView clientFilter={invitesClient} focusId={inviteFocus} onFocusConsumed={() => setInviteFocus(null)} />}
+          {view === 'invitations' && <InvitationsView key={'inv-' + invitesNonce} clientFilter={invitesClient} startCompose={invitesStartCompose} focusId={inviteFocus} onFocusConsumed={() => setInviteFocus(null)} onClearClient={() => setInvitesClient(null)} />}
           {view === 'planner' && <PlannerView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
           {view === 'episode-log' && <EpisodeLogView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} />}
           {view === 'scripts' && <ScriptsView activeClientId={activeClientId} onSelectClient={setActiveClientId} onBackToStudio={goStudio} topicRequest={scriptTopicRequest} onTopicConsumed={() => setScriptTopicRequest(null)} scriptRequest={scriptRequest} onScriptRequestConsumed={() => setScriptRequest(null)} onCastScript={(clientId, body, title, jobNumber, scriptId) => { setCastRequest({ clientId, body, title, jobNumber, scriptId }); setView('studio'); }} />}
