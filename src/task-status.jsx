@@ -9,6 +9,33 @@ import React from 'react'
 import { api } from './api.js'
 import { ensureOperatorName } from './shared.jsx'
 
+// Plain printable checklist for one person — basic on purpose: name, the
+// date/time it was printed, and an empty box per task to check off by hand.
+function printTasks(personLabel, rows) {
+  const esc = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const w = window.open('', '_blank', 'width=680,height=880');
+  if (!w) return;
+  const printedAt = new Date().toLocaleString();
+  const items = rows.map((t) => `<li><span class="box"></span>${esc(t.label)} <span class="client">&mdash; ${esc(t.client_name)}</span></li>`).join('');
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(personLabel)} &mdash; Task List</title>
+    <style>
+      body{font-family:Georgia,serif;max-width:600px;margin:40px auto;color:#222;background:#fff;line-height:1.6}
+      h1{font-size:22px;margin:0 0 4px}
+      .meta{font-family:monospace;font-size:12px;color:#666;border-bottom:1px solid #ccc;padding-bottom:12px;margin-bottom:20px}
+      ul{list-style:none;padding:0;margin:0}
+      li{padding:8px 0;border-bottom:1px solid #eee;font-size:15px}
+      .box{display:inline-block;width:14px;height:14px;border:1.5px solid #333;margin-right:10px;vertical-align:-2px}
+      .client{color:#777;font-size:13px}
+    </style></head><body>
+    <h1>${esc(personLabel)}</h1>
+    <div class="meta">Printed ${esc(printedAt)} &middot; ${rows.length} open task${rows.length === 1 ? '' : 's'}</div>
+    <ul>${items || '<li>No open tasks.</li>'}</ul>
+    </body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 250);
+}
+
 // Row styling matches brief.jsx's OnboardingCard so a task reads the same way
 // whether you're checking it off here or on the client's Brief page.
 function TaskRow({ t, onToggle, onOpen }) {
@@ -30,7 +57,10 @@ function AssigneeGroup({ name, tasks, onToggle, onOpen }) {
     <div className="card card-pad" style={{ marginBottom: 16 }}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <div className="label" style={{ margin: 0 }}>{name || 'UNASSIGNED'}</div>
-        <span className="mono" style={{ color: 'var(--text-3)', fontSize: 11.5 }}>{tasks.length} open</span>
+        <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+          <span className="mono" style={{ color: 'var(--text-3)', fontSize: 11.5 }}>{tasks.length} open</span>
+          <button className="btn sm" onClick={() => printTasks(name || 'Unassigned', tasks)}>Print</button>
+        </div>
       </div>
       {tasks.map((t) => <TaskRow key={t.id} t={t} onToggle={onToggle} onOpen={onOpen} />)}
     </div>
@@ -100,6 +130,9 @@ export function TaskStatusView({ me, onOpenClient }) {
           ))
         ) : (
           <div className="card card-pad">
+            <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 4 }}>
+              <button className="btn sm" onClick={() => printTasks((me && me.username) || 'Your tasks', tasks)}>Print</button>
+            </div>
             {tasks.map((t) => <TaskRow key={t.id} t={t} onToggle={toggleDone} onOpen={openClient} />)}
           </div>
         )}
