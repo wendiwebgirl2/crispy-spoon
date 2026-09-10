@@ -304,8 +304,19 @@ export const api = {
   verifyBriefQA: (id, name) => vcReq(`/clients/${id}/brief/qa`, { method: "PUT", body: JSON.stringify({ name }) }),
   suggestHashtags: (id) => vcReq(`/clients/${id}/brief/hashtags/suggest`, { method: "POST", body: "{}" }),
   listTopics: (id) => vcReq(`/clients/${id}/topics`),
-  addTopic: (id, text, jobNumber) => vcReq(`/clients/${id}/topics`, { method: "POST", body: JSON.stringify({ text, job_number: jobNumber || null }) }),
-  updateTopic: (id, tid, text, jobNumber) => vcReq(`/clients/${id}/topics/${tid}`, { method: "PUT", body: JSON.stringify(jobNumber === undefined ? { text } : { text, job_number: jobNumber || null }) }),
+  // opts: { jobNumber, preset, extra } — all optional; addTopic omits a key
+  // entirely if unset (server defaults), updateTopic only touches keys present
+  // in `opts` so a caller can patch just one field.
+  addTopic: (id, text, opts = {}) => vcReq(`/clients/${id}/topics`, { method: "POST", body: JSON.stringify({
+    text, job_number: opts.jobNumber || null, preset: opts.preset, extra: opts.extra,
+  }) }),
+  updateTopic: (id, tid, text, opts = {}) => {
+    const body = { text };
+    if ('jobNumber' in opts) body.job_number = opts.jobNumber || null;
+    if ('preset' in opts) body.preset = opts.preset;
+    if ('extra' in opts) body.extra = opts.extra;
+    return vcReq(`/clients/${id}/topics/${tid}`, { method: "PUT", body: JSON.stringify(body) });
+  },
   deleteTopic: (id, tid) => vcReq(`/clients/${id}/topics/${tid}`, { method: "DELETE" }),
   listClientInvites: (id) => vcReq(`/clients/${id}/invites`),
   // Cast approval workflow. Railway owns the cast; voicecast owns whether it

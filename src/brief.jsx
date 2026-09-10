@@ -728,14 +728,24 @@ function RichText({ value, onChange }) {
   );
 }
 
+// Generation-type options — must match scripts.jsx's GENERATION_PRESETS keys
+// exactly, so a topic's saved preset maps straight onto the Scripts screen's
+// picker with no translation step.
+const TOPIC_PRESETS = [
+  { key: 'episode', label: 'Episode' },
+  { key: 'static',  label: 'Static post' },
+  { key: 'tvradio', label: 'TV / Radio spot' },
+  { key: 'blog',    label: 'Blog post' },
+];
+const presetLabel = (k) => (TOPIC_PRESETS.find((p) => p.key === k) || TOPIC_PRESETS[0]).label;
+
 function TopicsSection({ clientId, onSendTopicToScripts, reloadSignal, sendLabel }) {
   const [topics, setTopics] = useState([]);
   const [adding, setAdding] = useState('');
   const [addingJob, setAddingJob] = useState('');
-  const [editing, setEditing] = useState(null);   // { id, text, job_number }
-  // Inline send-to-script panel: pick channels + optional content direction
-  // before the topic hands off to the script writer.
-  const [sending, setSending] = useState(null);   // { id, channels: {longform,shortform,blog}, extra }
+  const [addingPreset, setAddingPreset] = useState('episode');
+  const [addingExtra, setAddingExtra] = useState('');
+  const [editing, setEditing] = useState(null);   // { id, text, job_number, preset, extra }
   const [err, setErr] = useState('');
 
   const load = () => api.listTopics(clientId).then((r) => setTopics(Array.isArray(r) ? r : [])).catch(() => setTopics([]));
@@ -750,87 +760,96 @@ function TopicsSection({ clientId, onSendTopicToScripts, reloadSignal, sendLabel
   }, [reloadSignal]);
 
   const inp = { flex: 1, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 14, padding: '8px 10px', boxSizing: 'border-box' };
+  const sel = { ...inp, flex: '0 0 150px', cursor: 'pointer' };
 
   const add = async () => {
     const t = adding.trim(); if (!t) return;
-    try { await api.addTopic(clientId, t, addingJob.trim() || null); setAdding(''); setAddingJob(''); load(); } catch (e) { setErr(e.message || 'Could not add topic.'); }
+    try {
+      await api.addTopic(clientId, t, { jobNumber: addingJob.trim(), preset: addingPreset, extra: addingExtra.trim() });
+      setAdding(''); setAddingJob(''); setAddingPreset('episode'); setAddingExtra('');
+      load();
+    } catch (e) { setErr(e.message || 'Could not add topic.'); }
   };
   const saveEdit = async () => {
     if (!editing || !editing.text.trim()) return;
-    try { await api.updateTopic(clientId, editing.id, editing.text.trim(), (editing.job_number || '').trim() || null); setEditing(null); load(); } catch (e) { setErr(e.message || 'Could not save topic.'); }
+    try {
+      await api.updateTopic(clientId, editing.id, editing.text.trim(), {
+        jobNumber: (editing.job_number || '').trim(), preset: editing.preset, extra: editing.extra || '',
+      });
+      setEditing(null); load();
+    } catch (e) { setErr(e.message || 'Could not save topic.'); }
   };
   const remove = async (id) => {
     try { await api.deleteTopic(clientId, id); load(); } catch (e) { setErr(e.message || 'Could not delete topic.'); }
   };
   const copy = (text) => { try { navigator.clipboard.writeText(text); } catch { /* ignore */ } };
 
-  // Hand the topic to the script writer (Scripts view) with topic, channels,
-  // and direction preloaded. The queue entry is removed there, after a
-  // generation succeeds.
+  // Hand the topic straight to the script writer (Scripts view) — the
+  // generation type and content direction are already saved on the topic,
+  // so there's no separate "add direction" step at send time any more.
   const sendToScript = (topic) => {
     setErr('');
     if (!onSendTopicToScripts) { setErr('Script writer navigation unavailable.'); return; }
-    const chans = Object.entries(sending?.channels || {}).filter(([, v]) => v).map(([k]) => k);
     onSendTopicToScripts({
       id: topic.id, text: topic.text, job_number: topic.job_number || '',
-      channels: chans.length ? chans : undefined,
-      extra: (sending?.extra || '').trim() || undefined,
+      preset: topic.preset || 'episode',
+      extra: topic.extra || undefined,
     });
-    setSending(null);
   };
 
   return (
     <div className="card card-pad" style={{ marginTop: 16 }}>
       <div className="label" style={{ marginBottom: 12 }}>TOPICS · queue ideas for script generation</div>
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
-      <div className="row" style={{ gap: 8, marginBottom: 14 }}>
-        <input value={adding} onChange={(e) => setAdding(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder="New topic…" style={inp} />
+      <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <input value={adding} onChange={(e) => setAdding(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder="New topic…" style={{ ...inp, flex: '1 1 200px' }} />
+        <select value={addingPreset} onChange={(e) => setAddingPreset(e.target.value)} style={sel}>
+          {TOPIC_PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+        </select>
         <input value={addingJob} onChange={(e) => setAddingJob(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder="Job #" style={{ ...inp, flex: '0 0 90px' }} />
         <button className="btn primary sm" onClick={add}><Icon name="plus" size={13} /> Add topic</button>
       </div>
+      <input value={addingExtra} onChange={(e) => setAddingExtra(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()}
+        placeholder="Extra direction (optional) — any angle, offer, or detail to steer this topic…"
+        style={{ ...inp, flex: 1, width: '100%', marginBottom: 14, fontSize: 13 }} />
       {topics.length === 0 ? (
         <div className="mono" style={{ color: 'var(--text-3)' }}>No topics yet — add one above.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {topics.map((t) => (
-            <div key={t.id} className="card" style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div key={t.id} className="card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {editing && editing.id === t.id ? (
                 <>
-                  <input value={editing.text} autoFocus onChange={(e) => setEditing({ ...editing, text: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && saveEdit()} style={inp} />
-                  <input value={editing.job_number || ''} onChange={(e) => setEditing({ ...editing, job_number: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && saveEdit()} placeholder="Job #" style={{ ...inp, flex: '0 0 90px' }} />
-                  <button className="btn sm" onClick={saveEdit}><Icon name="check" size={13} /> Save</button>
-                  <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
+                  <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                    <input value={editing.text} autoFocus onChange={(e) => setEditing({ ...editing, text: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && saveEdit()} style={{ ...inp, flex: '1 1 200px' }} />
+                    <select value={editing.preset || 'episode'} onChange={(e) => setEditing({ ...editing, preset: e.target.value })} style={sel}>
+                      {TOPIC_PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                    </select>
+                    <input value={editing.job_number || ''} onChange={(e) => setEditing({ ...editing, job_number: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && saveEdit()} placeholder="Job #" style={{ ...inp, flex: '0 0 90px' }} />
+                  </div>
+                  <input value={editing.extra || ''} onChange={(e) => setEditing({ ...editing, extra: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
+                    placeholder="Extra direction (optional)" style={{ ...inp, width: '100%', fontSize: 13 }} />
+                  <div className="row" style={{ gap: 8 }}>
+                    <button className="btn sm" onClick={saveEdit}><Icon name="check" size={13} /> Save</button>
+                    <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
+                  </div>
                 </>
               ) : (
-                <>
-                  <div style={{ flex: 1, fontSize: 14, minWidth: 160 }}>{t.text}{t.job_number ? <span className="mono" style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {t.job_number}</span> : null}</div>
+                <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <div style={{ fontSize: 14 }}>
+                      {t.text}
+                      {t.job_number ? <span className="mono" style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {t.job_number}</span> : null}
+                      <span className="badge" style={{ marginLeft: 8 }}>{presetLabel(t.preset)}</span>
+                    </div>
+                    {t.extra && <div className="mono" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 3 }}>Direction: {t.extra}</div>}
+                  </div>
                   <button className="btn sm" onClick={() => copy(t.text)}><Icon name="doc" size={13} /> Copy</button>
-                  <button className="btn sm" onClick={() => setEditing({ id: t.id, text: t.text, job_number: t.job_number || '' })}><Icon name="sliders" size={13} /> Edit</button>
-                  <button className="btn sm" onClick={() => setSending(sending?.id === t.id ? null : { id: t.id, channels: { longform: true, shortform: true, tvradio: false, blog: false }, extra: '' })}><Icon name="send" size={13} /> {sendLabel || 'Send to script'}</button>
+                  <button className="btn sm" onClick={() => setEditing({ id: t.id, text: t.text, job_number: t.job_number || '', preset: t.preset || 'episode', extra: t.extra || '' })}><Icon name="sliders" size={13} /> Edit</button>
+                  <button className="btn sm" onClick={() => sendToScript(t)}><Icon name="send" size={13} /> {sendLabel || 'Send to script'}</button>
                   <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => remove(t.id)}><Icon name="close" size={13} /> Delete</button>
-                </>
+                </div>
               )}
-              {sending?.id === t.id && !editing && (
-              <div className="row" style={{ flex: '1 1 100%', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface)', marginTop: 6 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div className="label" style={{ fontSize: 10 }}>CHANNELS</div>
-                  {[['longform', 'Longform (LF)'], ['shortform', 'Shortform (SF ×3)'], ['tvradio', 'TV / Radio (×3)'], ['blog', 'Blog']].map(([k, lab]) => (
-                    <label key={k} className="mono" style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={!!sending.channels[k]}
-                        onChange={() => setSending({ ...sending, channels: { ...sending.channels, [k]: !sending.channels[k] } })} />
-                      {lab}
-                    </label>
-                  ))}
-                </div>
-                <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div className="label" style={{ fontSize: 10 }}>CONTENT DIRECTION (optional)</div>
-                  <textarea value={sending.extra} onChange={(e) => setSending({ ...sending, extra: e.target.value })}
-                    placeholder="Any angle, offer, or detail to steer this batch…"
-                    style={{ ...inp, minHeight: 54, resize: 'vertical', fontFamily: 'inherit' }} />
-                </div>
-                <button className="btn primary sm" style={{ alignSelf: 'flex-end' }} onClick={() => sendToScript(t)}><Icon name="send" size={13} /> Send</button>
-              </div>
-            )}
             </div>
           ))}
         </div>

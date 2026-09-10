@@ -208,9 +208,13 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     setTopic(t.text || '');
     setJobNumber(t.job_number || '');
     setEpisodeNumber(t.episode_number || '');
-    if (Array.isArray(t.channels) && t.channels.length) {
-      // The Topics queue hands off a raw channel list — map it to the closest
-      // generation preset (an Episode topic wins if longform is in the mix).
+    if (t.preset && GENERATION_PRESETS.some((p) => p.key === t.preset)) {
+      // The topic's own saved generation type (added with the topic itself,
+      // not chosen again at send time).
+      setPreset(t.preset);
+    } else if (Array.isArray(t.channels) && t.channels.length) {
+      // Back-compat: an older topic-queue hand-off shape (raw channel list,
+      // pre-dating the saved `preset` field) — map to the closest preset.
       if (t.channels.includes('longform')) setPreset('episode');
       else if (t.channels.includes('static')) setPreset('static');
       else if (t.channels.includes('tvradio')) setPreset('tvradio');
