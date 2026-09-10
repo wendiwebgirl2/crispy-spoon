@@ -418,3 +418,33 @@
   @keyframes fadeIn { from { transform: translateY(4px); } to { transform: none; } }
 
 [contenteditable][data-ph]:empty:before { content: attr(data-ph); color: var(--text-4); pointer-events: none; }
+
+/* —— responsive —————————————————————————————————————————————
+   Screens like Scripts/Studio/Episodes lay out as a main column plus a
+   fixed 320px right rail (client picker, PAMW fields, topics queue, cast
+   settings). On a narrower window that fixed column has nowhere to shrink
+   to, so its content gets squeezed/cut off. `.rail-320` marks the grid
+   container; below the breakpoint it collapses to one stacked column.
+   `.rail-aside-320` marks the right-rail panel itself and swaps its left
+   border for a top border once it's stacked under the main content.
+   The !important is deliberate: these containers set gridTemplateColumns/
+   borderLeft inline (computed alongside other per-view layout values), and
+   only an author !important rule can win over an inline declaration. */
+@media (max-width: 980px) {
+  .rail-320 { grid-template-columns: 1fr !important; }
+  .rail-aside-320 {
+    border-left: none !important;
+    border-top: 1px solid var(--border) !important;
+  }
+}
+
+/* Shell chrome: keep the sidebar + header usable instead of squeezing the
+   view underneath them as the window narrows. */
+@media (max-width: 900px) {
+  :root { --pad: 18px; }
+  .hd-search { width: 160px; }
+}
+@media (max-width: 760px) {
+  .shell { grid-template-columns: 190px 1fr !important; }
+  .hd-search { display: none; }
+}

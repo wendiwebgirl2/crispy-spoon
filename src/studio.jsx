@@ -879,7 +879,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       {renderMode === 'assembly'
         ? <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}><EpisodesView activeClientId={clientId} /></div>
         : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', flex: 1, minHeight: 0 }}>
+          <div className="rail-320" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', flex: 1, minHeight: 0 }}>
             {/* —— center: script editor + queue —— */}
             <div style={{ overflow: 'auto', padding: 'var(--pad)' }}>
               <div className="row" style={{ justifyContent: 'space-between', marginBottom: 24 }}>
@@ -923,7 +923,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   // cropped the avatar (object-fit: cover) — the "too short" preview.
                   width: aspectRatio === '9:16' ? 240 : (aspectRatio === '1:1' ? 320 : 'min(100%, 569px)')
                 }}>
-                  <AvatarTile avatar={avatar} />
+                  <AvatarTile avatar={avatar} fit="auto" />
                   <div style={{ position: 'absolute', bottom: 16, left: 16, right: 16 }}>
                     <div style={{
                       background: 'rgba(0,0,0,0.6)',
@@ -1056,7 +1056,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
               </div>
             )}
             {/* —— right rail: settings —— */}
-            <div style={{ borderLeft: '1px solid var(--border)', padding: 'var(--pad)', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+            <div className="rail-aside-320" style={{ borderLeft: '1px solid var(--border)', padding: 'var(--pad)', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
               <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <div className="label">{castType === 'audio' ? 'RECORDING' : 'AVATAR'}</div>
                 <button className="btn sm" onClick={() => loadClient(clientId)} title="Reload avatars and recordings">
@@ -1809,7 +1809,7 @@ function MontageBuilder({ clientId }) {
   const fld = { height: 34, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 'var(--gap)', marginTop: 20, alignItems: 'start' }}>
+    <div className="rail-320" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 'var(--gap)', marginTop: 20, alignItems: 'start' }}>
       {/* LEFT — the ordered montage + ways to add to it */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div className="card card-pad">

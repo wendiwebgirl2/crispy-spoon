@@ -1094,7 +1094,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   }
 
   return (
-    <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', height: '100%', minHeight: 0 }}>
+    <div className="fade-in rail-320" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', height: '100%', minHeight: 0 }}>
       {/* —— center: new episode + open episode workspace —— */}
       <div style={{ overflow: 'auto', padding: 'var(--pad)' }}>
       {onBackToStudio && <button className="btn sm" style={{ marginBottom: 10 }} onClick={onBackToStudio}><Icon name="arrow-l" size={12} /> Studio</button>}
@@ -1134,7 +1134,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
       </div>
 
       {/* —— right rail: episodes, most recent first —— */}
-      <div style={{ borderLeft: '1px solid var(--border)', padding: 'var(--pad)', overflow: 'auto' }}>
+      <div className="rail-aside-320" style={{ borderLeft: '1px solid var(--border)', padding: 'var(--pad)', overflow: 'auto' }}>
         <div className="label" style={{ marginBottom: 10 }}>EPISODES</div>
         {loading ? (
           <div className="mono" style={{ color: 'var(--text-3)' }}>Loading…</div>

@@ -195,6 +195,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [manualChannel, setManualChannel] = useState('longform');
   const [manualTopic, setManualTopic] = useState('');
   const [manualBody, setManualBody] = useState('');
+  const manualBodyRef = useRef(null);
 
   // Topic handed off from the Brief's Topics queue. Preload it into the topic
   // field and remember its queue id — the queue entry is deleted only after a
@@ -588,7 +589,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   }
 
   return (
-    <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', height: '100%', minHeight: 0 }}>
+    <div className="fade-in rail-320" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', height: '100%', minHeight: 0 }}>
       {/* —— center: generator + results + history —— */}
       <div style={{ overflow: 'auto', padding: 'var(--pad)' }}>
         <div ref={topRef} />
@@ -677,10 +678,11 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
             </div>
             <input className="textarea" value={manualTopic} onChange={(e) => setManualTopic(e.target.value)}
               placeholder="Topic (optional)" style={{ minHeight: 0, height: 40, fontSize: 14, marginBottom: 8 }} />
-            <textarea className="textarea" value={manualBody} onChange={(e) => setManualBody(e.target.value)}
-              placeholder="Paste or write the script…" style={{ minHeight: 120, fontSize: 14, marginBottom: 10 }} />
+            <textarea ref={manualBodyRef} className="textarea" value={manualBody} onChange={(e) => setManualBody(e.target.value)}
+              placeholder="Paste or write the script…" style={{ minHeight: 120, fontSize: 14 }} />
+            <ExpressionTags value={manualBody} onChange={setManualBody} textareaRef={manualBodyRef} />
             <button className="btn primary" onClick={addManual} disabled={busy || !manualBody.trim()}
-              style={{ opacity: (busy || !manualBody.trim()) ? 0.5 : 1 }}>
+              style={{ marginTop: 10, opacity: (busy || !manualBody.trim()) ? 0.5 : 1 }}>
               <Icon name="plus" size={13} /> Save script
             </button>
           </div>
@@ -839,7 +841,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       </div>
 
       {/* —— right rail: client + PAMW source of truth —— */}
-      <div style={{ borderLeft: '1px solid var(--border)', padding: 'var(--pad)', overflow: 'auto' }}>
+      <div className="rail-aside-320" style={{ borderLeft: '1px solid var(--border)', padding: 'var(--pad)', overflow: 'auto' }}>
         <div className="label" style={{ marginBottom: 10 }}>CLIENT</div>
         <select value={clientId || ''} onChange={(e) => { const v = Number(e.target.value) || e.target.value; setClientId(v); onSelectClient && onSelectClient(v); }}
           className="textarea" style={{ minHeight: 0, height: 40, fontSize: 14, marginBottom: 22, width: '100%' }}>

@@ -154,11 +154,31 @@ const paletteForId = (id) => {
   return AVATAR_PALETTES[idx];
 };
 
-const AvatarTile = ({ avatar, size = 'md', playing }) => {
+// fit: 'cover' (default — crop to fill, right for small square/round chips)
+// | 'contain' (always letterbox, never crop)
+// | 'auto' (letterbox ONLY when the image's own orientation doesn't match the
+//   tile's — e.g. a vertical/portrait look dropped into a 16:9 horizontal
+//   cast preview. Matching orientations still crop-to-fill as before, so a
+//   landscape photo in a landscape tile looks the same as it always has.)
+const AvatarTile = ({ avatar, size = 'md', playing, fit = 'cover' }) => {
   // 3-letter monogram: first letter of first name + first two letters of last name
   const parts = ((avatar && avatar.contact) || 'Avatar').split(' ');
   const initials = (parts[0]?.[0] || '') + (parts[parts.length - 1] || '').slice(0, 2);
   const p = paletteForId(avatar.id);
+  const [autoContain, setAutoContain] = React.useState(false);
+  const onImgLoad = (e) => {
+    if (fit !== 'auto') return;
+    const el = e.currentTarget;
+    const box = el.parentElement;
+    if (!el.naturalWidth || !el.naturalHeight || !box || !box.clientWidth || !box.clientHeight) return;
+    const imgIsPortrait = el.naturalHeight > el.naturalWidth;
+    const boxIsPortrait = box.clientHeight > box.clientWidth;
+    // Orientation mismatch (a vertical look in a horizontal tile, or vice
+    // versa) — cropping would cut off most of the subject, so fit the whole
+    // image inside the tile instead of covering it.
+    setAutoContain(imgIsPortrait !== boxIsPortrait);
+  };
+  const resolvedFit = fit === 'auto' ? (autoContain ? 'contain' : 'cover') : fit;
   return (
     <div style={{
       position: 'relative', width: '100%', height: '100%',
@@ -177,8 +197,9 @@ const AvatarTile = ({ avatar, size = 'md', playing }) => {
         <img
           src={avatar.thumbnail_url || avatar.image_url}
           alt={(avatar && avatar.contact) || 'Avatar'}
+          onLoad={onImgLoad}
           onError={(e) => { e.currentTarget.style.display = 'none'; }}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: resolvedFit }}
         />
       )}
       {/* initials chip */}
@@ -299,31 +320,74 @@ function ensureOperatorName() {
   return n;
 }
 
-// Expression + pause tags for the voice engine (HeyGen renders the avatar's
-// Fish S2 Pro voice). <break> is the ONLY wrapper tag HeyGen accepts - it
-// controls pauses; the [square-bracket] cues are Fish S2 expression tags read
-// inline. Tags pass through the cast-time spoken normalisation untouched and are
-// stripped from the client approval view (see spoken.js stripTags on the server).
+// Expression + pause tags for the voice engines. <break> is a pause and is
+// honored by both HeyGen and ElevenLabs. [square-bracket] cues are ElevenLabs
+// audio tags — the full set ElevenLabs documents at
+// elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices,
+// mirrored (in cue:creative styling) at the GUIDE_URL below. They're only
+// ACTED ON when the copy is cast through ElevenLabs on the eleven_v3 model
+// (auto-selected server-side whenever a tag is present — see
+// voice/elevenlabs.js); a HeyGen avatar render still reads them aloud as
+// literal text, so they're stripped before reaching HeyGen (see spoken.js).
+// Tags are always stripped from the client-facing approval view either way.
 const PAUSE_TAGS = [
   { label: '0.5s pause', tag: '<break time="0.5s"/>' },
   { label: '1s pause', tag: '<break time="1s"/>' },
   { label: '2s pause', tag: '<break time="2s"/>' },
 ];
+// Grouped per ElevenLabs' own categorization of the eleven_v3 audio tag set.
+const EXPRESSION_GROUPS = [
+  {
+    label: 'Emotion & delivery',
+    tags: ['happy', 'sad', 'excited', 'angry', 'annoyed', 'appalled', 'thoughtful', 'surprised', 'sarcastic', 'curious', 'crying', 'mischievously', 'whispers'],
+  },
+  {
+    label: 'Non-verbal',
+    tags: ['laughs', 'laughs harder', 'starts laughing', 'wheezing', 'chuckles', 'sighs', 'exhales', 'exhales sharply', 'inhales deeply', 'clears throat', 'snorts', 'short pause', 'long pause'],
+  },
+  {
+    label: 'Sound effects',
+    tags: ['applause', 'clapping', 'gunshot', 'explosion', 'swallows', 'gulps'],
+  },
+  {
+    label: 'Special / experimental',
+    tags: ['sings', 'woo', 'fart'],
+  },
+];
+// "strong X accent" needs a fill-in — inserted with "accent" pre-selected so
+// typing immediately replaces it (e.g. type "French" → [strong French accent]).
+const ACCENT_TAG = { label: 'Strong [accent]', tag: '[strong accent]', selectWord: 'accent' };
 // Any angle-bracket tag that is NOT <break> risks HeyGen audio artifacts.
 const BAD_WRAPPER_RE = /<(?!\s*break\b)[a-z][^>]*>/i;
+const GUIDE_URL = 'https://cast.cuecreative.com/voice-guide.html';
 
 const ExpressionTags = ({ value, onChange, textareaRef }) => {
   const [open, setOpen] = React.useState(false);
-  const insert = (tag) => {
+  const [custom, setCustom] = React.useState('');
+  const insert = (tag, selectWord) => {
     const el = textareaRef && textareaRef.current;
     const v = value || '';
+    const place = (start, len) => {
+      requestAnimationFrame(() => {
+        try { el.focus(); el.setSelectionRange(start, start + len); } catch (_) { /* noop */ }
+      });
+    };
     if (!el) { onChange(v + (v && !v.endsWith(' ') ? ' ' : '') + tag + ' '); return; }
     const s = el.selectionStart == null ? v.length : el.selectionStart;
     const e = el.selectionEnd == null ? v.length : el.selectionEnd;
     onChange(v.slice(0, s) + tag + v.slice(e));
-    requestAnimationFrame(() => {
-      try { el.focus(); const p = s + tag.length; el.setSelectionRange(p, p); } catch (_) { /* noop */ }
-    });
+    if (selectWord) {
+      const at = tag.indexOf(selectWord);
+      if (at >= 0) { place(s + at, selectWord.length); return; }
+    }
+    const p = s + tag.length;
+    place(p, 0);
+  };
+  const insertCustom = () => {
+    const raw = custom.trim().replace(/^\[+|\]+$/g, '').trim();
+    if (!raw) return;
+    insert(`[${raw}]`);
+    setCustom('');
   };
   const warn = BAD_WRAPPER_RE.test(value || '');
   const chip = { fontSize: 11, padding: '2px 8px' };
@@ -334,7 +398,14 @@ const ExpressionTags = ({ value, onChange, textareaRef }) => {
         {PAUSE_TAGS.map((p) => (
           <button key={p.tag} type="button" className="btn sm" style={chip} onClick={() => insert(p.tag)}>{p.label}</button>
         ))}
-        <button type="button" className="btn sm" style={{ ...chip, marginLeft: 'auto' }} onClick={() => setOpen(!open)}>{open ? 'Hide help' : 'What are these?'}</button>
+        <span style={{ width: 1, height: 14, background: 'var(--border)', flex: 'none' }} />
+        <button type="button" className="btn sm" style={chip} onClick={() => setOpen(!open)}>
+          {open ? 'Hide expressions' : 'Expressions ▾'}
+        </button>
+        <a href={GUIDE_URL} target="_blank" rel="noopener noreferrer" className="mono"
+          style={{ fontSize: 11, color: 'var(--accent)', marginLeft: 'auto' }}>
+          Voice &amp; expression guide ↗
+        </a>
       </div>
       {warn && (
         <div className="mono" style={{ fontSize: 11, color: 'var(--accent)', marginTop: 6 }}>
@@ -342,9 +413,32 @@ const ExpressionTags = ({ value, onChange, textareaRef }) => {
         </div>
       )}
       {open && (
-        <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.7, marginTop: 6, padding: 10, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)' }}>
-          <div style={{ marginBottom: 4 }}><strong>Pauses</strong> - insert <code>&lt;break time="1s"/&gt;</code> anywhere to add a pause; the time is in seconds. Works when the chosen voice supports pauses.</div>
-          <div>Inline expression cues (e.g. [excited]) aren't supported by HeyGen's text API, so they're removed before the render - pauses only for now. Tags are also stripped from the client's approval view.</div>
+        <div style={{ marginTop: 6, padding: 10, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)' }}>
+          <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 8 }}>
+            Click to insert at the cursor. Honored on ElevenLabs audio casts (switches this cast to the ElevenLabs v3 model) — a HeyGen avatar render still reads them aloud as plain text, so save expressions for audio-only casts and podcast narration.
+          </div>
+          {EXPRESSION_GROUPS.map((g) => (
+            <div key={g.label} style={{ marginBottom: 8 }}>
+              <div className="mono" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-4)', marginBottom: 4 }}>{g.label}</div>
+              <div className="row" style={{ gap: 5, flexWrap: 'wrap' }}>
+                {g.tags.map((t) => (
+                  <button key={t} type="button" className="btn sm" style={chip} title={`Insert [${t}]`} onClick={() => insert(`[${t}]`)}>{t}</button>
+                ))}
+                {g.label === 'Special / experimental' && (
+                  <button type="button" className="btn sm" style={chip} title="Insert [strong accent] with “accent” selected — type to replace"
+                    onClick={() => insert(ACCENT_TAG.tag, ACCENT_TAG.selectWord)}>{ACCENT_TAG.label}</button>
+                )}
+              </div>
+            </div>
+          ))}
+          <div className="row" style={{ gap: 6, marginTop: 4 }}>
+            <input value={custom} onChange={(e) => setCustom(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); insertCustom(); } }}
+              placeholder="Custom expression, e.g. deadpan"
+              className="mono"
+              style={{ flex: 1, minWidth: 0, fontSize: 12, padding: '5px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border-strong)', background: 'var(--surface-2)', color: 'var(--text)' }} />
+            <button type="button" className="btn sm" style={chip} disabled={!custom.trim()} onClick={insertCustom}>Insert</button>
+          </div>
         </div>
       )}
     </div>
