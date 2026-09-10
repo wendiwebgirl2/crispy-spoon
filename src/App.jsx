@@ -16,6 +16,7 @@ import { EpisodesView } from './episodes.jsx'
 import { OnboardingView } from './onboarding.jsx'
 import { SettingsView } from './settings.jsx'
 import { ActivityLogView } from './activity.jsx'
+import { TaskStatusView } from './task-status.jsx'
 import { ProductionReportView } from './report.jsx'
 
 const NAV = [
@@ -43,6 +44,7 @@ const HEADER_TITLES = {
   changes:         { title: 'Client changes',  sub: 'requested changes across every client — newest first' },
   attention:       { title: 'Needs attention',  sub: 'clients & tasks waiting on you — newest first' },
   report:          { title: 'Production report', sub: 'all production in a date range — printable' },
+  'task-status':   { title: 'Task Status',     sub: 'onboarding tasks — check them off as you go' },
   activity:        { title: 'Activity log',    sub: 'every action across the dashboard — newest first' },
 };
 
@@ -269,7 +271,6 @@ function App() {
     if (soloClientId != null) { setActiveClientId((cur) => (cur == null ? soloClientId : cur)); setView((v) => (v === 'clients' ? 'brief' : v)); }
   }, [soloClientId]);
   const [alerts, setAlerts] = React.useState(null);
-  const [myTasks, setMyTasks] = React.useState([]);
   const [attnFilter, setAttnFilter] = React.useState(null);
   const prevAttnRef = React.useRef(null);
   // Short chime via Web Audio — plays when the needs-attention count rises.
@@ -297,9 +298,8 @@ function App() {
       if (prevAttnRef.current !== null && cur > prevAttnRef.current) chime();
       prevAttnRef.current = cur;
     }).catch(() => {});
-    const loadTasks = () => api.myTasks().then((t) => { if (live) setMyTasks(Array.isArray(t) ? t : []); }).catch(() => {});
-    load(); loadTasks();
-    const t = setInterval(() => { load(); loadTasks(); }, 60000);
+    load();
+    const t = setInterval(load, 60000);
     return () => { live = false; clearInterval(t); };
   }, [view, chime]);
   const [activeClientName, setActiveClientName] = React.useState('');
@@ -394,27 +394,19 @@ function App() {
                 </div>
               ))}
             </div>
-            {myTasks.length > 0 && (
-              <>
-                <div className="side-section" style={{ marginTop: 14 }}>MY TASKS</div>
-                <div className="side-nav">
-                  {myTasks.slice(0, 8).map((tk) => (
-                    <div key={tk.id} className="nav-item" style={{ cursor: 'pointer' }}
-                      onClick={() => { setActiveClientId(tk.client_id); setAttnFilter(null); setView('brief'); }}
-                      title={tk.label + ' · ' + tk.client_name}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flex: 'none', marginRight: 8 }} />
-                      <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{tk.label}</span>
-                      <span className="nav-count" style={{ background: 'transparent', color: 'var(--text-4)', fontWeight: 600, fontSize: 10 }}>{tk.client_name}</span>
-                    </div>
-                  ))}
-                  {myTasks.length > 8 && <div className="nav-item" style={{ cursor: 'default', color: 'var(--text-4)', fontSize: 11 }}>+{myTasks.length - 8} more</div>}
-                </div>
-              </>
-            )}
           </>
         )}
 
         <div className="side-nav" style={{ marginTop: 'auto' }}>
+          <button
+            className={'nav-item' + (view === 'task-status' ? ' active' : '')}
+            onClick={() => setView('task-status')}
+            title="Task Status"
+          >
+            <Icon name="check" size={16} className="nav-icon" style={{ color: view === 'task-status' ? 'var(--accent)' : 'var(--text-3)' }} />
+            <span>Task Status</span>
+            {alerts && alerts.myTasks > 0 && <span className="nav-count">{alerts.myTasks}</span>}
+          </button>
           {me && me.role === 'admin' && (
             <button
               className={'nav-item' + (view === 'activity' ? ' active' : '')}
@@ -500,6 +492,7 @@ function App() {
           {view === 'settings' && <SettingsView />}
           {view === 'changes' && <ChangesView onOpen={(clientId, targetView) => { setActiveClientId(clientId); setView(targetView); }} />}
           {view === 'attention' && <AttentionView onOpen={openAttentionItem} filter={attnFilter} />}
+          {view === 'task-status' && <TaskStatusView me={me} onOpenClient={(clientId) => { setActiveClientId(clientId); setView('brief'); }} />}
           {view === 'activity' && <ActivityLogView me={me} />}
           {view === 'report' && <ProductionReportView />}
           {view === 'billing' && <BillingView />}
