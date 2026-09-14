@@ -1656,9 +1656,9 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
         {meta && meta.approval_status && meta.approval_status !== 'none' && (
           <span className="mono" style={{
             fontSize: 11,
-            color: meta.approval_status === 'approved' ? 'var(--ok)'
+            color: meta.approval_status.startsWith('approved') ? 'var(--ok)'
               : meta.approval_status === 'changes_requested' ? 'var(--accent)' : 'var(--text-4)',
-          }}>{meta.approval_status.replace(/_/g, ' ')}</span>
+          }}>{meta.approval_status === 'approved_with_changes' ? 'approved w/ changes' : meta.approval_status.replace(/_/g, ' ')}</span>
         )}
         <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {meta && meta.job_number ? <span className="mono" style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', marginRight: 6 }}>Job {meta.job_number}</span> : null}
@@ -1683,6 +1683,11 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
           </div>
         )}
         {video.status === 'failed' && <div className="mono" style={{ color: 'var(--accent)', fontSize: 11 }}>{video.failure_reason || 'render failed'}</div>}
+        {meta && meta.approval_comment && (meta.approval_status === 'changes_requested' || meta.approval_status === 'approved_with_changes') && (
+          <div style={{ fontSize: 12, color: 'var(--text-3)', background: 'var(--surface-2)', borderRadius: 6, padding: '6px 8px' }}>
+            <strong>Client notes:</strong> {meta.approval_comment}
+          </div>
+        )}
         <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
           {ready && <a className="btn sm" href={video.url} download target="_blank" rel="noopener noreferrer"><Icon name="download" size={12} /> Video</a>}
           {ready && <button className="btn sm" onClick={onDownloadAudio}><Icon name="mic" size={12} /> Audio</button>}
@@ -1696,7 +1701,7 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
             {onVerifyChanges && (meta || {}).approval_status === 'changes_requested' && (
               <button className="btn sm" onClick={onVerifyChanges} style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}><Icon name="check" size={12} /> Changes verified</button>
             )}
-            {onApprove && (meta || {}).approval_status !== 'approved' && (
+            {onApprove && !['approved', 'approved_with_changes'].includes((meta || {}).approval_status) && (
               <button className="btn sm" onClick={onApprove}><Icon name="check" size={12} /> Approve</button>
             )}
             {onSend && <button className="btn sm" onClick={onSend}><Icon name="send" size={12} /> Send for review</button>}
