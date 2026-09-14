@@ -146,7 +146,6 @@ function BodyCutawayCard({ cid, epId, full, assets = [], busy, onSet, onClear })
   const videoAssets = assets.filter((a) => a.kind === 'video' || /\.(mp4|mov|m4v|webm)$/i.test(a.filename || ''));
   const [assetId, setAssetId] = useState('');
   const [start, setStart] = useState('');
-  const [dur, setDur] = useState('');
   const active = !!full.body_cutaway_path;
 
   if (!full.body_video_path) return null;
@@ -158,11 +157,11 @@ function BodyCutawayCard({ cid, epId, full, assets = [], busy, onSet, onClear })
         {active && <button className="btn sm" onClick={onClear}>Clear</button>}
       </div>
       <div className="mono" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>
-        For the chosen window, the picture cuts full-frame to the montage while the cast's own audio keeps playing, then cuts back — not a small inset box.
+        From the chosen point onward, the picture cuts full-frame to the montage — looped to fill the rest of the main video if it's shorter — while the cast's own audio keeps playing. It runs through to the end of the main recording; there's no separate stop point. The seconds count from the start of the main avatar video itself, not the whole episode (so it lands in the same place regardless of how long the intro runs).
       </div>
       {active ? (
         <div className="mono" style={{ fontSize: 12, color: 'var(--ok)', marginTop: 8 }}>
-          {'✓'} Set — cuts away at {full.body_cutaway_start_sec}s for {full.body_cutaway_duration_sec}s.
+          {'✓'} Set — cuts away at {full.body_cutaway_start_sec}s into the main video, through to the end.
         </div>
       ) : videoAssets.length === 0 ? (
         <div className="mono" style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 8 }}>
@@ -177,15 +176,10 @@ function BodyCutawayCard({ cid, epId, full, assets = [], busy, onSet, onClear })
           <label className="mono" style={{ fontSize: 12, display: 'flex', gap: 5, alignItems: 'center' }}>
             starts at
             <input type="number" min="0" value={start} onChange={(e) => setStart(e.target.value)} style={{ ...inputStyle, width: 64 }} />
-            sec
+            sec into the main video
           </label>
-          <label className="mono" style={{ fontSize: 12, display: 'flex', gap: 5, alignItems: 'center' }}>
-            for
-            <input type="number" min="1" value={dur} onChange={(e) => setDur(e.target.value)} style={{ ...inputStyle, width: 64 }} />
-            sec
-          </label>
-          <button className="btn sm primary" disabled={busy || !assetId || start === '' || dur === ''}
-            onClick={() => onSet(Number(assetId), Number(start), Number(dur))}>
+          <button className="btn sm primary" disabled={busy || !assetId || start === ''}
+            onClick={() => onSet(Number(assetId), Number(start))}>
             Set cutaway
           </button>
         </div>
@@ -327,9 +321,9 @@ function EpisodeEditor({ cid, epId, onChange }) {
     catch (e) { setErr(e.message || 'Could not apply asset.'); }
     finally { setBusy(''); }
   };
-  const setBodyCutaway = async (assetId, startSec, durationSec) => {
+  const setBodyCutaway = async (assetId, startSec) => {
     setBusy('cutaway'); setErr('');
-    try { await ep.setBodyCutaway(cid, epId, assetId, startSec, durationSec); await refresh(); }
+    try { await ep.setBodyCutaway(cid, epId, assetId, startSec); await refresh(); }
     catch (e) { setErr(e.message || 'Could not set the cutaway.'); }
     finally { setBusy(''); }
   };
@@ -478,6 +472,13 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const genMusic = async () => {
     setBusy('music'); setErr('');
     try { await ep.genMusic(cid, epId, { prompt: musicPrompt, mode: musicMode }); await refresh(); }
+    catch (e) { setErr(e.message); } finally { setBusy(''); }
+  };
+  // Switch mode on music that's ALREADY set, without re-uploading/regenerating
+  // it — doUpload only persists the mode alongside a fresh file.
+  const saveMusicMode = async () => {
+    setBusy('music'); setErr('');
+    try { await ep.musicMode(cid, epId, musicMode); await refresh(); }
     catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
   const useVideo = async (slot, videoUrl) => {
@@ -682,7 +683,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
           <select value={musicMode} onChange={(e) => setMusicMode(e.target.value)} style={{ ...inputStyle, width: 240 }}>
             <option value="segment">Segment (before body)</option>
             <option value="bed">Bed (under narration)</option>
+            <option value="bookend">Bookend (under intro + outro only)</option>
           </select>
+          {musicSet && musicMode !== (full.music_mode || 'segment') && (
+            <button className="btn sm" onClick={saveMusicMode} disabled={busy === 'music'}>Save mode</button>
+          )}
           {assets.length > 0 && (
             <select value="" onChange={(e) => { if (e.target.value) applyAsset(Number(e.target.value), 'music'); }} style={{ ...inputStyle, width: 200 }}>
               <option value="">Client asset…</option>
