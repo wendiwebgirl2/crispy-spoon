@@ -192,6 +192,26 @@ export async function castAudioBlob(videoUrl) {
   return resp.blob();
 }
 
+// Download a copy of a rendered avatar video with its audio track boosted
+// (HeyGen owns the voice for a video cast, so this is the only lever — a
+// post-render pass, same idea as the ElevenLabs audio-cast Volume control
+// but applied after the fact since HeyGen's API has no gain setting at
+// render time). The original cast is untouched; this is a separate download.
+export async function castBoostedVideoBlob(videoUrl, gainDb) {
+  const resp = await fetch("/api/tools/video-boost-from-url", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: videoUrl, gainDb }),
+  });
+  if (!resp.ok) {
+    let msg = "volume boost failed";
+    try { const j = await resp.json(); msg = j.error || msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return resp.blob();
+}
+
 // Render an audiogram (frequency-bar waveform) video from a cast video URL.
 export async function castWaveformBlob(mediaUrl, coverUrl) {
   const resp = await fetch("/api/tools/waveform-from-url", {

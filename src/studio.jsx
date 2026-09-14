@@ -4,7 +4,7 @@
 // cast.cuecreative.com Episodes tab.
 
 import React from 'react'
-import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
+import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, castBoostedVideoBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
 import { clientToken, voice } from './dashboard-api.js'
 import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, buildMotionPrompt } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
@@ -756,6 +756,16 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       await saveBlobWithPrompt(blob, ((v.title || 'cast').replace(/[^\w-]+/g, '_')).slice(0, 40) + '-waveform.mp4');
     } catch (e) { alert(e.message || 'Could not render waveform'); }
   };
+  // A separate boosted download — HeyGen owns the voice on a video cast, so
+  // there's no gain control at render time; this downloads a copy with the
+  // audio boosted, leaving the original cast untouched.
+  const downloadBoosted = async (v) => {
+    if (!v.url) return;
+    try {
+      const blob = await castBoostedVideoBlob(v.url, 6);
+      await saveBlobWithPrompt(blob, ((v.title || 'cast').replace(/[^\w-]+/g, '_')).slice(0, 40) + '-boosted.mp4');
+    } catch (e) { alert(e.message || 'Could not boost the volume'); }
+  };
 
   const reloadAudio = async () => {
     if (clientId == null) return;
@@ -1012,7 +1022,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                   {queue.map(v => (
                     <CastCard key={v.id} video={v} avatars={avatars} meta={castMeta[v.id]}
-                      onRename={() => renameCast(v)} onEdit={() => openEditCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} onWaveform={() => downloadWaveform(v)}
+                      onRename={() => renameCast(v)} onEdit={() => openEditCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} onWaveform={() => downloadWaveform(v)} onBoost={() => downloadBoosted(v)}
                       onApprove={() => approveCast(v)} onVerifyChanges={() => verifyCastChanges(v)} onSend={() => sendCastForReview(v)} onPlanner={() => addCastToPlanner(v)} />
                   ))}
                 </div>
@@ -1630,7 +1640,7 @@ const Crumb = ({ label, onClick }) => (
   </button>
 );
 
-const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDownloadAudio, onWaveform, onApprove, onVerifyChanges, onSend, onPlanner }) => {
+const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDownloadAudio, onWaveform, onBoost, onApprove, onVerifyChanges, onSend, onPlanner }) => {
   const avatar = (avatars || []).find(a => a.id === video.avatarId) || { id: video.avatarId || 'na', contact: video.title || 'Avatar' };
   const ready = video.status === 'ready' && video.url;
   return (
@@ -1677,6 +1687,7 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
           {ready && <a className="btn sm" href={video.url} download target="_blank" rel="noopener noreferrer"><Icon name="download" size={12} /> Video</a>}
           {ready && <button className="btn sm" onClick={onDownloadAudio}><Icon name="mic" size={12} /> Audio</button>}
           {ready && <button className="btn sm" onClick={onWaveform}><Icon name="sliders" size={12} /> Waveform</button>}
+          {ready && onBoost && <button className="btn sm" onClick={onBoost} title="Download a copy with the audio boosted +6dB — the original cast is untouched"><Icon name="sparkle" size={12} /> Boost +6dB</button>}
           <button className="btn sm" onClick={onEdit || onRename}><Icon name="sliders" size={12} /> Edit</button>
           <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={onDelete}><Icon name="close" size={12} /> Delete</button>
         </div>
