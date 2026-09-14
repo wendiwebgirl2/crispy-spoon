@@ -320,6 +320,23 @@ function ensureOperatorName() {
   return n;
 }
 
+// Delivery guidance applied to EVERY avatar cast (HeyGen's motion_prompt),
+// layered in ADDITION to whatever delivery preset or custom motion prompt the
+// operator picks for that cast — never a replacement for it. No admin UI for
+// this yet; edit the constant below to change it for every future cast.
+const GLOBAL_MOTION_PROMPT =
+  'Role & Tone: Professional, warm, and composed presenter delivering clear, engaging messaging.\n\n' +
+  'Camera & Eye Contact: Maintain steady, direct eye contact with the camera lens throughout the entire delivery. Keep head movements subtle and natural without tilting or turning away from the frame.\n\n' +
+  'Facial & Mouth Control: Maintain a relaxed, neutral mouth position with light lip closure between phrases. Speak with soft, fluid lip movements—avoid wide mouth openings, exaggerated enunciation, or full-smile dental displays. Rest the jaw naturally; keep smiles subtle and closed-lip or slight half-smiles.\n\n' +
+  'Gestures & Posture: Integrate deliberate, natural open-palm hand gestures at key emphasis points, keeping hands within the chest and lower-frame area. Avoid rapid, constant, or repetitive hand movements. Maintain upright, relaxed body posture with steady shoulders.';
+
+// Every cast site builds its motion_prompt through this — combines the
+// always-on global guidance with that cast's own preset/custom prompt (which
+// may be empty; the global block alone is still a valid, non-empty prompt).
+function buildMotionPrompt(perCastPrompt) {
+  return [GLOBAL_MOTION_PROMPT, String(perCastPrompt || '').trim()].filter(Boolean).join('\n\n');
+}
+
 // Expression + pause tags for the voice engines. <break> is a pause and is
 // honored by both HeyGen and ElevenLabs. [square-bracket] cues are ElevenLabs
 // audio tags — the full set ElevenLabs documents at
@@ -509,6 +526,7 @@ function SendReviewModal({ open, title, busy, onSend, onClose }) {
 export {
   SendReviewModal,
   ExpressionTags,
+  buildMotionPrompt,
   buildArchiveZip,
   downloadWithPrompt,
   saveBlobWithPrompt,

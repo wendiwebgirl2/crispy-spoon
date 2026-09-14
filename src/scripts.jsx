@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { api, generateVideo, listVideos } from './api.js'
 import { clientToken } from './dashboard-api.js'
-import { Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip, SendReviewModal } from './shared.jsx'
+import { Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip, SendReviewModal, buildMotionPrompt } from './shared.jsx'
 import { TopicsSection } from './brief.jsx'
 
 const CHANNEL_FALLBACK = [
@@ -467,7 +467,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         await generateVideo(h.body, {
           token: avatar._token, avatarId: avatar.id, title: castTitleFor(h),
           aspectRatio: aspect, engine: castEngine, expressiveness: castExpr,
-          motionPrompt: DELIVERY_PROMPTS[castDelivery] || undefined,
+          motionPrompt: buildMotionPrompt(DELIVERY_PROMPTS[castDelivery]),
         });
         const afterRes = await listVideos(avatar._token).catch(() => ({ videos: [] }));
         const fresh = (afterRes.videos || []).find((v) => !before.has(v.id));

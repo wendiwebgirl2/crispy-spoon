@@ -6,7 +6,7 @@
 import React from 'react'
 import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
 import { clientToken, voice } from './dashboard-api.js'
-import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal } from './shared.jsx'
+import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, buildMotionPrompt } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
 import { LookPicker, AssetsSection } from './brief.jsx'
 
@@ -97,6 +97,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [recasting, setRecasting] = React.useState(false);
   const [voiceProfiles, setVoiceProfiles] = React.useState([]);
   const [voiceProfileId, setVoiceProfileId] = React.useState('');
+  const [volumeBoost, setVolumeBoost] = React.useState(0);   // dB, ElevenLabs audio casts only — 0 = untouched
   const [audioOutputs, setAudioOutputs] = React.useState([]);
   const [synthing, setSynthing] = React.useState(false);
   const [audioErr, setAudioErr] = React.useState('');
@@ -726,7 +727,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
         aspectRatio: editCastAspect,
         engine,
         expressiveness,
-        motionPrompt: (customMotion.trim() || DELIVERY_PROMPTS[delivery] || undefined),
+        motionPrompt: buildMotionPrompt(customMotion.trim() || DELIVERY_PROMPTS[delivery]),
       });
       setEditCast(null); await reloadQueue();
     } catch (e) { alert(e.message || 'Recast failed'); }
@@ -765,7 +766,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     if (!voiceProfileId) { setAudioErr('Pick or create a voice for this client first.'); return; }
     setSynthing(true); setAudioErr('');
     try {
-      await voice.synthesize(clientId, Number(voiceProfileId), script.trim());
+      await voice.synthesize(clientId, Number(voiceProfileId), script.trim(), volumeBoost || undefined);
       await reloadAudio();
     } catch (e) {
       setAudioErr(e.message || 'Could not synthesize audio.');
@@ -792,7 +793,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     setGenerating(true);
     try {
       const before = new Set(queue.map((q) => q.id));
-      await generateVideo(script, { token, title: castTitle.trim() || script.slice(0, 60), avatarId, caption, background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null, aspectRatio, backgroundAssetId, engine, expressiveness, motionPrompt: (customMotion.trim() || DELIVERY_PROMPTS[delivery] || undefined) });
+      await generateVideo(script, { token, title: castTitle.trim() || script.slice(0, 60), avatarId, caption, background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null, aspectRatio, backgroundAssetId, engine, expressiveness, motionPrompt: buildMotionPrompt(customMotion.trim() || DELIVERY_PROMPTS[delivery]) });
       const v = await listVideos(token).catch(() => ({ videos: [] }));
       setQueue(v.videos || []);
       // Register the job number on the newly created cast's local mirror so it
@@ -1329,11 +1330,20 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
               ) : (
                 <div className="col" style={{ gap: 8 }}>
                   {voiceProfiles.length > 0 ? (
-                    <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                    <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                       <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>Voice</span>
                       <select value={voiceProfileId} onChange={(e) => setVoiceProfileId(e.target.value)}
-                        style={{ flex: 1, padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 }}>
+                        style={{ flex: 1, minWidth: 120, padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 }}>
                         {voiceProfiles.map((p) => <option key={p.id} value={p.id}>{p.label || ('Voice ' + p.id)}</option>)}
+                      </select>
+                      <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }} title="Post-process gain applied to the rendered audio — leave at Normal unless the take comes back quiet.">Volume</span>
+                      <select value={volumeBoost} onChange={(e) => setVolumeBoost(Number(e.target.value))}
+                        style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 }}>
+                        <option value={0}>Normal</option>
+                        <option value={3}>+3dB</option>
+                        <option value={6}>+6dB (boost)</option>
+                        <option value={9}>+9dB</option>
+                        <option value={12}>+12dB (max)</option>
                       </select>
                     </div>
                   ) : (

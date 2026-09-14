@@ -137,6 +137,63 @@ function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = 
   );
 }
 
+// A B-roll cutaway over the main avatar cast — for [start, start+duration) the
+// stitcher cuts the picture to a montage (any video-kind client asset, e.g. a
+// rendered montage) full-frame while the body's own audio keeps playing, then
+// cuts back. Only shown once the body slot actually holds a video — a cutaway
+// makes no sense over an audio-only or image-card body.
+function BodyCutawayCard({ cid, epId, full, assets = [], busy, onSet, onClear }) {
+  const videoAssets = assets.filter((a) => a.kind === 'video' || /\.(mp4|mov|m4v|webm)$/i.test(a.filename || ''));
+  const [assetId, setAssetId] = useState('');
+  const [start, setStart] = useState('');
+  const [dur, setDur] = useState('');
+  const active = !!full.body_cutaway_path;
+
+  if (!full.body_video_path) return null;
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 10, marginTop: -4 }}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontWeight: 600, fontSize: 13 }}>Montage cutaway over the main cast</div>
+        {active && <button className="btn sm" onClick={onClear}>Clear</button>}
+      </div>
+      <div className="mono" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>
+        For the chosen window, the picture cuts full-frame to the montage while the cast's own audio keeps playing, then cuts back — not a small inset box.
+      </div>
+      {active ? (
+        <div className="mono" style={{ fontSize: 12, color: 'var(--ok)', marginTop: 8 }}>
+          {'✓'} Set — cuts away at {full.body_cutaway_start_sec}s for {full.body_cutaway_duration_sec}s.
+        </div>
+      ) : videoAssets.length === 0 ? (
+        <div className="mono" style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 8 }}>
+          No montage or other video asset for this client yet — render one first (Studio → Montage).
+        </div>
+      ) : (
+        <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select value={assetId} onChange={(e) => setAssetId(e.target.value)} style={{ ...inputStyle, width: 220 }}>
+            <option value="">Montage / video asset…</option>
+            {videoAssets.map((a) => <option key={a.id} value={a.id}>{a.filename || ('asset ' + a.id)}</option>)}
+          </select>
+          <label className="mono" style={{ fontSize: 12, display: 'flex', gap: 5, alignItems: 'center' }}>
+            starts at
+            <input type="number" min="0" value={start} onChange={(e) => setStart(e.target.value)} style={{ ...inputStyle, width: 64 }} />
+            sec
+          </label>
+          <label className="mono" style={{ fontSize: 12, display: 'flex', gap: 5, alignItems: 'center' }}>
+            for
+            <input type="number" min="1" value={dur} onChange={(e) => setDur(e.target.value)} style={{ ...inputStyle, width: 64 }} />
+            sec
+          </label>
+          <button className="btn sm primary" disabled={busy || !assetId || start === '' || dur === ''}
+            onClick={() => onSet(Number(assetId), Number(start), Number(dur))}>
+            Set cutaway
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function YourAvatars({ cid }) {
   const [avatars, setAvatars] = useState([]);
   const [orphans, setOrphans] = useState([]);
@@ -268,6 +325,18 @@ function EpisodeEditor({ cid, epId, onChange }) {
     setBusy('asset'); setErr('');
     try { await ep.useAsset(cid, epId, assetId, slot); setBust(Date.now()); await refresh(); }
     catch (e) { setErr(e.message || 'Could not apply asset.'); }
+    finally { setBusy(''); }
+  };
+  const setBodyCutaway = async (assetId, startSec, durationSec) => {
+    setBusy('cutaway'); setErr('');
+    try { await ep.setBodyCutaway(cid, epId, assetId, startSec, durationSec); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not set the cutaway.'); }
+    finally { setBusy(''); }
+  };
+  const clearBodyCutaway = async () => {
+    setBusy('cutaway'); setErr('');
+    try { await ep.clearBodyCutaway(cid, epId); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not clear the cutaway.'); }
     finally { setBusy(''); }
   };
 
@@ -629,6 +698,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
       </div>
 
       <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <BodyCutawayCard cid={cid} epId={epId} full={full} assets={assets} busy={busy === 'cutaway'} onSet={setBodyCutaway} onClear={clearBodyCutaway} />
       <SlotCard name="body2" label="Main recording — Part 2 (optional)" pathField="body2_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
       <SlotCard name="body3" label="Main recording — Part 3 (optional)" pathField="body3_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
       <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />

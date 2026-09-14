@@ -1021,15 +1021,19 @@ function OnboardingCard({ clientId }) {
   const [newLabel, setNewLabel] = useState('');
   const [showSched, setShowSched] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState('');
   const [contractOpen, setContractOpen] = useState(false);
+  // Reassigning an EXISTING task is admin/manager only; adding a brand-new
+  // custom task with an assignee already picked is open to anyone (below).
+  const canAssign = role === 'admin' || role === 'manager';
+  const [newAssignee, setNewAssignee] = useState('');
 
   useEffect(() => {
     setData(null); setErr(''); setShowSched(false);
     if (clientId == null) return;
     api.getOnboarding(clientId).then(setData).catch((e) => setErr(e.message || 'Could not load onboarding.'));
     api.listUsers().then((u) => setUsers(Array.isArray(u) ? u : [])).catch(() => {});
-    api.me().then((m) => setIsAdmin(!!(m && m.role === 'admin'))).catch(() => {});
+    api.me().then((m) => setRole((m && m.role) || '')).catch(() => {});
   }, [clientId]);
 
   const apply = (promise) => { setErr(''); return promise.then(setData).catch((e) => setErr(e.message || 'Could not update.')); };
@@ -1043,7 +1047,7 @@ function OnboardingCard({ clientId }) {
   const addTask = async () => {
     const l = newLabel.trim(); if (!l) return;
     setBusy(true); setErr('');
-    try { const d = await api.addOnboardingTask(clientId, l); setData(d); setNewLabel(''); }
+    try { const d = await api.addOnboardingTask(clientId, l, newAssignee); setData(d); setNewLabel(''); setNewAssignee(''); }
     catch (e) { setErr(e.message || 'Could not add task.'); } finally { setBusy(false); }
   };
   const removeTask = (t) => apply(api.deleteOnboardingTask(clientId, t.id));
@@ -1125,11 +1129,16 @@ function OnboardingCard({ clientId }) {
                       <button className="btn sm" onClick={() => setShowSched((v) => !v)}>{showSched ? 'Hide scheduler' : 'Show scheduler'}</button>
                     </div>
                   )}
+                  {t.type === 'booking' && (
+                    <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 4 }}>
+                      One general meeting calendar — when booking, enter the meeting type (2FA setup, in-studio recording, or on-site recording) in the notes on the invite.
+                    </div>
+                  )}
                   {t.type === 'booking' && showSched && (
-                    <iframe src={data.bookingUrl} title="2FA setup booking" style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', width: '100%', height: 520, marginTop: 8 }} />
+                    <iframe src={data.bookingUrl} title="Meeting booking" style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', width: '100%', height: 520, marginTop: 8 }} />
                   )}
                 </div>
-                <select value={t.assignee || ''} onChange={(e) => setAssignee(t, e.target.value)} disabled={!isAdmin} style={{ ...sel, opacity: isAdmin ? 1 : 0.6 }} title={isAdmin ? 'Assign to' : 'Only admins can assign'}>
+                <select value={t.assignee || ''} onChange={(e) => setAssignee(t, e.target.value)} disabled={!canAssign} style={{ ...sel, opacity: canAssign ? 1 : 0.6 }} title={canAssign ? 'Assign to' : 'Only admins and managers can reassign'}>
                   <option value="">Unassigned</option>
                   {users.map((u) => <option key={u.id || u.username} value={u.username}>{u.username}</option>)}
                   {t.assignee && !users.some((u) => u.username === t.assignee) ? <option value={t.assignee}>{t.assignee}</option> : null}
@@ -1144,6 +1153,10 @@ function OnboardingCard({ clientId }) {
 
           <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
             <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addTask(); }} placeholder="Add a custom onboarding task…" style={{ flex: '1 1 260px', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 13, padding: '8px 10px' }} />
+            <select value={newAssignee} onChange={(e) => setNewAssignee(e.target.value)} style={sel} title="Assign this new task to">
+              <option value="">Unassigned</option>
+              {users.map((u) => <option key={u.id || u.username} value={u.username}>{u.username}</option>)}
+            </select>
             <button className="btn sm primary" onClick={addTask} disabled={busy || !newLabel.trim()}>{busy ? 'Adding…' : 'Add task'}</button>
           </div>
         </div>

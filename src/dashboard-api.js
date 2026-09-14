@@ -37,6 +37,8 @@ export const ep = {
   fileUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/file`,
   slotUrl: (cid, id, slot) => `/api/clients/${cid}/episodes/${id}/slot/${slot}`,
   useAsset: (cid, id, assetId, slot) => post(`/api/clients/${cid}/episodes/${id}/use-asset`, { assetId, slot }),
+  setBodyCutaway: (cid, id, assetId, startSec, durationSec) => post(`/api/clients/${cid}/episodes/${id}/body-cutaway`, { assetId, startSec, durationSec }),
+  clearBodyCutaway: (cid, id) => post(`/api/clients/${cid}/episodes/${id}/body-cutaway/clear`, {}),
   approve: (cid, id, status) => post(`/api/clients/${cid}/episodes/${id}/approval`, { status }),
   sendClient: (cid, id, email, note) => post(`/api/clients/${cid}/episodes/${id}/send-client`, { ...(email ? { email } : {}), ...(note ? { note } : {}) }),
   coverUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/cover`,
@@ -54,7 +56,7 @@ export const ep = {
 // ElevenLabs voice synthesis (audio-only casting — cheaper than a HeyGen video).
 export const voice = {
   profiles: (cid) => get(`/api/clients/${cid}/voice/profiles`),
-  synthesize: (cid, profileId, text) => post(`/api/clients/${cid}/voice/synthesize`, { profileId, text }),
+  synthesize: (cid, profileId, text, gainDb) => post(`/api/clients/${cid}/voice/synthesize`, { profileId, text, ...(gainDb ? { gain_db: gainDb } : {}) }),
   outputs: (cid) => get(`/api/clients/${cid}/voice/outputs`),
   outputUrl: (cid, outId) => `/api/clients/${cid}/voice/outputs/${outId}/file`,
   createProfile: (cid, label, clipFile) => { const f = new FormData(); f.append('label', label); f.append('clip', clipFile); return postForm(`/api/clients/${cid}/voice/profiles`, f); },
