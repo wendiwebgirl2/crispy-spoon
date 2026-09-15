@@ -1022,7 +1022,9 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                   {queue.map(v => (
                     <CastCard key={v.id} video={v} avatars={avatars} meta={castMeta[v.id]}
-                      onRename={() => renameCast(v)} onEdit={() => openEditCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} onWaveform={() => downloadWaveform(v)} onBoost={() => downloadBoosted(v)}
+                      onRename={() => renameCast(v)} onEdit={() => openEditCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} onWaveform={() => downloadWaveform(v)}
+                      // onBoost disabled for now — see the Volume dropdown comment above.
+                      // onBoost={() => downloadBoosted(v)}
                       onApprove={() => approveCast(v)} onVerifyChanges={() => verifyCastChanges(v)} onSend={() => sendCastForReview(v)} onPlanner={() => addCastToPlanner(v)} />
                   ))}
                 </div>
@@ -1346,6 +1348,9 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                         style={{ flex: 1, minWidth: 120, padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 }}>
                         {voiceProfiles.map((p) => <option key={p.id} value={p.id}>{p.label || ('Voice ' + p.id)}</option>)}
                       </select>
+                      {/* Volume boost disabled for now — inconsistent results across
+                          engines (boosts an ElevenLabs audio cast but not a HeyGen
+                          video main), not worth chasing for one voice right now.
                       <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }} title="Post-process gain applied to the rendered audio — leave at Normal unless the take comes back quiet.">Volume</span>
                       <select value={volumeBoost} onChange={(e) => setVolumeBoost(Number(e.target.value))}
                         style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 }}>
@@ -1355,6 +1360,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                         <option value={9}>+9dB</option>
                         <option value={12}>+12dB (max)</option>
                       </select>
+                      */}
                     </div>
                   ) : (
                     <label className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>
