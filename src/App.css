@@ -205,6 +205,13 @@
     border-radius: 4px;
   }
   .nav-item.active .nav-count { background: var(--maroon); color: #fff; }
+  /* Flashes the sidebar row(s) whose count just rose, alongside the alert
+     chime, so it's not a mystery what changed — glance left, see what lit up. */
+  @keyframes nav-flash-pulse {
+    0%, 100% { background: transparent; box-shadow: none; }
+    20%, 60% { background: var(--surface-2); box-shadow: inset 3px 0 0 0 var(--accent); }
+  }
+  .nav-item.nav-flash { animation: nav-flash-pulse 1.1s ease-in-out 3; }
 
   .side-foot {
     margin-top: auto;

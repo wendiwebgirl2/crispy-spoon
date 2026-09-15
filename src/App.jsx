@@ -273,6 +273,12 @@ function App() {
   const [alerts, setAlerts] = React.useState(null);
   const [attnFilter, setAttnFilter] = React.useState(null);
   const prevAttnRef = React.useRef(null);
+  // Which sidebar alert categories just rose, so the chime below isn't a
+  // mystery — those rows flash for a few seconds so you can tell at a glance
+  // what it was about instead of having to go hunting.
+  const prevAlertsRef = React.useRef(null);
+  const flashTimerRef = React.useRef(null);
+  const [flashKeys, setFlashKeys] = React.useState(() => new Set());
   // Short chime via Web Audio — plays when the needs-attention count rises.
   const chime = React.useCallback(() => {
     try {
@@ -297,10 +303,26 @@ function App() {
       const cur = a && typeof a.attention === 'number' ? a.attention : 0;
       if (prevAttnRef.current !== null && cur > prevAttnRef.current) chime();
       prevAttnRef.current = cur;
+
+      // Diff each sidebar category against its last value; flash whichever
+      // ones actually went up.
+      const prev = prevAlertsRef.current;
+      if (prev && a) {
+        const risen = new Set();
+        for (const k of ['overdue', 'changes', 'pending', 'in_production', 'approved', 'invites_recorded']) {
+          if ((a[k] || 0) > (prev[k] || 0)) risen.add(k);
+        }
+        if (risen.size) {
+          setFlashKeys(risen);
+          if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+          flashTimerRef.current = setTimeout(() => setFlashKeys(new Set()), 6000);
+        }
+      }
+      prevAlertsRef.current = a;
     }).catch(() => {});
     load();
     const t = setInterval(load, 60000);
-    return () => { live = false; clearInterval(t); };
+    return () => { live = false; clearInterval(t); if (flashTimerRef.current) clearTimeout(flashTimerRef.current); };
   }, [view, chime]);
   const [activeClientName, setActiveClientName] = React.useState('');
   React.useEffect(() => {
@@ -368,7 +390,7 @@ function App() {
             <div className="side-section" style={{ marginTop: 14 }}>ALERTS</div>
             <div className="side-nav">
               <button
-                className={'nav-item' + (view === 'attention' ? ' active' : '')}
+                className={'nav-item' + (view === 'attention' ? ' active' : '') + (flashKeys.size > 0 ? ' nav-flash' : '')}
                 onClick={() => { setAttnFilter(null); setView('attention'); }}
                 title="Needs attention"
               >
@@ -386,7 +408,7 @@ function App() {
                 { k: 'approved', label: 'Approved', color: 'var(--ok)', go: () => { setAttnFilter('approved'); setView('attention'); }, active: view === 'attention' && attnFilter === 'approved' },
                 { k: 'invites_recorded', label: 'Invites recorded', color: 'var(--text-3)', go: () => { setAttnFilter('invite'); setView('attention'); }, active: view === 'attention' && attnFilter === 'invite' },
               ].map((a) => (
-                <div key={a.k} className={'nav-item' + (a.active ? ' active' : '')}
+                <div key={a.k} className={'nav-item' + (a.active ? ' active' : '') + (flashKeys.has(a.k) ? ' nav-flash' : '')}
                   onClick={a.go} style={{ cursor: 'pointer' }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: a.color, flex: 'none', marginRight: 8 }} />
                   <span style={{ fontSize: 12 }}>{a.label}</span>
