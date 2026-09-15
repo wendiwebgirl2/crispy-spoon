@@ -279,6 +279,9 @@ function App() {
   const prevAlertsRef = React.useRef(null);
   const flashTimerRef = React.useRef(null);
   const [flashKeys, setFlashKeys] = React.useState(() => new Set());
+  // Most recent open alert item, shown as plain readable text in the header
+  // ticker — a flashing badge tells you SOMETHING changed, this tells you WHAT.
+  const [latestAlert, setLatestAlert] = React.useState(null);
   // Short chime via Web Audio — plays when the needs-attention count rises.
   const chime = React.useCallback(() => {
     try {
@@ -324,6 +327,22 @@ function App() {
     const t = setInterval(load, 60000);
     return () => { live = false; clearInterval(t); if (flashTimerRef.current) clearTimeout(flashTimerRef.current); };
   }, [view, chime]);
+  // Header ticker: the single most recent open alert item, in plain text
+  // ("Elite Exteriors — Cast approved · Add to planner"). Polls the same
+  // attention list the sidebar counts are drawn from, on the same cadence.
+  React.useEffect(() => {
+    let live = true;
+    const load = () => api.attention().then((d) => {
+      if (!live) return;
+      const items = (d && Array.isArray(d.clients) ? d.clients : []).flatMap((c) => c.items || []);
+      if (!items.length) { setLatestAlert(null); return; }
+      items.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+      setLatestAlert(items[0]);
+    }).catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => { live = false; clearInterval(t); };
+  }, []);
   const [activeClientName, setActiveClientName] = React.useState('');
   React.useEffect(() => {
     if (!activeClientId) { setActiveClientName(''); return; }
@@ -474,11 +493,26 @@ function App() {
             </div>
           )}
           <div className="hd-spacer" />
-          <div className="hd-search">
-            <Icon name="search" size={14} />
-            <input placeholder="Search clients, avatars, episodes…" />
-            <span className="hd-kbd">⌘K</span>
-          </div>
+          {latestAlert && (
+            <button
+              className="mono hd-ticker"
+              onClick={() => openAttentionItem(latestAlert)}
+              title="Latest alert — click to open"
+            >
+              <Icon name="bell" size={13} className="hd-ticker-icon" style={{ color: (ATTN_META[latestAlert.type] || {}).color || 'var(--text-3)' }} />
+              <span className="hd-ticker-text">
+                {latestAlert.client_name ? latestAlert.client_name + ' — ' : ''}{latestAlert.title}{latestAlert.action ? ' · ' + latestAlert.action : ''}
+              </span>
+              <span className="hd-ticker-time">{fmtWhen(latestAlert.at)}</span>
+            </button>
+          )}
+          {view === 'studio' && (
+            <div className="hd-search">
+              <Icon name="search" size={14} />
+              <input placeholder="Search clients, avatars, episodes…" />
+              <span className="hd-kbd">⌘K</span>
+            </div>
+          )}
           <button className="icon-btn" title="Activity"><Icon name="history" size={16} /></button>
         </header>
 

@@ -278,6 +278,33 @@
     padding: 2px 5px; border: 1px solid var(--border-strong); border-radius: 3px;
     color: var(--text-3);
   }
+  /* Header ticker — the single most recent open alert, in plain text, so
+     what the alert chime was about is visible at a glance without hunting
+     through the sidebar. */
+  .hd-ticker {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 999px;
+    max-width: 440px;
+    min-width: 0;
+    font-size: 12.5px;
+    color: var(--text-2);
+    cursor: pointer;
+    transition: border-color 120ms, background 120ms;
+  }
+  .hd-ticker:hover { border-color: var(--maroon); background: var(--surface); }
+  .hd-ticker-icon { flex: none; }
+  .hd-ticker-text {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    min-width: 0;
+  }
+  .hd-ticker-time {
+    flex: none;
+    color: var(--text-4);
+    font-size: 11px;
+  }
 
   .view {
     overflow: auto;
