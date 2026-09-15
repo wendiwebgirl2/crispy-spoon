@@ -59,7 +59,7 @@ export const voice = {
   synthesize: (cid, profileId, text, gainDb) => post(`/api/clients/${cid}/voice/synthesize`, { profileId, text, ...(gainDb ? { gain_db: gainDb } : {}) }),
   outputs: (cid) => get(`/api/clients/${cid}/voice/outputs`),
   outputUrl: (cid, outId) => `/api/clients/${cid}/voice/outputs/${outId}/file`,
-  createProfile: (cid, label, clipFile) => { const f = new FormData(); f.append('label', label); f.append('clip', clipFile); return postForm(`/api/clients/${cid}/voice/profiles`, f); },
+  createProfile: (cid, label, clipFile, recordingId) => { const f = new FormData(); f.append('label', label); f.append('clip', clipFile); if (recordingId) f.append('recording_id', String(recordingId)); return postForm(`/api/clients/${cid}/voice/profiles`, f); },
 };
 
 export const rec = {

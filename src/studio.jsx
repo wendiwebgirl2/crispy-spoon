@@ -136,6 +136,19 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [bgAssets, setBgAssets] = React.useState([]);
   const [token, setToken] = React.useState(null);
 
+  // If the selected avatar for an audio cast is a recording that already has
+  // a cloned voice profile, use that voice automatically — otherwise
+  // voiceProfileId defaults to whichever profile loaded first, which is how a
+  // cast could come back in the wrong voice.
+  React.useEffect(() => {
+    if (castType !== 'audio' || !avatarId) return;
+    const sel = avatars.find((a) => a.id === avatarId);
+    const recordingId = sel && (sel._recordingId || sel.recording_id);
+    if (!recordingId) return;
+    const linked = voiceProfiles.find((p) => p.recording_id && String(p.recording_id) === String(recordingId));
+    if (linked && String(voiceProfileId) !== String(linked.id)) setVoiceProfileId(String(linked.id));
+  }, [castType, avatarId, avatars, voiceProfiles]);
+
   // —— background picker (color / brand image / gradient / video) ——
   const [bgMode, setBgMode] = React.useState('none');
   const [gradFrom, setGradFrom] = React.useState('#141428');
@@ -688,7 +701,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       });
       const label = (sel._invite || sel.contact || 'Recording') + ' voice';
       const file = new File([blob], 'take.webm', { type: blob.type || 'audio/webm' });
-      const created = await voice.createProfile(clientId, label, file);
+      const created = await voice.createProfile(clientId, label, file, recordingId);
       const rows = await voice.profiles(clientId);
       setVoiceProfiles(Array.isArray(rows) ? rows : []);
       if (created && created.id != null) setVoiceProfileId(String(created.id));
@@ -1117,6 +1130,20 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 const sel = selUnbuilt;
                 if (!sel) return null;
                 if (castType === 'audio' && (sel._recordingId || sel.recording_id)) {
+                  const recordingId = sel._recordingId || sel.recording_id;
+                  const linked = voiceProfiles.find((p) => p.recording_id && String(p.recording_id) === String(recordingId));
+                  if (linked) {
+                    return (
+                      <div style={{ marginBottom: 22 }}>
+                        <div className="mono" style={{ color: 'var(--ok)', fontSize: 12, marginBottom: 8 }}>
+                          Voice ready — “{linked.label}” (below) was cloned from this recording.
+                        </div>
+                        <button className="btn sm" disabled={cloningVoice} onClick={() => useRecordingAsVoice(sel)}>
+                          <Icon name="mic" size={12} /> {cloningVoice ? 'Cloning…' : 'Re-clone from this recording'}
+                        </button>
+                      </div>
+                    );
+                  }
                   return (
                     <div style={{ marginBottom: 22 }}>
                       <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginBottom: 8 }}>
