@@ -157,11 +157,11 @@ function BodyCutawayCard({ cid, epId, full, assets = [], busy, onSet, onClear })
         {active && <button className="btn sm" onClick={onClear}>Clear</button>}
       </div>
       <div className="mono" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>
-        From the chosen point onward, the picture cuts full-frame to the montage — looped to fill the rest of the main video if it's shorter — while the cast's own audio keeps playing. It runs through to the end of the main recording; there's no separate stop point. The seconds count from the start of the main avatar video itself, not the whole episode (so it lands in the same place regardless of how long the intro runs).
+        From the chosen point, the picture cuts full-frame to the montage for its own natural length (played once, never looped or stretched), then cuts back to the avatar for the rest — while the cast's own audio keeps playing throughout. The seconds count from the start of the main avatar video itself, not the whole episode (so it lands in the same place regardless of how long the intro runs).
       </div>
       {active ? (
         <div className="mono" style={{ fontSize: 12, color: 'var(--ok)', marginTop: 8 }}>
-          {'✓'} Set — cuts away at {full.body_cutaway_start_sec}s into the main video, through to the end.
+          {'✓'} Set — cuts away at {full.body_cutaway_start_sec}s into the main video for the montage's own length, then back to the avatar.
         </div>
       ) : videoAssets.length === 0 ? (
         <div className="mono" style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 8 }}>
