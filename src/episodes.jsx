@@ -287,8 +287,8 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const [coverPrompt, setCoverPrompt] = useState('');
   const [coverProvider, setCoverProvider] = useState('openai');
   const [coverOverlay, setCoverOverlay] = useState('');
-  const [coverAspect, setCoverAspect] = useState('1:1');
   const [introMusicPrompt, setIntroMusicPrompt] = useState('');
+  const [outroMusicPrompt, setOutroMusicPrompt] = useState('');
   const [musicPrompt, setMusicPrompt] = useState('');
   const [musicMode, setMusicMode] = useState('segment');
   const [assets, setAssets] = useState([]);
@@ -313,6 +313,8 @@ function EpisodeEditor({ cid, epId, onChange }) {
   const slotKind = (base) => !full ? '' : (full[base + '_video_path'] ? 'video' : (full[base + '_path'] ? 'audio' : (full[base + '_still_path'] ? 'image' : '')));
   const introMusicKind = slotKind('intro_music');
   const introMusicSet = !!introMusicKind;
+  const outroMusicKind = slotKind('outro_music');
+  const outroMusicSet = !!outroMusicKind;
   const musicKind = slotKind('music');
   const musicSet = !!musicKind;
   const applyAsset = async (assetId, slot) => {
@@ -461,7 +463,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
   };
   const genCover = async () => {
     setBusy('cover'); setErr('');
-    try { await ep.genCover(cid, epId, { prompt: coverPrompt, provider: coverProvider, overlayText: coverOverlay, aspect: coverAspect }); setBust(Date.now()); await refresh(); }
+    try { await ep.genCover(cid, epId, { prompt: coverPrompt, provider: coverProvider, overlayText: coverOverlay, aspect: full.output_aspect || '16:9' }); setBust(Date.now()); await refresh(); }
     catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
   const genIntroMusic = async () => {
@@ -469,16 +471,24 @@ function EpisodeEditor({ cid, epId, onChange }) {
     try { await ep.genIntroMusic(cid, epId, introMusicPrompt); await refresh(); }
     catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
+  const genOutroMusic = async () => {
+    setBusy('outro_music'); setErr('');
+    try { await ep.genOutroMusic(cid, epId, outroMusicPrompt); await refresh(); }
+    catch (e) { setErr(e.message); } finally { setBusy(''); }
+  };
   const genMusic = async () => {
     setBusy('music'); setErr('');
     try { await ep.genMusic(cid, epId, { prompt: musicPrompt, mode: musicMode }); await refresh(); }
     catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
-  // Switch mode on music that's ALREADY set, without re-uploading/regenerating
-  // it — doUpload only persists the mode alongside a fresh file.
-  const saveMusicMode = async () => {
+  // Body music mode (segment/bed) saves immediately on selection — deferring
+  // it behind a separate "Save" button left a window where picking any other
+  // asset in between (which also calls refresh()) reset this dropdown back to
+  // whatever mode was last saved, making the pick look like it "reverted".
+  const setBodyMusicMode = async (mode) => {
+    setMusicMode(mode);
     setBusy('music'); setErr('');
-    try { await ep.musicMode(cid, epId, musicMode); await refresh(); }
+    try { await ep.musicMode(cid, epId, mode); await refresh(); }
     catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
   const useVideo = async (slot, videoUrl) => {
@@ -579,14 +589,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
           </div>
         </div>
         {full.cover_path && (() => {
-          const dims = { '1:1': [150, 150], '9:16': [120, 213], '16:9': [213, 120] }[coverAspect] || [150, 150];
+          const dims = { '1:1': [150, 150], '9:16': [120, 213], '16:9': [213, 120] }[full.output_aspect || '16:9'] || [213, 120];
           return <img src={ep.coverUrl(cid, epId) + '?b=' + bust} alt="cover" title="Click to view full size" onClick={() => setLightbox('cover')} style={{ cursor: 'zoom-in', width: dims[0], height: dims[1], objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', marginTop: 10 }} />;
         })()}
-        <div className="row" style={{ gap: 6, marginTop: 10, alignItems: 'center' }}>
-          <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Aspect</span>
-          {['1:1', '9:16', '16:9'].map((a) => (
-            <button key={a} className={'btn sm' + (coverAspect === a ? ' primary' : '')} onClick={() => setCoverAspect(a)}>{a}</button>
-          ))}
+        <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 10 }}>
+          Sized for the episode's own output shape ({full.output_aspect || '16:9'}) — set that under FORMAT above.
         </div>
         <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
           <input value={coverPrompt} onChange={(e) => setCoverPrompt(e.target.value)} placeholder="Describe the cover (AI)" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
@@ -646,9 +653,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
         </div>
       )}
 
+      <SlotCard name="intro" label="Intro — content (video or image)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>Intro music <span className="mono" style={{ color: 'var(--text-4)' }}>(plays first — audio, video, or image)</span></div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Intro music <span className="mono" style={{ color: 'var(--text-4)' }}>(under bed — mixed quietly under the intro's own audio)</span></div>
           <div className="row" style={{ gap: 6, alignItems: 'center' }}>
             {introMusicSet && <button className="btn sm" onClick={() => clearSlot('intro_music')}>Clear</button>}
             <span className="badge" style={{ color: introMusicSet ? 'var(--ok)' : 'var(--text-4)' }}>{introMusicSet ? introMusicKind : 'none'}</span>
@@ -661,33 +670,27 @@ function EpisodeEditor({ cid, epId, onChange }) {
               {assets.map((a) => <option key={a.id} value={a.id}>{(a.kind ? a.kind + ' · ' : '') + (a.filename || ('asset ' + a.id))}</option>)}
             </select>
           )}
-          <input value={introMusicPrompt} onChange={(e) => setIntroMusicPrompt(e.target.value)} placeholder="Describe intro sting (AI)" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
+          <input value={introMusicPrompt} onChange={(e) => setIntroMusicPrompt(e.target.value)} placeholder="Describe the music — mood, no artist names" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
           <button className="btn sm" onClick={genIntroMusic} disabled={busy === 'intro_music'}><Icon name="sparkle" size={12} /> Generate</button>
-          <input type="file" onChange={(e) => doUpload('intro_music', e.target.files[0])} title="Upload any file — audio, image, or video" style={{ fontSize: 12, maxWidth: 200 }} />
+          <input type="file" onChange={(e) => doUpload('intro_music', e.target.files[0])} title="Upload an audio file" style={{ fontSize: 12, maxWidth: 200 }} />
         </div>
         {full.intro_music_path && <audio controls src={ep.slotUrl(cid, epId, 'intro_music') + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />}
         {!full.intro_music_path && introMusicSet && <div className="mono" style={{ color: 'var(--ok)', marginTop: 8 }}>● {introMusicKind} set</div>}
       </div>
 
-      <SlotCard name="intro" label="Intro (VO)" pathField="intro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
-
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>Music</div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Body music</div>
           <div className="row" style={{ gap: 6, alignItems: 'center' }}>
             {musicSet && <button className="btn sm" onClick={() => clearSlot('music')}>Clear</button>}
             <span className="badge" style={{ color: musicSet ? 'var(--ok)' : 'var(--text-4)' }}>{musicSet ? (musicKind + ' (' + (full.music_mode || 'segment') + ')') : 'none'}</span>
           </div>
         </div>
         <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-          <select value={musicMode} onChange={(e) => setMusicMode(e.target.value)} style={{ ...inputStyle, width: 240 }}>
+          <select value={musicMode} onChange={(e) => setBodyMusicMode(e.target.value)} disabled={busy === 'music'} style={{ ...inputStyle, width: 240 }}>
             <option value="segment">Segment (before body)</option>
             <option value="bed">Bed (under narration)</option>
-            <option value="bookend">Bookend (under intro + outro only)</option>
           </select>
-          {musicSet && musicMode !== (full.music_mode || 'segment') && (
-            <button className="btn sm" onClick={saveMusicMode} disabled={busy === 'music'}>Save mode</button>
-          )}
           {assets.length > 0 && (
             <select value="" onChange={(e) => { if (e.target.value) applyAsset(Number(e.target.value), 'music'); }} style={{ ...inputStyle, width: 200 }}>
               <option value="">Client asset…</option>
@@ -706,7 +709,30 @@ function EpisodeEditor({ cid, epId, onChange }) {
       <BodyCutawayCard cid={cid} epId={epId} full={full} assets={assets} busy={busy === 'cutaway'} onSet={setBodyCutaway} onClear={clearBodyCutaway} />
       <SlotCard name="body2" label="Main recording — Part 2 (optional)" pathField="body2_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
       <SlotCard name="body3" label="Main recording — Part 3 (optional)" pathField="body3_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
-      <SlotCard name="outro" label="Outro" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <SlotCard name="outro" label="Outro — content (video or image)" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+
+      <div className="card card-pad" style={{ marginBottom: 10 }}>
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Outro music <span className="mono" style={{ color: 'var(--text-4)' }}>(under bed — mixed quietly under the outro's own audio)</span></div>
+          <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+            {outroMusicSet && <button className="btn sm" onClick={() => clearSlot('outro_music')}>Clear</button>}
+            <span className="badge" style={{ color: outroMusicSet ? 'var(--ok)' : 'var(--text-4)' }}>{outroMusicSet ? outroMusicKind : 'none'}</span>
+          </div>
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+          {assets.length > 0 && (
+            <select value="" onChange={(e) => { if (e.target.value) applyAsset(Number(e.target.value), 'outro_music'); }} style={{ ...inputStyle, width: 200 }}>
+              <option value="">Client asset…</option>
+              {assets.map((a) => <option key={a.id} value={a.id}>{(a.kind ? a.kind + ' · ' : '') + (a.filename || ('asset ' + a.id))}</option>)}
+            </select>
+          )}
+          <input value={outroMusicPrompt} onChange={(e) => setOutroMusicPrompt(e.target.value)} placeholder="Describe the music — mood, no artist names" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
+          <button className="btn sm" onClick={genOutroMusic} disabled={busy === 'outro_music'}><Icon name="sparkle" size={12} /> Generate</button>
+          <input type="file" onChange={(e) => doUpload('outro_music', e.target.files[0])} title="Upload an audio file" style={{ fontSize: 12, maxWidth: 200 }} />
+        </div>
+        {full.outro_music_path && <audio controls src={ep.slotUrl(cid, epId, 'outro_music') + '?b=' + bust} style={{ width: '100%', marginTop: 8 }} />}
+        {!full.outro_music_path && outroMusicSet && <div className="mono" style={{ color: 'var(--ok)', marginTop: 8 }}>● {outroMusicKind} set</div>}
+      </div>
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
