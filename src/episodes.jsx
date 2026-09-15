@@ -733,7 +733,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>Outro music <span className="mono" style={{ color: 'var(--text-4)' }}>(plays last, over the cover art)</span></div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Outro music <span className="mono" style={{ color: 'var(--text-4)' }}>(mixed as a bed under the outro's own audio)</span></div>
           <div className="row" style={{ gap: 6, alignItems: 'center' }}>
             {outroMusicSet && <button className="btn sm" onClick={() => clearSlot('outro_music')}>Clear</button>}
             <span className="badge" title={slotLabels.outro_music || ''} style={{ color: outroMusicSet ? 'var(--ok)' : 'var(--text-4)' }}>{outroMusicSet ? (outroMusicKind + (slotLabels.outro_music ? ' · ' + slotLabels.outro_music : '')) : 'none'}</span>
