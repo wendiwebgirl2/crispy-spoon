@@ -810,6 +810,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
           <span className="badge" style={{ color: 'var(--ok)' }}>✓ produced</span>
           {full.stitched_at && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginLeft: 6 }}>{fmtWhen(full.stitched_at)}</span>}
           {full.approval_status === 'approved' && <span className="badge" style={{ color: 'var(--ok)', marginLeft: 6 }}>approved</span>}
+          {full.approval_status === 'approved_with_changes' && <span className="badge" style={{ color: 'var(--ok)', marginLeft: 6 }}>approved w/ changes</span>}
           {full.approval_status === 'changes_requested' && <span className="badge" style={{ color: 'var(--accent)', marginLeft: 6 }}>changes requested</span>}
           {full.approval_status === 'changes_completed' && <span className="badge" style={{ color: 'var(--warn)', marginLeft: 6 }}>changes verified</span>}
           {(full.approval_sent_at || full.approval_approved_at || full.changes_verified_at) && (
@@ -817,6 +818,12 @@ function EpisodeEditor({ cid, epId, onChange }) {
               {full.approval_sent_at ? 'sent ' + String(full.approval_sent_at).slice(0, 10) : ''}
               {full.approval_approved_at ? (full.approval_sent_at ? ' · ' : '') + 'approved ' + String(full.approval_approved_at).slice(0, 10) : ''}
               {full.changes_verified_at ? ((full.approval_sent_at || full.approval_approved_at) ? ' · ' : '') + 'verified ' + String(full.changes_verified_at).slice(0, 10) : ''}
+              {full.approval_by ? ' · by ' + full.approval_by : ''}
+            </div>
+          )}
+          {full.approval_comment && (full.approval_status === 'changes_requested' || full.approval_status === 'approved_with_changes') && (
+            <div style={{ fontSize: 12, color: 'var(--text-3)', background: 'var(--surface-2)', borderRadius: 6, padding: '6px 8px', marginTop: 6 }}>
+              <strong>Client notes:</strong> {full.approval_comment}
             </div>
           )}
           {full.video_output_path && (
