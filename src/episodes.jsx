@@ -161,6 +161,7 @@ function BodyCutawayCard({ cid, epId, full, assets = [], busy, onSet, onClear })
   const [assetId, setAssetId] = useState('');
   const [start, setStart] = useState('');
   const active = !!full.body_cutaway_path;
+  const label = (() => { try { return full.slot_labels ? JSON.parse(full.slot_labels).body_cutaway : null; } catch { return null; } })();
 
   if (!full.body_video_path) return null;
 
@@ -168,14 +169,21 @@ function BodyCutawayCard({ cid, epId, full, assets = [], busy, onSet, onClear })
     <div className="card card-pad" style={{ marginBottom: 10, marginTop: -4 }}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontWeight: 600, fontSize: 13 }}>Montage cutaway over the main cast</div>
-        {active && <button className="btn sm" onClick={onClear}>Clear</button>}
+        <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+          {active && <button className="btn sm" onClick={onClear}>Clear</button>}
+          {active && (
+            <span className="badge" title={label || ''} style={{ color: 'var(--ok)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              video{label ? ' · ' + label : ''}
+            </span>
+          )}
+        </div>
       </div>
       <div className="mono" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>
         From the chosen point, the picture cuts full-frame to the montage for its own natural length (played once, never looped or stretched), then cuts back to the avatar for the rest — while the cast's own audio keeps playing throughout. The seconds count from the start of the main avatar video itself, not the whole episode (so it lands in the same place regardless of how long the intro runs).
       </div>
       {active ? (
         <div className="mono" style={{ fontSize: 12, color: 'var(--ok)', marginTop: 8 }}>
-          {'✓'} Set — cuts away at {full.body_cutaway_start_sec}s into the main video for the montage's own length, then back to the avatar.
+          {'✓'} Set{label ? ' (' + label + ')' : ''} — cuts away at {full.body_cutaway_start_sec}s into the main video for the montage's own length, then back to the avatar.
         </div>
       ) : videoAssets.length === 0 ? (
         <div className="mono" style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 8 }}>
