@@ -657,7 +657,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>Intro music <span className="mono" style={{ color: 'var(--text-4)' }}>(under bed — mixed quietly under the intro's own audio)</span></div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Intro music <span className="mono" style={{ color: 'var(--text-4)' }}>(plays first, over the cover art)</span></div>
           <div className="row" style={{ gap: 6, alignItems: 'center' }}>
             {introMusicSet && <button className="btn sm" onClick={() => clearSlot('intro_music')}>Clear</button>}
             <span className="badge" style={{ color: introMusicSet ? 'var(--ok)' : 'var(--text-4)' }}>{introMusicSet ? introMusicKind : 'none'}</span>
@@ -713,7 +713,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>Outro music <span className="mono" style={{ color: 'var(--text-4)' }}>(under bed — mixed quietly under the outro's own audio)</span></div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Outro music <span className="mono" style={{ color: 'var(--text-4)' }}>(plays last, over the cover art)</span></div>
           <div className="row" style={{ gap: 6, alignItems: 'center' }}>
             {outroMusicSet && <button className="btn sm" onClick={() => clearSlot('outro_music')}>Clear</button>}
             <span className="badge" style={{ color: outroMusicSet ? 'var(--ok)' : 'var(--text-4)' }}>{outroMusicSet ? outroMusicKind : 'none'}</span>
@@ -764,7 +764,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
       </div>
 
       <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-        <a className="btn" href={full.output_path ? (full.video_output_path ? ep.videoFileUrl(cid, epId) : ep.fileUrl(cid, epId)) : undefined}
+        <a className="btn" href={full.output_path ? (full.video_output_path ? ep.videoFileUrl(cid, epId) + '?b=' + bust : ep.fileUrl(cid, epId) + '?b=' + bust) : undefined}
           target="_blank" rel="noreferrer"
           onClick={(ev) => { if (!full.output_path) ev.preventDefault(); }}
           style={{ opacity: full.output_path ? 1 : 0.5, pointerEvents: full.output_path ? 'auto' : 'none' }}>
