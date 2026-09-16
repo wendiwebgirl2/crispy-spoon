@@ -28,6 +28,7 @@ const DELIVERY_PROMPTS = {
   laughing: 'joyful, laughing delivery; genuine laughter and a big warm smile; playful and animated',
   serious: 'serious, authoritative delivery; composed and confident; steady gaze with minimal smiling',
 };
+const DELIVERY_LABELS = { calm: 'Calm', warm: 'Warm', energetic: 'Energetic', laughing: 'Laughing', serious: 'Serious' };
 
 // Cast timestamp in the operator's local 12-hour time; falls back to the raw
 // value if it can't be parsed. engineLabel maps stored engine -> display name.
@@ -733,6 +734,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       if (editCastTitle.trim() && editCastTitle.trim() !== (editCast.title || '')) {
         await renameVideo(editCast.id, editCastTitle.trim(), token).catch(() => {});
       }
+      const recastPromptText = customMotion.trim() || DELIVERY_PROMPTS[delivery];
       await generateVideo(editCastScript.trim(), {
         token,
         title: (editCastTitle.trim() || editCast.title || 'Untitled').replace(/(?:\s*\(recast\))+\s*$/i, '') + ' (recast)',
@@ -740,7 +742,9 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
         aspectRatio: editCastAspect,
         engine,
         expressiveness,
-        motionPrompt: buildMotionPrompt(customMotion.trim() || DELIVERY_PROMPTS[delivery]),
+        motionPrompt: buildMotionPrompt(recastPromptText),
+        deliveryLabel: customMotion.trim() ? 'Custom' : (DELIVERY_LABELS[delivery] || delivery),
+        deliveryPrompt: recastPromptText || null,
       });
       setEditCast(null); await reloadQueue();
     } catch (e) { alert(e.message || 'Recast failed'); }
@@ -816,7 +820,17 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     setGenerating(true);
     try {
       const before = new Set(queue.map((q) => q.id));
-      await generateVideo(script, { token, title: castTitle.trim() || script.slice(0, 60), avatarId, caption, background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null, aspectRatio, backgroundAssetId, engine, expressiveness, motionPrompt: buildMotionPrompt(customMotion.trim() || DELIVERY_PROMPTS[delivery]) });
+      const deliveryPromptText = customMotion.trim() || DELIVERY_PROMPTS[delivery];
+      const bgAsset = backgroundAssetId ? (bgAssets.find((a) => a.id === backgroundAssetId) || null) : null;
+      await generateVideo(script, {
+        token, title: castTitle.trim() || script.slice(0, 60), avatarId, caption,
+        background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null,
+        aspectRatio, backgroundAssetId, engine, expressiveness,
+        motionPrompt: buildMotionPrompt(deliveryPromptText),
+        deliveryLabel: customMotion.trim() ? 'Custom' : (DELIVERY_LABELS[delivery] || delivery),
+        deliveryPrompt: deliveryPromptText || null,
+        backgroundFile: bgAsset ? bgAsset.filename : (backgroundColor ? `Color ${backgroundColor}` : null),
+      });
       const v = await listVideos(token).catch(() => ({ videos: [] }));
       setQueue(v.videos || []);
       // Register the job number on the newly created cast's local mirror so it
@@ -1700,6 +1714,18 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
         {engineLabel(video.engine_used) ? (
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>{engineLabel(video.engine_used)}</div>
         ) : null}
+        {(video.delivery_label || video.delivery_prompt) && (
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            title={video.delivery_prompt || ''}>
+            Delivery: {video.delivery_label || 'Custom'}{video.delivery_prompt ? ` — ${video.delivery_prompt}` : ''}
+          </div>
+        )}
+        {video.background_file && (
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            title={video.background_file}>
+            File: {video.background_file}
+          </div>
+        )}
         <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
           {fmtWhen(video.created_at || video.createdAt)} · {ready ? 'ready' : (video.status || 'rendering')}
         </div>
