@@ -159,6 +159,60 @@ function PastEpisodes() {
   );
 }
 
+// ---- Avatar looks ------------------------------------------------------
+// Alternate photo/appearance options for an avatar, edited in HeyGen's own
+// dashboard — same capability staff have via LookPicker in Studio/Brief,
+// reusing its exact visual pattern but hitting the portal-scoped API.
+function PortalLookPicker({ avatarId, currentLookId, onSet }) {
+  const [looks, setLooks] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr] = React.useState('');
+  const [zoom, setZoom] = React.useState(null);
+  const [picking, setPicking] = React.useState(null);
+  React.useEffect(() => {
+    let live = true;
+    api.portalAvatarLooks(avatarId)
+      .then((r) => { if (live) setLooks((r && r.looks) || []); })
+      .catch((e) => { if (live) setErr(e.message || 'Could not load looks.'); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [avatarId]);
+  const pick = async (look) => {
+    setErr(''); setPicking(look.id);
+    try { await api.portalSetAvatarLook(avatarId, look.id, look.image_url); if (onSet) onSet(); }
+    catch (e) { setErr(e.message); } finally { setPicking(null); }
+  };
+  if (loading) return <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 8 }}>Loading looks…</div>;
+  if (err) return <div className="mono" style={{ color: 'var(--accent)', fontSize: 11, marginTop: 8 }}>{err}</div>;
+  if (!looks || !looks.length) return <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 8 }}>No alternate looks available for this avatar yet.</div>;
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {looks.map((l) => (
+          <div key={l.id} style={{ position: 'relative', width: 56, height: 56 }}>
+            <button onClick={() => pick(l)} disabled={picking === l.id} title={l.name || 'Use this look'}
+              style={{ padding: 0, width: 56, height: 56, borderRadius: 6, overflow: 'hidden', cursor: picking === l.id ? 'wait' : 'pointer', background: 'var(--surface-2)',
+                border: currentLookId === l.id ? '2px solid var(--accent)' : '1px solid var(--border)', opacity: picking === l.id ? 0.5 : 1 }}>
+              {l.image_url ? <img src={l.image_url} alt={l.name || 'look'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="avatars" size={16} />}
+            </button>
+            {l.image_url && (
+              <button onClick={(e) => { e.stopPropagation(); setZoom({ url: l.image_url, name: l.name || 'Look' }); }} title="View full size"
+                style={{ position: 'absolute', top: 2, right: 2, width: 18, height: 18, padding: 0, display: 'grid', placeItems: 'center', borderRadius: 4, border: 'none', background: 'rgba(20,17,15,0.72)', color: '#fff', cursor: 'zoom-in' }}>
+                <Icon name="search" size={11} />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {zoom && (
+        <div onClick={() => setZoom(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.8)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 200, cursor: 'zoom-out' }}>
+          <img src={zoom.url} alt={zoom.name} style={{ maxWidth: '92vw', maxHeight: '92vh', borderRadius: 10, border: '1px solid var(--border)' }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Avatars ---------------------------------------------------------------
 function Avatars({ onChanged }) {
   const [data, setData] = React.useState(null);
@@ -166,7 +220,9 @@ function Avatars({ onChanged }) {
   const [note, setNote] = React.useState('');
   const [msg, setMsg] = React.useState('');
   const [busy, setBusy] = React.useState(false);
-  React.useEffect(() => { api.portalAvatars().then(setData).catch((e) => setErr(e.message)); }, []);
+  const [openLooks, setOpenLooks] = React.useState(null); // avatar id whose picker is expanded
+  const [refreshKey, setRefreshKey] = React.useState(0);
+  React.useEffect(() => { api.portalAvatars().then(setData).catch((e) => setErr(e.message)); }, [refreshKey]);
   const request = async () => {
     if (!note.trim()) return;
     setBusy(true); setErr(''); setMsg('');
@@ -174,10 +230,36 @@ function Avatars({ onChanged }) {
     catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   const casts = data ? data.casts : [];
+  const avatars = data ? (data.avatars || []) : [];
   return (
     <div className="fade-in">
-      <SectionHead title="Avatars" sub="Your digital-twin renders, and a place to ask for a new one." />
+      <SectionHead title="Avatars" sub="Your digital twins, their looks, and a place to ask for a new one." />
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
+      {!data ? <Empty>Loading…</Empty> : avatars.length > 0 && (
+        <div className="col" style={{ gap: 8, marginBottom: 16 }}>
+          <div className="label">YOUR AVATARS</div>
+          {avatars.map((a) => (
+            <div key={a.id} style={{ ...card }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', flexShrink: 0 }}>
+                    {a.thumbnail_url ? <img src={a.thumbnail_url} alt={a.name || 'avatar'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}><Icon name="avatars" size={16} /></div>}
+                  </div>
+                  <strong style={{ fontSize: 14 }}>{a.name || `Avatar ${a.id}`}</strong>
+                </div>
+                {a.heygen_group_id && (
+                  <button className="btn sm" onClick={() => setOpenLooks(openLooks === a.id ? null : a.id)}>
+                    {openLooks === a.id ? 'Hide looks' : 'Change look'}
+                  </button>
+                )}
+              </div>
+              {openLooks === a.id && (
+                <PortalLookPicker avatarId={a.id} currentLookId={a.heygen_avatar_id} onSet={() => { setOpenLooks(null); setRefreshKey((k) => k + 1); }} />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ ...card, marginBottom: 16 }}>
         <div className="label">REQUEST A NEW / ADDITIONAL AVATAR</div>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Tell us what you have in mind — a new look, a second presenter, wardrobe, setting, anything." style={{ ...inputStyle, resize: 'vertical', marginTop: 10 }} />
@@ -186,9 +268,10 @@ function Avatars({ onChanged }) {
           {msg && <span className="mono" style={{ color: 'var(--ok)', fontSize: 12 }}>{msg}</span>}
         </div>
       </div>
-      {!data ? <Empty>Loading…</Empty>
+      {!data ? null
         : casts.length === 0 ? <Empty>No avatar renders yet.{data.recordings ? ` (${data.recordings} recording${data.recordings === 1 ? '' : 's'} captured.)` : ''}</Empty>
         : <div className="col" style={{ gap: 8 }}>
+          <div className="label">RENDERS</div>
           {casts.map((v) => (
             <div key={v.id} className="row" style={{ ...card, justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
               <strong style={{ fontSize: 14 }}>{v.title}</strong>
