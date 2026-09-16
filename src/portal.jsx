@@ -245,12 +245,27 @@ function Account() {
   const [q, setQ] = React.useState('');
   const [msg, setMsg] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  const [pw, setPw] = React.useState({ current: '', next: '', confirm: '' });
+  const [pwErr, setPwErr] = React.useState('');
+  const [pwMsg, setPwMsg] = React.useState('');
+  const [pwBusy, setPwBusy] = React.useState(false);
   React.useEffect(() => { api.portalAccount().then(setData).catch((e) => setErr(e.message)); }, []);
   const send = async () => {
     if (!q.trim()) return;
     setBusy(true); setErr(''); setMsg('');
     try { await api.portalRequest('question', q.trim()); setQ(''); setMsg('Sent — we’ll be in touch.'); }
     catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const changePassword = async () => {
+    setPwErr(''); setPwMsg('');
+    if (pw.next.length < 6) { setPwErr('New password must be at least 6 characters.'); return; }
+    if (pw.next !== pw.confirm) { setPwErr('New passwords don’t match.'); return; }
+    setPwBusy(true);
+    try {
+      await api.changeMyPassword(pw.current, pw.next);
+      setPw({ current: '', next: '', confirm: '' });
+      setPwMsg('Password updated.');
+    } catch (e) { setPwErr(e.message); } finally { setPwBusy(false); }
   };
   const contact = data ? data.contact : {};
   const Row = ({ k, v }) => (
@@ -270,6 +285,19 @@ function Account() {
         <Row k="Mobile" v={contact.mobile} />
         <Row k="Website" v={contact.website} />
         <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 8 }}>Need a change? Send us a note below.</div>
+      </div>
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div className="label" style={{ marginBottom: 10 }}>CHANGE PASSWORD</div>
+        <div className="col" style={{ gap: 8, maxWidth: 320 }}>
+          <input type="password" placeholder="Current password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} style={inputStyle} />
+          <input type="password" placeholder="New password (min 6)" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} style={inputStyle} />
+          <input type="password" placeholder="Confirm new password" value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} style={inputStyle} />
+        </div>
+        <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 10 }}>
+          <button className="btn primary sm" disabled={pwBusy || !pw.current || !pw.next || !pw.confirm} onClick={changePassword}>Update password</button>
+          {pwMsg && <span className="mono" style={{ color: 'var(--ok)', fontSize: 12 }}>{pwMsg}</span>}
+          {pwErr && <span className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>{pwErr}</span>}
+        </div>
       </div>
       <div style={{ ...card }}>
         <div className="label">CONTACT / QUESTION</div>

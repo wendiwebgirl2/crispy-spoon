@@ -16,7 +16,10 @@ function UsersSection() {
   const [err, setErr] = React.useState('');
   const [msg, setMsg] = React.useState('');
   const [busy, setBusy] = React.useState(false);
-  const [form, setForm] = React.useState({ username: '', password: '', role: 'editor', clientIds: [] });
+  const [form, setForm] = React.useState({ username: '', password: '', role: 'editor', clientIds: [], email: '', sendEmail: true });
+  // The plaintext password is only ever visible right after creation/resend —
+  // it's scrypt-hashed server-side and never retrievable again after that.
+  const [revealed, setRevealed] = React.useState(null); // { username, password, email }
 
   const loadUsers = () => api.listUsers().then((u) => setUsers(Array.isArray(u) ? u : [])).catch((e) => setErr(e.message));
   React.useEffect(() => {
@@ -27,12 +30,32 @@ function UsersSection() {
 
   const isAdmin = me && me.role === 'admin';
   const logout = async () => { try { await api.logout(); } catch { /* ignore */ } window.location.href = '/login.html'; };
+  const changeMyPw = async () => {
+    const current = window.prompt('Current password:', '');
+    if (current == null) return;
+    const next = window.prompt('New password (min 6 characters):', '');
+    if (next == null) return;
+    try { await api.changeMyPassword(current, next); setErr(''); setMsg('Your password was updated.'); }
+    catch (e) { setErr(e.message); }
+  };
   const create = async () => {
-    setErr(''); setMsg(''); setBusy(true);
+    setErr(''); setMsg(''); setRevealed(null); setBusy(true);
     try {
-      await api.createUser({ username: form.username, password: form.password, role: form.role, clientIds: (form.role !== 'admin' && form.role !== 'manager') ? form.clientIds : [] });
-      setForm({ username: '', password: '', role: 'editor', clientIds: [] });
-      setMsg('User created.'); loadUsers();
+      const created = await api.createUser({
+        username: form.username, password: form.password || undefined, role: form.role,
+        clientIds: (form.role !== 'admin' && form.role !== 'manager') ? form.clientIds : [],
+        email: form.email.trim() || undefined, sendEmail: !!(form.sendEmail && form.email.trim()),
+      });
+      setForm({ username: '', password: '', role: 'editor', clientIds: [], email: '', sendEmail: true });
+      if (created.generatedPassword) {
+        setRevealed({ username: created.username, password: created.generatedPassword, email: form.email.trim() || null });
+      }
+      setMsg(
+        created.email
+          ? (created.email.sent ? `User created and invite emailed to ${form.email.trim() || 'the client'}.` : `User created — email did NOT send (${created.email.error}). Copy the password below.`)
+          : 'User created.'
+      );
+      loadUsers();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   const resetPw = async (u) => {
@@ -40,6 +63,22 @@ function UsersSection() {
     if (pw == null) return;
     try { await api.resetUserPassword(u.id, pw); setErr(''); setMsg(`Password reset for ${u.username}.`); }
     catch (e) { setErr(e.message); }
+  };
+  // "Resend invite" — issues a fresh auto-generated password (invalidates the
+  // old one) and optionally emails it, same credentials email as at creation.
+  const resendInvite = async (u) => {
+    const email = window.prompt(`Email the new login for "${u.username}" to:`, '');
+    if (email == null) return;
+    setErr(''); setMsg(''); setRevealed(null);
+    try {
+      const r = await api.regenerateUserPassword(u.id, email.trim() || undefined, !!email.trim());
+      setRevealed({ username: u.username, password: r.generatedPassword, email: email.trim() || null });
+      setMsg(
+        r.email
+          ? (r.email.sent ? `New password emailed to ${email.trim()}.` : `New password generated — email did NOT send (${r.email.error}). Copy it below.`)
+          : 'New password generated. Copy it below.'
+      );
+    } catch (e) { setErr(e.message); }
   };
   const toggleActive = async (u) => { try { await api.updateUser(u.id, { active: !u.active }); loadUsers(); } catch (e) { setErr(e.message); } };
   const changeRole = async (u, role) => { try { await api.updateUser(u.id, { role }); loadUsers(); } catch (e) { setErr(e.message); } };
@@ -50,7 +89,10 @@ function UsersSection() {
       {me
         ? <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
             <span className="mono" style={{ color: 'var(--text-3)' }}>Signed in as <strong style={{ color: 'var(--text)' }}>{me.username}</strong> · {me.role}</span>
-            <button className="btn sm" onClick={logout}>Log out</button>
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn sm" onClick={changeMyPw}>Change my password</button>
+              <button className="btn sm" onClick={logout}>Log out</button>
+            </div>
           </div>
         : <div className="mono" style={{ color: 'var(--text-4)' }}>Not signed in.</div>}
 
@@ -59,6 +101,18 @@ function UsersSection() {
       {isAdmin && <>
         {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 8 }}>{err}</div>}
         {msg && <div className="mono" style={{ color: 'var(--ok)', marginBottom: 8 }}>{msg}</div>}
+        {revealed && (
+          <div className="card" style={{ padding: 12, marginBottom: 12, border: '1px solid var(--ok)', background: 'var(--surface-2)' }}>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 6 }}>
+              One-time reveal — this password can't be shown again after you navigate away. Copy it now if the email didn't send.
+            </div>
+            <div className="row" style={{ gap: 14, flexWrap: 'wrap', alignItems: 'baseline' }}>
+              <span className="mono" style={{ fontSize: 13 }}>Username: <strong>{revealed.username}</strong></span>
+              <span className="mono" style={{ fontSize: 13 }}>Password: <strong>{revealed.password}</strong></span>
+            </div>
+            <button className="btn sm" style={{ marginTop: 8 }} onClick={() => setRevealed(null)}>Dismiss</button>
+          </div>
+        )}
         <div className="col" style={{ gap: 2, marginBottom: 18 }}>
           {(users || []).map((u) => (
             <div key={u.id} className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
@@ -69,6 +123,7 @@ function UsersSection() {
               {u.role !== 'admin' && u.role !== 'manager' && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{u.clientIds.length} client{u.clientIds.length === 1 ? '' : 's'}</span>}
               <span className="mono" style={{ fontSize: 11, color: u.active ? 'var(--ok)' : 'var(--text-4)' }}>{u.active ? 'active' : 'disabled'}</span>
               <div className="row" style={{ gap: 6, marginLeft: 'auto' }}>
+                <button className="btn sm" onClick={() => resendInvite(u)} title="Generate a new password and (optionally) email it">Resend invite</button>
                 <button className="btn sm" onClick={() => resetPw(u)}>Reset password</button>
                 <button className="btn sm" onClick={() => toggleActive(u)} disabled={me.id === u.id}>{u.active ? 'Disable' : 'Enable'}</button>
               </div>
@@ -80,11 +135,17 @@ function UsersSection() {
         <div className="label" style={{ marginBottom: 8 }}>ADD USER</div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <input placeholder="Username" value={form.username} autoCapitalize="off" spellCheck={false} onChange={(e) => setForm({ ...form, username: e.target.value })} style={inpStyle} />
-          <input placeholder="Password (min 6)" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={inpStyle} />
+          <input placeholder="Password (blank = auto-generate)" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={inpStyle} />
           <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} style={selStyle}>
             <option value="editor">editor</option><option value="manager">manager</option><option value="admin">admin</option><option value="client">client</option>
           </select>
-          <button className="btn primary sm" onClick={create} disabled={busy || !form.username || !form.password}>Create user</button>
+          <button className="btn primary sm" onClick={create} disabled={busy || !form.username}>Create user</button>
+        </div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+          <input placeholder="Email — to send login link + credentials" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={{ ...inpStyle, minWidth: 260 }} />
+          <label className="row" style={{ gap: 6, fontSize: 12, cursor: 'pointer', alignItems: 'center' }}>
+            <input type="checkbox" checked={form.sendEmail} onChange={(e) => setForm({ ...form, sendEmail: e.target.checked })} /> Email the dashboard link + credentials
+          </label>
         </div>
         {form.role !== 'admin' && form.role !== 'manager' && (
           <div style={{ marginTop: 10 }}>
