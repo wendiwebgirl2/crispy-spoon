@@ -448,3 +448,13 @@
   .shell { grid-template-columns: 190px 1fr !important; }
   .hd-search { display: none; }
 }
+
+/* Client portal — a fixed-width sidebar + independently-scrolling content
+   pane on desktop; on a narrow viewport it stacks into one column and the
+   shell itself becomes the single scroll region (the sidebar/main panes'
+   own overflow is turned off so there's only one scrollbar, not three). */
+@media (max-width: 720px) {
+  .portal-shell { flex-direction: column !important; overflow-y: auto !important; }
+  .portal-aside { width: 100% !important; overflow-y: visible !important; border-right: none !important; border-bottom: 1px solid var(--border); }
+  .portal-main { max-width: 100% !important; overflow-y: visible !important; padding: 18px !important; }
+}

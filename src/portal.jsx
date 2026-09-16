@@ -357,8 +357,8 @@ export default function PortalApp({ me }) {
   const clientName = summary ? summary.client.name : '';
 
   return (
-    <div className="row" style={{ minHeight: '100vh', alignItems: 'stretch', background: 'var(--bg)', color: 'var(--text)' }}>
-      <aside style={{ width: 232, borderRight: '1px solid var(--border)', padding: 18, display: 'flex', flexDirection: 'column', gap: 4, background: 'var(--surface)' }}>
+    <div className="row portal-shell" style={{ height: '100vh', alignItems: 'stretch', background: 'var(--bg)', color: 'var(--text)', overflow: 'hidden' }}>
+      <aside className="portal-aside" style={{ width: 232, flex: 'none', borderRight: '1px solid var(--border)', padding: 18, display: 'flex', flexDirection: 'column', gap: 4, background: 'var(--surface)', overflowY: 'auto', minHeight: 0 }}>
         <div style={{ padding: '4px 6px 14px' }}>
           <div style={{ fontFamily: 'var(--f-display)', fontWeight: 800, fontSize: 20 }}>cue<span style={{ color: 'var(--accent)' }}>:</span>portal</div>
           {clientName && <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>{clientName}</div>}
@@ -383,7 +383,7 @@ export default function PortalApp({ me }) {
           <button className="btn sm" style={{ width: '100%' }} onClick={logout}>Log out</button>
         </div>
       </aside>
-      <main style={{ flex: 1, padding: '26px 30px', maxWidth: 860, margin: '0 auto', width: '100%' }}>
+      <main className="portal-main" style={{ flex: 1, padding: '26px 30px', maxWidth: 860, margin: '0 auto', width: '100%', overflowY: 'auto', minHeight: 0 }}>
         {view === 'approve' && <NeedsApproval onChanged={refreshSummary} />}
         {view === 'production' && <InProduction />}
         {view === 'episodes' && <PastEpisodes />}
