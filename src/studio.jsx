@@ -1715,14 +1715,17 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>{engineLabel(video.engine_used)}</div>
         ) : null}
         {(video.delivery_label || video.delivery_prompt) && (
-          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            title={video.delivery_prompt || ''}>
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.4 }}>
             Delivery: {video.delivery_label || 'Custom'}{video.delivery_prompt ? ` — ${video.delivery_prompt}` : ''}
           </div>
         )}
+        {video.expressiveness && (
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
+            Expressiveness: {video.expressiveness.charAt(0).toUpperCase() + video.expressiveness.slice(1)}
+          </div>
+        )}
         {video.background_file && (
-          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            title={video.background_file}>
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.4 }}>
             File: {video.background_file}
           </div>
         )}
