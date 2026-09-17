@@ -11,6 +11,19 @@ function fmtDate(s) {
   if (!s) return '—';
   return String(s).slice(0, 10);
 }
+function fmtDateTime(s) {
+  if (!s) return '—';
+  return String(s).slice(0, 16).replace('T', ' ');
+}
+// send_log is a JSON array of { event, detail, created_at } — every email this
+// invite has triggered (initial send, expiry reminder), oldest first, so an
+// operator can see who it actually went to without digging through email.
+function parseSendLog(inv) {
+  try {
+    const rows = JSON.parse(inv.send_log || '[]');
+    return Array.isArray(rows) ? rows.filter(Boolean) : [];
+  } catch { return []; }
+}
 
 const STATUS_TONE = {
   pending:   { fg: 'var(--text-2)' },
@@ -162,30 +175,45 @@ const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter, on
         </div>
       ) : (
         <div className="col" style={{ gap: 8 }}>
-          {filtered.map((inv) => (
-            <div key={inv.id} ref={inv.id === highlightId ? focusRef : null} className="card card-pad row"
-              style={{ gap: 12, alignItems: 'center', borderColor: inv.id === highlightId ? 'var(--accent)' : undefined, boxShadow: inv.id === highlightId ? '0 0 0 2px var(--accent)' : undefined }}>
-              <Icon name="send" size={16} style={{ color: 'var(--text-3)' }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>
-                  {inv.client_name}
-                  {inv.label ? <span style={{ color: 'var(--text-3)', fontWeight: 400 }}> · {inv.label}</span> : null}
+          {filtered.map((inv) => {
+            const sendLog = parseSendLog(inv);
+            return (
+            <div key={inv.id} ref={inv.id === highlightId ? focusRef : null} className="card card-pad"
+              style={{ borderColor: inv.id === highlightId ? 'var(--accent)' : undefined, boxShadow: inv.id === highlightId ? '0 0 0 2px var(--accent)' : undefined }}>
+              <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+                <Icon name="send" size={16} style={{ color: 'var(--text-3)' }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>
+                    {inv.client_name}
+                    {inv.label ? <span style={{ color: 'var(--text-3)', fontWeight: 400 }}> · {inv.label}</span> : null}
+                  </div>
+                  <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {inv.client_email || 'no email'} · created {fmtDate(inv.created_at)} · expires {fmtDate(inv.expires_at)}
+                  </div>
                 </div>
-                <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {inv.client_email || 'no email'} · created {fmtDate(inv.created_at)} · expires {fmtDate(inv.expires_at)}
-                </div>
+                <span className="badge" style={{ color: (STATUS_TONE[inv.status] || {}).fg || 'var(--text-2)' }}>
+                  {inv.status || 'pending'}
+                </span>
+                <button className="btn sm" onClick={() => copyLink(inv.token)}>
+                  <Icon name="send" size={13} /> {copied === inv.token ? 'Copied' : 'Copy link'}
+                </button>
+                <button className="btn sm" title="Delete invitation" onClick={() => remove(inv)} style={{ color: 'var(--accent)' }}>
+                  <Icon name="close" size={13} /> Delete
+                </button>
               </div>
-              <span className="badge" style={{ color: (STATUS_TONE[inv.status] || {}).fg || 'var(--text-2)' }}>
-                {inv.status || 'pending'}
-              </span>
-              <button className="btn sm" onClick={() => copyLink(inv.token)}>
-                <Icon name="send" size={13} /> {copied === inv.token ? 'Copied' : 'Copy link'}
-              </button>
-              <button className="btn sm" title="Delete invitation" onClick={() => remove(inv)} style={{ color: 'var(--accent)' }}>
-                <Icon name="close" size={13} /> Delete
-              </button>
+              {sendLog.length > 0 && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <div className="mono" style={{ color: 'var(--text-4)', fontSize: 10, letterSpacing: '0.04em' }}>SEND LOG</div>
+                  {sendLog.map((e, idx) => (
+                    <div key={idx} className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                      {fmtDateTime(e.created_at)} — {e.detail || e.event}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
