@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { api, generateVideo, listVideos } from './api.js'
 import { clientToken } from './dashboard-api.js'
-import { Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip, SendReviewModal, buildMotionPrompt } from './shared.jsx'
+import { Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip, SendReviewModal, ApprovalMethodModal, approvalMethodLabel, buildMotionPrompt } from './shared.jsx'
 import { TopicsSection } from './brief.jsx'
 
 const CHANNEL_FALLBACK = [
@@ -312,9 +312,13 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     finally { setBusy(false); }
   };
 
-  const setApproval = async (sid, approval_status, status) => {
+  const [askApprove, setAskApprove] = React.useState(null); // { sid, status } — awaiting "how was it approved?"
+  const setApproval = async (sid, approval_status, status, extra) => {
+    // Staff marking approved on the client's behalf: record how it was approved.
+    if (approval_status === 'approved' && !extra) { setAskApprove({ sid, status }); return; }
     try {
       const payload = { approval_status };
+      if (extra) { payload.approval_method = extra.method; payload.approval_method_note = extra.note; }
       if (status) payload.status = status;
       if (approval_status === 'approved') {
         // Signed in → stamp the locked account name, no prompt. Pre-auth (dev)
@@ -335,7 +339,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   // Undo a "Mark approved" — reverts the script to draft / no approval state.
   const undoApproval = async (sid) => {
     try {
-      await api.updateScript(clientId, sid, { approval_status: 'none', status: 'draft', approval_by: '' });
+      await api.updateScript(clientId, sid, { approval_status: 'none', status: 'draft', approval_by: '', approval_method: '', approval_method_note: '' });
       await refreshHistory();
     } catch (e) { setErr(e.message); }
   };
@@ -776,7 +780,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   {h.job_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {h.job_number}</span>}
                   {h.episode_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>E{String(h.episode_number).replace(/^E/i, '')}</span>}
                   {h.status && h.status !== 'draft' && <span className="mono" style={{ color: h.status === 'approved' ? 'var(--ok)' : 'var(--text-4)' }}>{h.status}</span>}
-                  {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: (h.approval_status.startsWith('approved') || h.approval_status === 'in_production') ? 'var(--ok)' : h.approval_status === 'changes_completed' ? 'var(--text-2)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{(APPROVAL_LABEL[h.approval_status] || h.approval_status.replace(/_/g, ' '))}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production') && h.approval_by ? ' · by ' + h.approval_by : ''}</span>}
+                  {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: (h.approval_status.startsWith('approved') || h.approval_status === 'in_production') ? 'var(--ok)' : h.approval_status === 'changes_completed' ? 'var(--text-2)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{(APPROVAL_LABEL[h.approval_status] || h.approval_status.replace(/_/g, ' '))}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production') && h.approval_by ? ' · by ' + h.approval_by : ''}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production') && h.approval_method ? ' · via ' + approvalMethodLabel(h.approval_method).toLowerCase() : ''}</span>}
                   {h.production_status && PRODUCTION_LABEL[h.production_status] && <span className="mono" style={{ color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', fontSize: 11 }}>{PRODUCTION_LABEL[h.production_status]}</span>}
                   {h.qa_bypassed_by && <span className="mono" title="Created while the client brief was unverified" style={{ color: 'var(--warn)', border: '1px solid var(--warn)', borderRadius: 4, padding: '1px 5px', fontSize: 11 }}>⚠ brief unverified · bypassed by {h.qa_bypassed_by}</span>}
                   {(h.approval_sent_at || h.approval_approved_at || h.changes_verified_at) && (
@@ -933,6 +937,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         </div>
       )}
 
+      <ApprovalMethodModal open={!!askApprove} onClose={() => setAskApprove(null)} onConfirm={async (x) => { const a = askApprove; setAskApprove(null); await setApproval(a.sid, 'approved', a.status, x); }} />
       <SendReviewModal
         open={!!sendScript}
         title={sendScript ? (sendScript.topic || sendScript.channel || '') : ''}

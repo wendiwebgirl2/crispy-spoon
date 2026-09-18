@@ -6,7 +6,7 @@
 import React from 'react'
 import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, castBoostedVideoBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
 import { clientToken, voice } from './dashboard-api.js'
-import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, buildMotionPrompt } from './shared.jsx'
+import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, ApprovalMethodModal, buildMotionPrompt } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
 import { LookPicker, AssetsSection } from './brief.jsx'
 
@@ -624,9 +624,11 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     try { const v = await listVideos(token); setQueue(v.videos || []); } catch { /* ignore */ }
     refreshCastMeta();
   };
-  const approveCast = async (v) => {
+  const [askApproveCast, setAskApproveCast] = React.useState(null);
+  const approveCast = (v) => setAskApproveCast(v);
+  const doApproveCast = async (v, extra) => {
     try {
-      await api.setCastApproval(clientId, v.id, 'approved', v.title || null);
+      await api.setCastApproval(clientId, v.id, 'approved', v.title || null, extra);
       await refreshCastMeta();
     } catch (e) { window.alert('Could not approve: ' + e.message); }
   };
@@ -1058,6 +1060,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
               )}
             </div>
 
+            <ApprovalMethodModal open={!!askApproveCast} title={askApproveCast ? (askApproveCast.title || '') : ''} onClose={() => setAskApproveCast(null)} onConfirm={async (x) => { const v = askApproveCast; setAskApproveCast(null); await doApproveCast(v, x); }} />
             <SendReviewModal open={!!sendCast} title={sendCast ? (sendCast.title || '') : ''} busy={sendingCast} onSend={doSendCast} onClose={() => setSendCast(null)} />
 
             {editCast && (

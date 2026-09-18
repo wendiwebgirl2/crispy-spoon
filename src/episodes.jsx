@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Icon, downloadWithPrompt, buildArchiveZip, SendReviewModal } from './shared.jsx'
+import { Icon, downloadWithPrompt, buildArchiveZip, SendReviewModal, ApprovalMethodModal, approvalMethodLabel } from './shared.jsx'
 import { ep, video, rec, clientToken, sched } from './dashboard-api.js'
 import { api, episodeWaveformStart, episodeWaveformStatus, episodeWaveformFileUrl } from './api.js'
 import { LookPicker } from './brief.jsx'
@@ -364,9 +364,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
     finally { setBusy(''); }
   };
 
-  const approve = async () => {
+  const [askApprove, setAskApprove] = useState(false);
+  const approve = () => setAskApprove(true);
+  const doApprove = async (extra) => {
     setBusy('approve'); setErr('');
-    try { await ep.approve(cid, epId, 'approved'); await refresh(); }
+    try { await ep.approve(cid, epId, 'approved', extra); await refresh(); }
     catch (e) { setErr(e.message || 'Could not approve.'); }
     finally { setBusy(''); }
   };
@@ -818,7 +820,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
               {full.approval_sent_at ? 'sent ' + String(full.approval_sent_at).slice(0, 10) : ''}
               {full.approval_approved_at ? (full.approval_sent_at ? ' · ' : '') + 'approved ' + String(full.approval_approved_at).slice(0, 10) : ''}
               {full.changes_verified_at ? ((full.approval_sent_at || full.approval_approved_at) ? ' · ' : '') + 'verified ' + String(full.changes_verified_at).slice(0, 10) : ''}
-              {full.approval_by ? ' · by ' + full.approval_by : ''}
+              {full.approval_by ? ' · by ' + full.approval_by : ''}{full.approval_method ? ' · via ' + approvalMethodLabel(full.approval_method).toLowerCase() : ''}{full.approval_method_note ? ' (' + full.approval_method_note + ')' : ''}
             </div>
           )}
           {full.approval_comment && (full.approval_status === 'changes_requested' || full.approval_status === 'approved_with_changes') && (
@@ -882,6 +884,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
         <textarea value={internalNotes} onChange={(e) => setInternalNotes(e.target.value)} rows={4} placeholder="Episode-specific notes for your team — production reminders, client context, to-dos…" style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit', marginTop: 8, width: '100%' }} />
       </div>
 
+      <ApprovalMethodModal open={askApprove} title={epTitle(full)} busy={busy === 'approve'} onClose={() => setAskApprove(false)} onConfirm={async (x) => { setAskApprove(false); await doApprove(x); }} />
       <SendReviewModal open={showSend} title={epTitle(full)} busy={busy === 'send'} onSend={doSend} onClose={() => setShowSend(false)} />
 
       <YourAvatars cid={cid} />

@@ -225,6 +225,25 @@ function SocialDistributionCard({ clientId }) {
   const load = () => api.getDistribution(clientId).then(setDist).catch((e) => setErr(e.message || 'Could not load distribution settings.'));
   useEffect(() => { setDist(null); setErr(''); if (clientId) load(); }, [clientId]);
 
+  // YouTube connection: live status from Upload-Post + a one-click email that
+  // lets the client connect their own channel (no owner access needed).
+  const [yt, setYt] = useState(null);
+  const [ytMsg, setYtMsg] = useState('');
+  const [ytBusy, setYtBusy] = useState(false);
+  const loadYt = () => api.youtubeStatus(clientId).then(setYt).catch(() => setYt(null));
+  useEffect(() => { setYt(null); setYtMsg(''); if (clientId) loadYt(); }, [clientId]);
+  const sendYt = async () => {
+    setYtBusy(true); setYtMsg(''); setErr('');
+    try {
+      const b = await api.getBrief(clientId);
+      const to = ((b && (b.approval_email || b.email)) || '').trim();
+      if (!to) { setErr("No email on this client's Brief \u2014 add one above first."); return; }
+      const res = await api.createInvite(clientId, { clientEmail: to, label: 'YouTube connect', days: 30, kind: 'youtube' });
+      setYtMsg(res?.email?.sent ? `Connect link emailed to ${to}.` : `Invite created but email not sent${res?.email?.error ? ': ' + res.email.error : ''}.`);
+      load();
+    } catch (e) { setErr(e.message || 'Could not send the connect link.'); } finally { setYtBusy(false); }
+  };
+
   const set = (k, v) => { setDist((d) => ({ ...d, [k]: v })); setSaved(false); };
   const save = async () => {
     setSaving(true); setErr(''); setSaved(false);
@@ -245,11 +264,20 @@ function SocialDistributionCard({ clientId }) {
       </div>
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 8 }}>{err}</div>}
       <div className="col" style={{ gap: 8 }}>
-        <input placeholder="Upload-Post profile name" value={dist.upload_post_profile ?? ''} onChange={(e) => set('upload_post_profile', e.target.value)} style={inp} />
+        <input placeholder="Upload-Post profile name (same one Facebook uses)" value={dist.upload_post_profile ?? ''} onChange={(e) => set('upload_post_profile', e.target.value)} style={inp} />
+        <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>One Upload-Post profile per client holds ALL their platforms (Facebook, Instagram, YouTube). Use the profile you already have for them \u2014 the YouTube connect link attaches to it, never creates a second one.</div>
         <input placeholder="Facebook Page id (required for Facebook posts)" value={dist.facebook_page_id ?? ''} onChange={(e) => set('facebook_page_id', e.target.value)} style={inp} />
         <div className="row" style={{ gap: 12, alignItems: 'center' }}>
           <button className="btn sm primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save distribution settings'}</button>
           {saved && <span className="mono" style={{ color: 'var(--ok)' }}>✓ saved</span>}
+        </div>
+        <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+          <span className="mono" style={{ fontSize: 12, color: yt && yt.connected ? 'var(--ok)' : 'var(--text-3)' }}>
+            {yt == null ? 'YouTube: checking\u2026' : yt.connected === true ? '\u2713 YouTube connected' : yt.connected === null ? 'YouTube: could not check' : 'YouTube: not connected yet'}
+          </span>
+          <button className="btn sm" onClick={sendYt} disabled={ytBusy || saving}>{ytBusy ? 'Sending\u2026' : 'Email YouTube connect link'}</button>
+          <button className="btn sm" onClick={loadYt}>Refresh</button>
+          {ytMsg && <span className="mono" style={{ color: 'var(--ok)', fontSize: 12 }}>{ytMsg}</span>}
         </div>
         <HashtagManager clientId={clientId} />
       </div>

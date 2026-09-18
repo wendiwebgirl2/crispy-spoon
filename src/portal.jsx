@@ -8,6 +8,7 @@ import { api } from './api.js'
 
 const MENU = [
   { id: 'approve', label: 'Needs Approval', icon: 'check', badge: 'needsApproval' },
+  { id: 'onboarding', label: 'Onboarding', icon: 'check' },
   { id: 'production', label: 'In Production', icon: 'studio', badge: 'inProduction' },
   { id: 'episodes', label: 'Past Episodes', icon: 'history', badge: 'pastEpisodes' },
   { id: 'avatars', label: 'Avatars', icon: 'avatars' },
@@ -394,6 +395,171 @@ function Account() {
   );
 }
 
+// ---- Onboarding (client-side checklist) ------------------------------------
+// Same data staff keep on the Brief — edits here show there and vice versa.
+// Passwords are write-only: you can set one, but it's never shown back.
+const ACCOUNT_PICKS = [
+  ['social', 'Facebook'], ['social', 'Instagram'], ['social', 'LinkedIn'], ['social', 'TikTok'],
+  ['social', 'X (Twitter)'], ['social', 'Pinterest'], ['website', 'Website admin'], ['website', 'Hosting provider'],
+  ['website', 'Domain registrar'], ['other', 'Google Business Profile'], ['other', 'Google account'],
+  ['other', 'Bing Places'], ['other', 'Yelp'],
+];
+const EMPTY_ACCT = { kind: 'social', platform: '', url: '', username: '', secret: '', notes: '' };
+
+function Onboarding() {
+  const [data, setData] = React.useState(null);
+  const [err, setErr] = React.useState('');
+  const [contact, setContact] = React.useState({ email: '', phone: '', mobile: '', address: '', website: '' });
+  const [contactMsg, setContactMsg] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [form, setForm] = React.useState(EMPTY_ACCT);
+  const [edit, setEdit] = React.useState(null);
+  const [ytBusy, setYtBusy] = React.useState(false);
+
+  const load = React.useCallback(() => api.portalOnboarding()
+    .then((d) => { setData(d); setContact(d.contact); })
+    .catch((e) => setErr(e.message || 'Could not load your onboarding.')), []);
+  React.useEffect(() => { load(); }, [load]);
+
+  const saveContact = async () => {
+    setBusy(true); setErr(''); setContactMsg('');
+    try { await api.portalSaveContact(contact); setContactMsg('Saved.'); await load(); }
+    catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const addAccount = async () => {
+    if (!form.platform.trim()) { setErr('Enter the platform (e.g. Instagram).'); return; }
+    setBusy(true); setErr('');
+    try { await api.portalAddAccount(form); setForm(EMPTY_ACCT); await load(); }
+    catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const saveEdit = async () => {
+    if (!edit.platform.trim()) { setErr('Enter the platform (e.g. Instagram).'); return; }
+    setBusy(true); setErr('');
+    try { await api.portalUpdateAccount(edit.id, { kind: edit.kind, platform: edit.platform, url: edit.url, username: edit.username, notes: edit.notes, ...(edit.secret ? { secret: edit.secret } : {}) }); setEdit(null); await load(); }
+    catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const remove = async (id) => {
+    if (!window.confirm('Remove this account from your list?')) return;
+    setErr('');
+    try { await api.portalDeleteAccount(id); await load(); } catch (e) { setErr(e.message); }
+  };
+  const connectYoutube = async () => {
+    setYtBusy(true); setErr('');
+    try { const { url } = await api.portalYoutubeLink(); window.location.href = url; }
+    catch (e) { setErr(e.message); setYtBusy(false); }
+  };
+  const pick = (i) => {
+    if (i === '') return;
+    const [kind, platform] = ACCOUNT_PICKS[Number(i)];
+    setForm((f) => ({ ...f, kind, platform }));
+  };
+
+  if (!data) return <div className="fade-in"><SectionHead title="Onboarding" />{err ? <div className="mono" style={{ color: 'var(--accent)' }}>{err}</div> : <Empty>Loading…</Empty>}</div>;
+
+  const doneCount = data.steps.filter((x) => x.done).length;
+  const yt = data.youtube;
+  const F = ({ label, k, type = 'text', ph }) => (
+    <div style={{ flex: '1 1 220px' }}>
+      <div className="label" style={{ marginBottom: 4 }}>{label}</div>
+      <input type={type} value={contact[k] || ''} placeholder={ph} onChange={(e) => { setContact({ ...contact, [k]: e.target.value }); setContactMsg(''); }} style={inputStyle} />
+    </div>
+  );
+
+  return (
+    <div className="fade-in">
+      <SectionHead title="Onboarding" sub={`${doneCount} of ${data.steps.length} steps done — this is the same information your producer keeps on file.`} />
+      {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
+
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div className="label" style={{ marginBottom: 8 }}>YOUR CHECKLIST</div>
+        {data.steps.map((x) => (
+          <div key={x.key} className="row" style={{ gap: 10, alignItems: 'center', padding: '6px 0', borderTop: '1px solid var(--border)' }}>
+            <span style={{ color: x.done ? 'var(--ok)' : 'var(--text-4)', width: 16 }}>{x.done ? '✓' : '○'}</span>
+            <span style={{ fontSize: 13.5, color: x.done ? 'var(--text-3)' : 'var(--text)' }}>{x.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div className="label" style={{ marginBottom: 4 }}>CONNECT YOUTUBE</div>
+        <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12.5, marginBottom: 10, lineHeight: 1.5 }}>
+          Sign in to Google yourself and approve publishing to your channel — we never need your password or owner access, and you can disconnect at any time.
+        </div>
+        <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+          {yt.connected === true
+            ? <span className="mono" style={{ color: 'var(--ok)', fontSize: 13 }}>✓ YouTube is connected</span>
+            : <button className="btn primary sm" disabled={ytBusy} onClick={connectYoutube}>{ytBusy ? 'Opening…' : 'Connect YouTube'}</button>}
+          {yt.connected === true && <button className="btn sm" disabled={ytBusy} onClick={connectYoutube}>Reconnect</button>}
+          {yt.connected === null && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>Couldn’t check the connection just now.</span>}
+        </div>
+      </div>
+
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div className="label" style={{ marginBottom: 4 }}>CONTACT &amp; SCRIPT DETAILS</div>
+        <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12.5, marginBottom: 10 }}>Used in your scripts and to reach you — keep them current.</div>
+        <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+          <F label="EMAIL" k="email" type="email" />
+          <F label="PHONE" k="phone" />
+          <F label="MOBILE" k="mobile" />
+          <F label="WEBSITE" k="website" ph="https://" />
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <div className="label" style={{ marginBottom: 4 }}>ADDRESS</div>
+          <textarea rows={2} value={contact.address || ''} onChange={(e) => { setContact({ ...contact, address: e.target.value }); setContactMsg(''); }} style={{ ...inputStyle, resize: 'vertical' }} />
+        </div>
+        <div className="row" style={{ gap: 10, alignItems: 'center', marginTop: 10 }}>
+          <button className="btn primary sm" disabled={busy} onClick={saveContact}>Save details</button>
+          {contactMsg && <span className="mono" style={{ color: 'var(--ok)', fontSize: 12 }}>{contactMsg}</span>}
+        </div>
+      </div>
+
+      <div style={card}>
+        <div className="label" style={{ marginBottom: 4 }}>YOUR ACCOUNTS · social, website, Google</div>
+        <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12.5, marginBottom: 10 }}>Passwords are stored encrypted and never shown back to you — leave blank to keep the current one.</div>
+        {data.accounts.length === 0 && <Empty>No accounts added yet.</Empty>}
+        {data.accounts.map((a) => (edit && edit.id === a.id ? (
+          <div key={a.id} className="col" style={{ gap: 8, borderTop: '1px solid var(--border)', padding: '10px 0' }}>
+            <input placeholder="Platform" value={edit.platform} onChange={(e) => setEdit({ ...edit, platform: e.target.value })} style={inputStyle} />
+            <input placeholder="URL" value={edit.url} onChange={(e) => setEdit({ ...edit, url: e.target.value })} style={inputStyle} />
+            <input placeholder="Handle / username / login" value={edit.username} onChange={(e) => setEdit({ ...edit, username: e.target.value })} style={inputStyle} />
+            <input type="password" placeholder="New password (leave blank to keep)" autoComplete="new-password" value={edit.secret} onChange={(e) => setEdit({ ...edit, secret: e.target.value })} style={inputStyle} />
+            <input placeholder="Notes" value={edit.notes} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} style={inputStyle} />
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn primary sm" disabled={busy} onClick={saveEdit}>Save</button>
+              <button className="btn sm" onClick={() => setEdit(null)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div key={a.id} className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, borderTop: '1px solid var(--border)', padding: '8px 0' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600 }}>{a.platform} <span className="mono" style={{ color: 'var(--text-4)', fontWeight: 400, fontSize: 11 }}>{a.kind}</span></div>
+              {a.url && <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.url}</div>}
+              {a.username && <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>{a.username}{a.hasSecret ? ' · password saved' : ''}</div>}
+            </div>
+            <div className="row" style={{ gap: 6, flex: 'none' }}>
+              <button className="btn sm" onClick={() => setEdit({ id: a.id, kind: a.kind, platform: a.platform || '', url: a.url || '', username: a.username || '', notes: a.notes || '', secret: '' })}>Edit</button>
+              <button className="btn sm" onClick={() => remove(a.id)}>Remove</button>
+            </div>
+          </div>
+        )))}
+        <div className="col" style={{ gap: 8, marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+          <div className="label">ADD AN ACCOUNT</div>
+          <select value="" onChange={(e) => pick(e.target.value)} style={inputStyle}>
+            <option value="">Quick pick…</option>
+            {ACCOUNT_PICKS.map(([k, p], i) => <option key={p} value={i}>{p}</option>)}
+          </select>
+          <input placeholder="Platform (e.g. Instagram)" value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })} style={inputStyle} />
+          <input placeholder="URL" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} style={inputStyle} />
+          <input placeholder="Handle / username / login" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} style={inputStyle} />
+          <input type="password" placeholder="Password (optional, stored encrypted)" autoComplete="new-password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} style={inputStyle} />
+          <input placeholder="Notes (optional)" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} style={inputStyle} />
+          <div><button className="btn primary sm" disabled={busy || !form.platform.trim()} onClick={addAccount}>Add account</button></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- Help ------------------------------------------------------------------
 function Help() {
   return (
@@ -458,7 +624,7 @@ function Contract() {
 
 // ---- Shell -----------------------------------------------------------------
 export default function PortalApp({ me }) {
-  const [view, setView] = React.useState('approve');
+  const [view, setView] = React.useState(() => (typeof window !== 'undefined' && window.location.hash === '#onboarding' ? 'onboarding' : 'approve'));
   const [summary, setSummary] = React.useState(null);
   const refreshSummary = React.useCallback(() => { api.portalSummary().then(setSummary).catch(() => {}); }, []);
   React.useEffect(() => { refreshSummary(); }, [refreshSummary]);
@@ -496,6 +662,7 @@ export default function PortalApp({ me }) {
       </aside>
       <main className="portal-main" style={{ flex: 1, padding: '26px 30px', maxWidth: 860, margin: '0 auto', width: '100%', overflowY: 'auto', minHeight: 0 }}>
         {view === 'approve' && <NeedsApproval onChanged={refreshSummary} />}
+        {view === 'onboarding' && <Onboarding />}
         {view === 'production' && <InProduction />}
         {view === 'episodes' && <PastEpisodes />}
         {view === 'avatars' && <Avatars onChanged={refreshSummary} />}

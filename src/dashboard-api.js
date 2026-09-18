@@ -40,7 +40,7 @@ export const ep = {
   useAsset: (cid, id, assetId, slot) => post(`/api/clients/${cid}/episodes/${id}/use-asset`, { assetId, slot }),
   setBodyCutaway: (cid, id, assetId, startSec) => post(`/api/clients/${cid}/episodes/${id}/body-cutaway`, { assetId, startSec }),
   clearBodyCutaway: (cid, id) => post(`/api/clients/${cid}/episodes/${id}/body-cutaway/clear`, {}),
-  approve: (cid, id, status) => post(`/api/clients/${cid}/episodes/${id}/approval`, { status }),
+  approve: (cid, id, status, extra) => post(`/api/clients/${cid}/episodes/${id}/approval`, { status, ...(extra ? { method: extra.method, methodNote: extra.note } : {}) }),
   sendClient: (cid, id, email, note) => post(`/api/clients/${cid}/episodes/${id}/send-client`, { ...(email ? { email } : {}), ...(note ? { note } : {}) }),
   coverUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/cover`,
   uploadPodcastImage: (cid, id, file) => { const f = new FormData(); f.append('file', file); return postForm(`/api/clients/${cid}/episodes/${id}/podcast-image`, f); },

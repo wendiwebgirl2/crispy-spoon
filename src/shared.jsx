@@ -493,6 +493,48 @@ async function buildArchiveZip({ zipName, files = [], texts = [], manifest }) {
 // Send-for-review modal: collects an optional client email + an optional note
 // that the backend includes in the approval email. Used by the episode send and
 // the cast send. onSend(email, note) is called with trimmed values.
+// How an approval was given. Staff record this whenever they mark something
+// approved on the client's behalf (phone / in person / text / etc.).
+const APPROVAL_METHODS = [
+  ['phone', 'Phone call'], ['in_person', 'In person'], ['text', 'Text message'],
+  ['email', 'Email'], ['portal', 'Client portal'], ['other', 'Other'],
+];
+const approvalMethodLabel = (m) => (APPROVAL_METHODS.find((x) => x[0] === m) || [])[1] || '';
+
+function ApprovalMethodModal({ open, title, busy, onConfirm, onClose }) {
+  const [method, setMethod] = React.useState('');
+  const [note, setNote] = React.useState('');
+  React.useEffect(() => { if (open) { setMethod(''); setNote(''); } }, [open]);
+  if (!open) return null;
+  const fld = {
+    background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)',
+    borderRadius: 'var(--r-sm)', fontFamily: 'var(--f-mono)', fontSize: 13, padding: '9px 11px',
+    boxSizing: 'border-box', width: '100%',
+  };
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 200 }}>
+      <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(460px, 96vw)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="label">Mark approved{title ? ' · ' + title : ''}</div>
+        <label className="col" style={{ gap: 4 }}>
+          <span className="mono" style={{ color: 'var(--text-4)' }}>How was it approved?</span>
+          <select value={method} onChange={(e) => setMethod(e.target.value)} style={fld}>
+            <option value="">Choose…</option>
+            {APPROVAL_METHODS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </label>
+        <label className="col" style={{ gap: 4 }}>
+          <span className="mono" style={{ color: 'var(--text-4)' }}>Note <span style={{ opacity: 0.7 }}>(optional — who you spoke with, when)</span></span>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="e.g. Karson OK'd it on a call Friday 2pm" style={{ ...fld, resize: 'vertical', fontFamily: 'inherit' }} />
+        </label>
+        <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <button className="btn sm" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn primary sm" onClick={() => onConfirm({ method, note: note.trim() })} disabled={busy || !method}><Icon name="check" size={12} /> {busy ? 'Saving…' : 'Mark approved'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SendReviewModal({ open, title, busy, onSend, onClose }) {
   const [email, setEmail] = React.useState('');
   const [note, setNote] = React.useState('');
@@ -525,6 +567,9 @@ function SendReviewModal({ open, title, busy, onSend, onClose }) {
 
 export {
   SendReviewModal,
+  ApprovalMethodModal,
+  APPROVAL_METHODS,
+  approvalMethodLabel,
   ExpressionTags,
   buildMotionPrompt,
   buildArchiveZip,

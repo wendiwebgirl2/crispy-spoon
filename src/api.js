@@ -353,8 +353,8 @@ export const api = {
   getActivity: (qs = '') => vcReq('/activity' + qs),
   productionReport: (qs = '') => vcReq('/report/production' + qs),
   billingOverview: (qs = '') => vcReq('/billing/overview' + qs),
-  setCastApproval: (id, railwayVideoId, status, title) =>
-    vcReq(`/clients/${id}/casts/approval`, { method: "POST", body: JSON.stringify({ railwayVideoId, status, title }) }),
+  setCastApproval: (id, railwayVideoId, status, title, extra) =>
+    vcReq(`/clients/${id}/casts/approval`, { method: "POST", body: JSON.stringify({ railwayVideoId, status, title, ...(extra ? { approvalMethod: extra.method, approvalMethodNote: extra.note } : {}) }) }),
   sendCastForReview: (id, railwayVideoId, title, email, note) =>
     vcReq(`/clients/${id}/casts/send`, { method: "POST", body: JSON.stringify({ railwayVideoId, title, ...(email ? { email } : {}), ...(note ? { note } : {}) }) }),
   addCastToPlanner: (id, railwayVideoId, title, scheduledFor) =>
@@ -392,6 +392,7 @@ export const api = {
   getPodcastFeed: (id) => vcReq(`/clients/${id}/podcast-feed`),
   putPodcastFeed: (id, payload) => vcReq(`/clients/${id}/podcast-feed`, { method: "PUT", body: JSON.stringify(payload) }),
   getDistribution: (id) => vcReq(`/clients/${id}/distribution`),
+  youtubeStatus: (id) => vcReq(`/clients/${id}/distribution/youtube-status`),
   putDistribution: (id, payload) => vcReq(`/clients/${id}/distribution`, { method: "PUT", body: JSON.stringify(payload) }),
   createInvite: (id, payload) => vcReq(`/clients/${id}/invites`, { method: "POST", body: JSON.stringify(payload) }),
   deleteInvite: (clientId, inviteId) => vcReq(`/clients/${clientId}/invites/${inviteId}`, { method: "DELETE" }),
@@ -427,6 +428,12 @@ export const api = {
   portalAddTopic: (text) => vcReq('/portal/topics', { method: 'POST', body: JSON.stringify({ text }) }),
   portalRequest: (kind, body) => vcReq('/portal/requests', { method: 'POST', body: JSON.stringify({ kind, body }) }),
   portalAccount: () => vcReq('/portal/account'),
+  portalOnboarding: () => vcReq('/portal/onboarding'),
+  portalSaveContact: (contact) => vcReq('/portal/onboarding/contact', { method: 'PUT', body: JSON.stringify(contact) }),
+  portalAddAccount: (a) => vcReq('/portal/onboarding/accounts', { method: 'POST', body: JSON.stringify(a) }),
+  portalUpdateAccount: (id, a) => vcReq(`/portal/onboarding/accounts/${id}`, { method: 'PUT', body: JSON.stringify(a) }),
+  portalDeleteAccount: (id) => vcReq(`/portal/onboarding/accounts/${id}`, { method: 'DELETE' }),
+  portalYoutubeLink: () => vcReq('/portal/onboarding/youtube-link', { method: 'POST', body: JSON.stringify({}) }),
   portalContract: () => vcReq('/portal/contract'),
   portalContractPdfUrl: () => `${VC_BASE}/portal/contract/pdf`,
   portalEpisodeAudioUrl: (id) => `${VC_BASE}/portal/episodes/${id}/audio`,

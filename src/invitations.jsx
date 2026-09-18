@@ -281,6 +281,8 @@ const ComposeView = ({ onClose, defaultClientId }) => {
   const recordUrl = created?.token
     ? (kind === 'twofa'
         ? 'https://record.cuecreative.com/2fa-setup.html'
+        : kind === 'youtube'
+        ? window.location.origin + '/api/invite/' + encodeURIComponent(created.token) + '/youtube-connect'
         : 'https://record.cuecreative.com/record.html?token=' + encodeURIComponent(created.token))
     : '';
 
@@ -344,6 +346,7 @@ const ComposeView = ({ onClose, defaultClientId }) => {
               <option value="record">Record digital twin</option>
               <option value="onboarding">Onboarding form</option>
               <option value="twofa">2FA verification</option>
+              <option value="youtube">YouTube connect</option>
             </select>
           </div>
           <div style={{ width: 120 }}>
