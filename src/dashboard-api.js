@@ -87,10 +87,13 @@ export const episodeLog = {
 };
 
 export async function clientToken(cid) {
-  const invs = await get(`/api/clients/${cid}/invites`).catch(() => []);
-  const rows = Array.isArray(invs) ? invs : (invs.invites || []);
-  const row = rows.find((i) => i.status === 'pending') || rows[0];
-  return row ? row.token : null;
+  // Fallback used when a client has no (client-facing) invites on file.
+  // Hits the durable, invite-independent studio token instead of the same
+  // invites list that was just found empty — a deleted/expired invite must
+  // never be able to hide a client's ready avatar. See voicecast's
+  // studioToken.js route + `studio_tokens` table.
+  const res = await get(`/api/clients/${cid}/studio-token`).catch(() => null);
+  return res && res.token ? res.token : null;
 }
 
 export const video = {
