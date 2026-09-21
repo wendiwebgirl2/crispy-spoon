@@ -71,6 +71,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   // between renders and blank the page.
   const [buildingTwin, setBuildingTwin] = React.useState(false);
   const [cloningVoice, setCloningVoice] = React.useState(false);
+  const [askApproveCast, setAskApproveCast] = React.useState(null);   // must live above the early returns below (React #310)
 
   // Approval state lives in voicecast, keyed on the Railway video id.
   // These hooks must stay above the `if (!clientId) return` early return below:
@@ -624,7 +625,6 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     try { const v = await listVideos(token); setQueue(v.videos || []); } catch { /* ignore */ }
     refreshCastMeta();
   };
-  const [askApproveCast, setAskApproveCast] = React.useState(null);
   const approveCast = (v) => setAskApproveCast(v);
   const doApproveCast = async (v, extra) => {
     try {
