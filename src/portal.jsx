@@ -1,6 +1,7 @@
 import React from 'react'
 import { Icon } from './shared.jsx'
 import { api } from './api.js'
+import cuecastLogo from './assets/cuecast-logo.svg'
 
 // Client-facing portal (Slice 14). A separate shell from the staff dashboard,
 // shown when the signed-in account has role='client'. Everything it reads/writes
@@ -637,8 +638,8 @@ export default function PortalApp({ me }) {
     <div className="row portal-shell" style={{ height: '100vh', alignItems: 'stretch', background: 'var(--bg)', color: 'var(--text)', overflow: 'hidden' }}>
       <aside className="portal-aside" style={{ width: 232, flex: 'none', borderRight: '1px solid var(--border)', padding: 18, display: 'flex', flexDirection: 'column', gap: 4, background: 'var(--surface)', overflowY: 'auto', minHeight: 0 }}>
         <div style={{ padding: '4px 6px 14px' }}>
-          <div style={{ fontFamily: 'var(--f-display)', fontWeight: 800, fontSize: 20 }}>cue<span style={{ color: 'var(--accent)' }}>:</span>portal</div>
-          {clientName && <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>{clientName}</div>}
+          <img src={cuecastLogo} alt="cue:cast" style={{ height: 26, width: 'auto', maxWidth: '100%', objectFit: 'contain', display: 'block' }} />
+          {clientName && <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 6 }}>{clientName}</div>}
         </div>
         {MENU.map((m) => {
           const active = view === m.id;

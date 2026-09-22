@@ -1,6 +1,6 @@
 import React from 'react'
 import { Icon, setAuthOperator } from './shared.jsx'
-import logoLockup from './assets/LOGO-cuecreative.png'
+import logoLockup from './assets/cuecast-logo.svg'
 import { api } from './api.js'
 import { ClientsView } from './clients.jsx'
 import { BriefView } from './brief.jsx'
@@ -372,7 +372,7 @@ function App() {
     <div className="shell">
       <aside className="side">
         <div className="side-brand">
-          <img src={logoLockup} alt="cue:creative" style={{ height: 32, width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
+          <img src={logoLockup} alt="cue:cast" style={{ height: 30, width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
         </div>
 
         <div className="side-section">WORKSPACE</div>
