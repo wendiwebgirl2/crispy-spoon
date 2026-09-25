@@ -7,6 +7,13 @@ import { api } from './api.js'
 const inpStyle = { background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', font: 'inherit', fontSize: 13, padding: '8px 10px' };
 const selStyle = { ...inpStyle, cursor: 'pointer' };
 
+function fmtLastLogin(t) {
+  if (!t) return 'Never logged in';
+  const d = new Date(t.includes('T') ? t : t.replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return 'Never logged in';
+  return 'Last login ' + d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 // Real accounts + roles. Everyone sees who they're signed in as and can log out;
 // admins additionally get user management (create/reset/disable, role, scoping).
 function UsersSection() {
@@ -154,6 +161,7 @@ function UsersSection() {
                 </select>
                 {u.role !== 'admin' && u.role !== 'manager' && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{u.clientIds.length} client{u.clientIds.length === 1 ? '' : 's'}</span>}
                 <span className="mono" style={{ fontSize: 11, color: u.active ? 'var(--ok)' : 'var(--text-4)' }}>{u.active ? 'active' : 'disabled'}</span>
+                <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{fmtLastLogin(u.last_login_at)}</span>
                 <div className="row" style={{ gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
                   <button className="btn sm" onClick={() => (editingId === u.id ? cancelEdit() : startEdit(u))}>{editingId === u.id ? 'Cancel' : 'Edit'}</button>
                   <button className="btn sm" onClick={() => sendNote(u)} title="Send a custom note — shown to them in the dashboard">Send note</button>
