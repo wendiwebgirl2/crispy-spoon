@@ -455,6 +455,12 @@ function Onboarding() {
     try { const { url } = await api.portalMetaLink(); window.location.href = url; }
     catch (e) { setErr(e.message); setMetaBusy(false); }
   };
+  const [channelBusy, setChannelBusy] = React.useState('');
+  const connectChannel = async (key) => {
+    setChannelBusy(key); setErr('');
+    try { const { url } = await api.portalChannelLink(key); window.location.href = url; }
+    catch (e) { setErr(e.message); setChannelBusy(''); }
+  };
   const pick = (i) => {
     if (i === '') return;
     const [kind, platform] = ACCOUNT_PICKS[Number(i)];
@@ -517,6 +523,25 @@ function Onboarding() {
           {meta.facebook === null && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>Couldn’t check the connection just now.</span>}
         </div>
       </div>
+
+      {[['tiktok', 'TikTok'], ['linkedin', 'LinkedIn'], ['x', 'X (Twitter)'], ['threads', 'Threads'], ['google_business', 'Google Business']].map(([k, label]) => {
+        const st = (data.channels || {})[k] || {};
+        return (
+          <div key={k} style={{ ...card, marginBottom: 16 }}>
+            <div className="label" style={{ marginBottom: 4 }}>CONNECT {label.toUpperCase()}</div>
+            <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12.5, marginBottom: 10, lineHeight: 1.5 }}>
+              Sign in yourself and approve publishing — we never need your password or owner access, and you can disconnect at any time.
+            </div>
+            <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+              {st.connected === true
+                ? <span className="mono" style={{ color: 'var(--ok)', fontSize: 13 }}>✓ {label} is connected</span>
+                : <button className="btn primary sm" disabled={channelBusy === k} onClick={() => connectChannel(k)}>{channelBusy === k ? 'Opening…' : `Connect ${label}`}</button>}
+              {st.connected === true && <button className="btn sm" disabled={channelBusy === k} onClick={() => connectChannel(k)}>Reconnect</button>}
+              {st.connected === null && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>Couldn’t check the connection just now.</span>}
+            </div>
+          </div>
+        );
+      })}
 
       <div style={{ ...card, marginBottom: 16 }}>
         <div className="label" style={{ marginBottom: 4 }}>CONTACT &amp; SCRIPT DETAILS</div>

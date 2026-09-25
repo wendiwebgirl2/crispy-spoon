@@ -216,11 +216,25 @@ function PodcastFeedCard({ clientId }) {
 // Which Upload-Post profile (created in their dashboard, holds this client's
 // connected YouTube/Facebook/Instagram) to publish through, plus the
 // Facebook Page id Upload-Post requires explicitly for Facebook posts.
+// Single-platform channels beyond YouTube/Facebook+Instagram — same connect
+// mechanism, table-driven so this isn't 5 more copies of the same card.
+// Pinterest is deliberately excluded: Upload-Post doesn't support it at all.
+const EXTRA_CHANNELS = [
+  ['tiktok', 'TikTok'], ['linkedin', 'LinkedIn'], ['x', 'X (Twitter)'],
+  ['threads', 'Threads'], ['google_business', 'Google Business'],
+];
+
 function SocialDistributionCard({ clientId }) {
   const [dist, setDist] = useState(null);
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [channelStatus, setChannelStatus] = useState({});
+  const loadChannelStatus = () => {
+    Promise.all(EXTRA_CHANNELS.map(([k]) => api.channelStatus(clientId, k).then((r) => [k, r]).catch(() => [k, null])))
+      .then((pairs) => setChannelStatus(Object.fromEntries(pairs)));
+  };
+  useEffect(() => { setChannelStatus({}); if (clientId) loadChannelStatus(); }, [clientId]);
 
   const load = () => api.getDistribution(clientId).then(setDist).catch((e) => setErr(e.message || 'Could not load distribution settings.'));
   useEffect(() => { setDist(null); setErr(''); if (clientId) load(); }, [clientId]);
@@ -237,13 +251,13 @@ function SocialDistributionCard({ clientId }) {
   const loadYt = () => api.youtubeStatus(clientId).then(setYt).catch(() => setYt(null));
   const loadMeta = () => api.metaStatus(clientId).then(setMeta).catch(() => setMeta(null));
   useEffect(() => { setYt(null); setMeta(null); setConnectMsg(''); if (clientId) { loadYt(); loadMeta(); } }, [clientId]);
-  const sendConnect = async (kind, label) => {
-    setConnectBusy(kind); setConnectMsg(''); setErr('');
+  const sendConnect = async (kind, label, channel) => {
+    setConnectBusy(channel || kind); setConnectMsg(''); setErr('');
     try {
       const b = await api.getBrief(clientId);
       const to = ((b && (b.approval_email || b.email)) || '').trim();
       if (!to) { setErr("No email on this client's Brief \u2014 add one above first."); return; }
-      const res = await api.createInvite(clientId, { clientEmail: to, label, days: 30, kind });
+      const res = await api.createInvite(clientId, { clientEmail: to, label, days: 30, kind, ...(channel ? { channel } : {}) });
       setConnectMsg(res?.email?.sent ? `Connect link emailed to ${to}.` : `Invite created but email not sent${res?.email?.error ? ': ' + res.email.error : ''}.`);
       load();
     } catch (e) { setErr(e.message || 'Could not send the connect link.'); } finally { setConnectBusy(''); }
@@ -296,11 +310,22 @@ function SocialDistributionCard({ clientId }) {
           </div>
           <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="btn sm primary" onClick={() => sendConnect('social', 'Connect your accounts')} disabled={!!connectBusy || saving}>{connectBusy === 'social' ? 'Sending\u2026' : 'Email both (one message)'}</button>
-            <button className="btn sm" onClick={() => { loadYt(); loadMeta(); }}>Refresh</button>
+            <button className="btn sm" onClick={() => { loadYt(); loadMeta(); loadChannelStatus(); }}>Refresh</button>
             {connectMsg && <span className="mono" style={{ color: 'var(--ok)', fontSize: 12 }}>{connectMsg}</span>}
           </div>
+          {EXTRA_CHANNELS.map(([k, label]) => {
+            const st = channelStatus[k];
+            return (
+              <div key={k} className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span className="mono" style={{ fontSize: 12, color: st && st.connected ? 'var(--ok)' : 'var(--text-3)', minWidth: 150 }}>
+                  {st == null ? `${label}: checking\u2026` : st.connected === true ? `\u2713 ${label} connected` : st.connected === null ? `${label}: could not check` : `${label}: not connected yet`}
+                </span>
+                <button className="btn sm" onClick={() => sendConnect('channel', `${label} connect`, k)} disabled={!!connectBusy || saving}>{connectBusy === k ? 'Sending\u2026' : `Email ${label} link`}</button>
+              </div>
+            );
+          })}
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
-            No self-serve disconnect from here \u2014 Upload-Post only supports deleting the WHOLE profile via their API, not one platform. To disconnect a single account, do it from the client's own Google/Meta account settings, or ask us to remove the whole profile at app.upload-post.com/manage-users.
+            No self-serve disconnect from here \u2014 Upload-Post only supports deleting the WHOLE profile via their API, not one platform. To disconnect a single account, do it from the client's own Google/Meta account settings, or ask us to remove the whole profile at app.upload-post.com/manage-users. Pinterest isn't supported by Upload-Post at all.
           </div>
         </div>
         <HashtagManager clientId={clientId} />

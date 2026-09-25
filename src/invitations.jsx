@@ -228,6 +228,7 @@ const ComposeView = ({ onClose, defaultClientId }) => {
   const [label, setLabel] = useState('');
   const [days, setDays] = useState(7);
   const [kind, setKind] = useState('record');
+  const [channel, setChannel] = useState('tiktok');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [created, setCreated] = useState(null); // { token }
@@ -269,6 +270,7 @@ const ComposeView = ({ onClose, defaultClientId }) => {
         label: label.trim() || null,
         days: Number(days) || 7,
         kind,
+        ...(kind === 'channel' ? { channel } : {}),
       });
       setCreated({ token: res?.token, email: res?.email, to: email.trim() });
     } catch (e) {
@@ -287,6 +289,8 @@ const ComposeView = ({ onClose, defaultClientId }) => {
         ? window.location.origin + '/api/invite/' + encodeURIComponent(created.token) + '/meta-connect'
         : kind === 'social'
         ? window.location.origin + '/api/invite/' + encodeURIComponent(created.token) + '/youtube-connect'
+        : kind === 'channel'
+        ? window.location.origin + '/api/invite/' + encodeURIComponent(created.token) + '/channel/' + channel + '/connect'
         : 'https://record.cuecreative.com/record.html?token=' + encodeURIComponent(created.token))
     : '';
   // 'social' carries TWO links in the one email — the copy-link box above only
@@ -370,8 +374,21 @@ const ComposeView = ({ onClose, defaultClientId }) => {
               <option value="youtube">YouTube connect</option>
               <option value="facebook">Facebook & Instagram connect</option>
               <option value="social">Connect accounts (YouTube + FB/IG)</option>
+              <option value="channel">Connect one channel…</option>
             </select>
           </div>
+          {kind === 'channel' && (
+            <div style={{ width: 170 }}>
+              <div className="label" style={{ marginBottom: 6 }}>CHANNEL</div>
+              <select value={channel} onChange={(e) => setChannel(e.target.value)} style={inputStyle}>
+                <option value="tiktok">TikTok</option>
+                <option value="linkedin">LinkedIn</option>
+                <option value="x">X (Twitter)</option>
+                <option value="threads">Threads</option>
+                <option value="google_business">Google Business</option>
+              </select>
+            </div>
+          )}
           <div style={{ width: 120 }}>
             <div className="label" style={{ marginBottom: 6 }}>EXPIRES</div>
             <select value={days} onChange={(e) => setDays(e.target.value)} style={inputStyle}>
