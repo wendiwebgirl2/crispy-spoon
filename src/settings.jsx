@@ -84,6 +84,37 @@ function UsersSection() {
   const changeRole = async (u, role) => { try { await api.updateUser(u.id, { role }); loadUsers(); } catch (e) { setErr(e.message); } };
   const toggleFormClient = (id) => setForm((f) => ({ ...f, clientIds: f.clientIds.includes(id) ? f.clientIds.filter((x) => x !== id) : [...f.clientIds, id] }));
 
+  // Edit an existing user: username + client assignment (role/active already
+  // editable inline above). Expands a small panel under the row.
+  const [editingId, setEditingId] = React.useState(null);
+  const [editForm, setEditForm] = React.useState({ username: '', clientIds: [] });
+  const startEdit = (u) => { setEditingId(u.id); setEditForm({ username: u.username, clientIds: u.clientIds || [] }); setErr(''); setMsg(''); };
+  const cancelEdit = () => setEditingId(null);
+  const toggleEditClient = (id) => setEditForm((f) => ({ ...f, clientIds: f.clientIds.includes(id) ? f.clientIds.filter((x) => x !== id) : [...f.clientIds, id] }));
+  const saveEdit = async (u) => {
+    setErr(''); setMsg('');
+    try {
+      await api.updateUser(u.id, { username: editForm.username.trim(), clientIds: editForm.clientIds });
+      setEditingId(null); setMsg(`Saved changes for ${editForm.username.trim()}.`); loadUsers();
+    } catch (e) { setErr(e.message); }
+  };
+  const del = async (u) => {
+    if (!window.confirm(`Permanently delete the user "${u.username}"? This can't be undone.`)) return;
+    setErr(''); setMsg('');
+    try { await api.deleteUser(u.id); setMsg(`Deleted ${u.username}.`); loadUsers(); } catch (e) { setErr(e.message); }
+  };
+  const loginAs = async (u) => {
+    if (!window.confirm(`Log in as "${u.username}"? This replaces your own admin session — log out and sign back in as yourself when you're done troubleshooting.`)) return;
+    setErr('');
+    try { await api.impersonateUser(u.id); window.location.href = '/'; } catch (e) { setErr(e.message); }
+  };
+  const sendNote = async (u) => {
+    const message = window.prompt(`Send a note to "${u.username}" — they'll see it next time they're in the dashboard:`, '');
+    if (!message || !message.trim()) return;
+    setErr(''); setMsg('');
+    try { await api.notifyUser(u.id, message.trim()); setMsg(`Note sent to ${u.username}.`); } catch (e) { setErr(e.message); }
+  };
+
   return (
     <Section title="Users & access">
       {me
@@ -115,18 +146,48 @@ function UsersSection() {
         )}
         <div className="col" style={{ gap: 2, marginBottom: 18 }}>
           {(users || []).map((u) => (
-            <div key={u.id} className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
-              <span style={{ fontWeight: 600, minWidth: 130 }}>{u.username}</span>
-              <select value={u.role} onChange={(e) => changeRole(u, e.target.value)} disabled={me.id === u.id} style={selStyle}>
-                <option value="admin">admin</option><option value="manager">manager</option><option value="editor">editor</option><option value="client">client</option>
-              </select>
-              {u.role !== 'admin' && u.role !== 'manager' && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{u.clientIds.length} client{u.clientIds.length === 1 ? '' : 's'}</span>}
-              <span className="mono" style={{ fontSize: 11, color: u.active ? 'var(--ok)' : 'var(--text-4)' }}>{u.active ? 'active' : 'disabled'}</span>
-              <div className="row" style={{ gap: 6, marginLeft: 'auto' }}>
-                <button className="btn sm" onClick={() => resendInvite(u)} title="Generate a new password and (optionally) email it">Resend invite</button>
-                <button className="btn sm" onClick={() => resetPw(u)}>Reset password</button>
-                <button className="btn sm" onClick={() => toggleActive(u)} disabled={me.id === u.id}>{u.active ? 'Disable' : 'Enable'}</button>
+            <div key={u.id}>
+              <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+                <span style={{ fontWeight: 600, minWidth: 130 }}>{u.username}</span>
+                <select value={u.role} onChange={(e) => changeRole(u, e.target.value)} disabled={me.id === u.id} style={selStyle}>
+                  <option value="admin">admin</option><option value="manager">manager</option><option value="editor">editor</option><option value="client">client</option>
+                </select>
+                {u.role !== 'admin' && u.role !== 'manager' && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{u.clientIds.length} client{u.clientIds.length === 1 ? '' : 's'}</span>}
+                <span className="mono" style={{ fontSize: 11, color: u.active ? 'var(--ok)' : 'var(--text-4)' }}>{u.active ? 'active' : 'disabled'}</span>
+                <div className="row" style={{ gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+                  <button className="btn sm" onClick={() => (editingId === u.id ? cancelEdit() : startEdit(u))}>{editingId === u.id ? 'Cancel' : 'Edit'}</button>
+                  <button className="btn sm" onClick={() => sendNote(u)} title="Send a custom note — shown to them in the dashboard">Send note</button>
+                  <button className="btn sm" onClick={() => loginAs(u)} disabled={me.id === u.id || !u.active} title="Sign in as this user to troubleshoot">Log in as</button>
+                  <button className="btn sm" onClick={() => resendInvite(u)} title="Generate a new password and (optionally) email it">Resend invite</button>
+                  <button className="btn sm" onClick={() => resetPw(u)}>Reset password</button>
+                  <button className="btn sm" onClick={() => toggleActive(u)} disabled={me.id === u.id}>{u.active ? 'Disable' : 'Enable'}</button>
+                  <button className="btn sm" style={{ color: 'var(--accent)' }} onClick={() => del(u)} disabled={me.id === u.id} title="Permanently delete">Delete</button>
+                </div>
               </div>
+              {editingId === u.id && (
+                <div className="card" style={{ padding: 12, marginBottom: 8, background: 'var(--surface-2)' }}>
+                  <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: u.role !== 'admin' && u.role !== 'manager' ? 10 : 0, flexWrap: 'wrap' }}>
+                    <div className="label" style={{ minWidth: 70 }}>USERNAME</div>
+                    <input value={editForm.username} autoCapitalize="off" spellCheck={false} onChange={(e) => setEditForm({ ...editForm, username: e.target.value })} style={inpStyle} />
+                  </div>
+                  {u.role !== 'admin' && u.role !== 'manager' && (
+                    <div>
+                      <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 6 }}>{u.role === 'client' ? 'Client portal account — the ONE client it belongs to:' : 'Clients this editor can access:'}</div>
+                      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                        {clients.map((c) => (
+                          <label key={c.id} className="row" style={{ gap: 4, fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '3px 8px' }}>
+                            <input type="checkbox" checked={editForm.clientIds.includes(c.id)} onChange={() => toggleEditClient(c.id)} /> {c.name || ('Client ' + c.id)}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="row" style={{ gap: 6, marginTop: 10 }}>
+                    <button className="btn sm primary" onClick={() => saveEdit(u)} disabled={!editForm.username.trim()}>Save</button>
+                    <button className="btn sm" onClick={cancelEdit}>Cancel</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
           {users && users.length === 0 && <div className="mono" style={{ color: 'var(--text-4)' }}>No users yet.</div>}

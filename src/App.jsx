@@ -343,6 +343,28 @@ function App() {
     const t = setInterval(load, 60000);
     return () => { live = false; clearInterval(t); };
   }, []);
+  // Custom notes an admin sent me (see Settings -> Users & access -> Send
+  // note). Polled the same way as alerts; dismissing marks it read server-side
+  // so it never reappears after a refresh.
+  const [myNotes, setMyNotes] = React.useState([]);
+  const [notesOpen, setNotesOpen] = React.useState(false);
+  React.useEffect(() => {
+    let live = true;
+    const load = () => api.myNotifications().then((rows) => { if (live) setMyNotes(Array.isArray(rows) ? rows : []); }).catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => { live = false; clearInterval(t); };
+  }, []);
+  const dismissNote = async (id) => {
+    setMyNotes((cur) => cur.filter((n) => n.id !== id));
+    try { await api.dismissNotification(id); } catch { /* best-effort — it'll just show again next poll */ }
+  };
+  React.useEffect(() => {
+    if (!notesOpen) return;
+    const close = () => setNotesOpen(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [notesOpen]);
   const [activeClientName, setActiveClientName] = React.useState('');
   React.useEffect(() => {
     if (!activeClientId) { setActiveClientName(''); return; }
@@ -492,6 +514,16 @@ function App() {
               CLIENT · {activeClientName}
             </div>
           )}
+          {activeClientId != null && ['studio', 'scripts', 'episodes', 'recordings', 'planner', 'episode-log'].includes(view) && (
+            <button
+              className="btn sm"
+              style={{ marginLeft: 8 }}
+              onClick={() => { api.getClient(activeClientId).then((c) => { setDetailClient(c); setView('client-detail'); }).catch(() => {}); }}
+              title="Open this client's Brief"
+            >
+              <Icon name="doc" size={12} /> Client Brief
+            </button>
+          )}
           <div className="hd-spacer" />
           {latestAlert && (
             <button
@@ -513,7 +545,35 @@ function App() {
               <span className="hd-kbd">⌘K</span>
             </div>
           )}
-          <button className="icon-btn" title="Activity"><Icon name="history" size={16} /></button>
+          <div style={{ position: 'relative' }}>
+            <button className="icon-btn" title="Notes sent to you" onClick={() => setNotesOpen((v) => !v)} style={{ position: 'relative' }}>
+              <Icon name="bell" size={16} />
+              {myNotes.length > 0 && (
+                <span className="mono" style={{
+                  position: 'absolute', top: -4, right: -4, background: 'var(--accent)', color: '#fff',
+                  borderRadius: 999, fontSize: 10, lineHeight: '16px', minWidth: 16, height: 16, textAlign: 'center', padding: '0 3px',
+                }}>{myNotes.length}</span>
+              )}
+            </button>
+            {notesOpen && (
+              <div onClick={(e) => e.stopPropagation()} className="card" style={{
+                position: 'absolute', top: '110%', right: 0, width: 320, maxHeight: 360, overflowY: 'auto',
+                padding: 10, zIndex: 100, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+              }}>
+                {myNotes.length === 0
+                  ? <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, padding: 8 }}>No notes.</div>
+                  : myNotes.map((n) => (
+                    <div key={n.id} style={{ padding: '8px 6px', borderBottom: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 13, marginBottom: 4, whiteSpace: 'pre-wrap' }}>{n.message}</div>
+                      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span className="mono" style={{ fontSize: 10, color: 'var(--text-4)' }}>{n.from_username ? 'from ' + n.from_username : ''} · {fmtWhen(n.created_at)}</span>
+                        <button className="btn sm" onClick={() => dismissNote(n.id)}>Dismiss</button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
         </header>
 
         <section className="view" key={view + (view === 'client-detail' && detailClient ? ':' + detailClient.id : '')}>
