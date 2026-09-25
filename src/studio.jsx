@@ -952,16 +952,19 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   onClick={() => { if (avatar && (avatar.image_url || avatar.thumbnail_url)) setZoom(true); }}
                   style={{
                   aspectRatio: aspectRatio === '16:9' ? '16/9' : (aspectRatio === '9:16' ? '9/16' : '1/1'),
-                  maxHeight: 320,
+                  maxHeight: 480,
                   margin: '0 auto',
                   position: 'relative',
                   background: '#0a0a0a',
                   display: 'grid', placeItems: 'center',
                   cursor: (avatar && (avatar.image_url || avatar.thumbnail_url)) ? 'zoom-in' : 'default',
-                  // 16:9 keeps its aspect UNDER the 320px cap (569 = 320 * 16/9);
+                  // Sized off a 480px cap (was 320 — too small to actually judge
+                  // framing/cropping at a glance, the whole point of this preview).
                   // width:100% here made the box full-width but capped-short, which
                   // cropped the avatar (object-fit: cover) — the "too short" preview.
-                  width: aspectRatio === '9:16' ? 240 : (aspectRatio === '1:1' ? 320 : 'min(100%, 569px)')
+                  // AvatarTile's fit="auto" (below) now handles orientation mismatch
+                  // itself, so this no longer needs a narrow width to avoid cropping.
+                  width: aspectRatio === '9:16' ? 270 : (aspectRatio === '1:1' ? 480 : 'min(100%, 853px)')
                 }}>
                   <AvatarTile avatar={avatar} fit="auto" />
                   <div style={{ position: 'absolute', bottom: 16, left: 16, right: 16 }}>
