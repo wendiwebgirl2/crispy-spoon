@@ -283,7 +283,16 @@ const ComposeView = ({ onClose, defaultClientId }) => {
         ? 'https://record.cuecreative.com/2fa-setup.html'
         : kind === 'youtube'
         ? window.location.origin + '/api/invite/' + encodeURIComponent(created.token) + '/youtube-connect'
+        : kind === 'facebook'
+        ? window.location.origin + '/api/invite/' + encodeURIComponent(created.token) + '/meta-connect'
+        : kind === 'social'
+        ? window.location.origin + '/api/invite/' + encodeURIComponent(created.token) + '/youtube-connect'
         : 'https://record.cuecreative.com/record.html?token=' + encodeURIComponent(created.token))
+    : '';
+  // 'social' carries TWO links in the one email — the copy-link box above only
+  // has room for one, so surface the second explicitly rather than hide it.
+  const secondUrl = (created?.token && kind === 'social')
+    ? window.location.origin + '/api/invite/' + encodeURIComponent(created.token) + '/meta-connect'
     : '';
 
   if (created) {
@@ -295,13 +304,25 @@ const ComposeView = ({ onClose, defaultClientId }) => {
           <div className="mono" style={{ color: 'var(--text-3)', marginBottom: 12 }}>
             {created.email?.sent ? <>Emailed to <span style={{ color: 'var(--ok)' }}>{created.to}</span>. You can also copy the link below.</> : created.to ? <>Couldn't auto-email {created.to}{created.email?.error ? <> — <span style={{ color: 'var(--accent)' }}>{created.email.error}</span></> : null}. Copy the link below to share it.</> : 'Share this link with the client.'}
           </div>
-          <div className="mono" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: 12, fontSize: 12, wordBreak: 'break-all', marginBottom: 12 }}>
+          <div className="mono" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: 12, fontSize: 12, wordBreak: 'break-all', marginBottom: secondUrl ? 8 : 12 }}>
+            {kind === 'social' && <div style={{ color: 'var(--text-4)', marginBottom: 4 }}>YouTube:</div>}
             {recordUrl}
           </div>
+          {secondUrl && (
+            <div className="mono" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: 12, fontSize: 12, wordBreak: 'break-all', marginBottom: 12 }}>
+              <div style={{ color: 'var(--text-4)', marginBottom: 4 }}>Facebook & Instagram:</div>
+              {secondUrl}
+            </div>
+          )}
           <div className="row" style={{ gap: 8 }}>
             <button className="btn primary" onClick={() => navigator.clipboard.writeText(recordUrl)}>
-              <Icon name="send" size={13} /> Copy link
+              <Icon name="send" size={13} /> Copy {secondUrl ? 'YouTube link' : 'link'}
             </button>
+            {secondUrl && (
+              <button className="btn" onClick={() => navigator.clipboard.writeText(secondUrl)}>
+                <Icon name="send" size={13} /> Copy Facebook/Instagram link
+              </button>
+            )}
             <button className="btn" onClick={onClose}>Done</button>
           </div>
         </div>
@@ -347,6 +368,8 @@ const ComposeView = ({ onClose, defaultClientId }) => {
               <option value="onboarding">Onboarding form</option>
               <option value="twofa">2FA verification</option>
               <option value="youtube">YouTube connect</option>
+              <option value="facebook">Facebook & Instagram connect</option>
+              <option value="social">Connect accounts (YouTube + FB/IG)</option>
             </select>
           </div>
           <div style={{ width: 120 }}>

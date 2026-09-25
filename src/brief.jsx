@@ -225,23 +225,28 @@ function SocialDistributionCard({ clientId }) {
   const load = () => api.getDistribution(clientId).then(setDist).catch((e) => setErr(e.message || 'Could not load distribution settings.'));
   useEffect(() => { setDist(null); setErr(''); if (clientId) load(); }, [clientId]);
 
-  // YouTube connection: live status from Upload-Post + a one-click email that
-  // lets the client connect their own channel (no owner access needed).
+  // YouTube + Facebook/Instagram connection: live status from Upload-Post +
+  // one-click emails that let the client connect their own accounts (no
+  // owner access needed). Three send options: YouTube alone, Facebook &
+  // Instagram alone (one Meta consent screen), or both in a single email \u2014
+  // the last is the normal onboarding path.
   const [yt, setYt] = useState(null);
-  const [ytMsg, setYtMsg] = useState('');
-  const [ytBusy, setYtBusy] = useState(false);
+  const [meta, setMeta] = useState(null);
+  const [connectMsg, setConnectMsg] = useState('');
+  const [connectBusy, setConnectBusy] = useState('');
   const loadYt = () => api.youtubeStatus(clientId).then(setYt).catch(() => setYt(null));
-  useEffect(() => { setYt(null); setYtMsg(''); if (clientId) loadYt(); }, [clientId]);
-  const sendYt = async () => {
-    setYtBusy(true); setYtMsg(''); setErr('');
+  const loadMeta = () => api.metaStatus(clientId).then(setMeta).catch(() => setMeta(null));
+  useEffect(() => { setYt(null); setMeta(null); setConnectMsg(''); if (clientId) { loadYt(); loadMeta(); } }, [clientId]);
+  const sendConnect = async (kind, label) => {
+    setConnectBusy(kind); setConnectMsg(''); setErr('');
     try {
       const b = await api.getBrief(clientId);
       const to = ((b && (b.approval_email || b.email)) || '').trim();
       if (!to) { setErr("No email on this client's Brief \u2014 add one above first."); return; }
-      const res = await api.createInvite(clientId, { clientEmail: to, label: 'YouTube connect', days: 30, kind: 'youtube' });
-      setYtMsg(res?.email?.sent ? `Connect link emailed to ${to}.` : `Invite created but email not sent${res?.email?.error ? ': ' + res.email.error : ''}.`);
+      const res = await api.createInvite(clientId, { clientEmail: to, label, days: 30, kind });
+      setConnectMsg(res?.email?.sent ? `Connect link emailed to ${to}.` : `Invite created but email not sent${res?.email?.error ? ': ' + res.email.error : ''}.`);
       load();
-    } catch (e) { setErr(e.message || 'Could not send the connect link.'); } finally { setYtBusy(false); }
+    } catch (e) { setErr(e.message || 'Could not send the connect link.'); } finally { setConnectBusy(''); }
   };
 
   const set = (k, v) => { setDist((d) => ({ ...d, [k]: v })); setSaved(false); };
@@ -271,13 +276,32 @@ function SocialDistributionCard({ clientId }) {
           <button className="btn sm primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save distribution settings'}</button>
           {saved && <span className="mono" style={{ color: 'var(--ok)' }}>✓ saved</span>}
         </div>
-        <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-          <span className="mono" style={{ fontSize: 12, color: yt && yt.connected ? 'var(--ok)' : 'var(--text-3)' }}>
-            {yt == null ? 'YouTube: checking\u2026' : yt.connected === true ? '\u2713 YouTube connected' : yt.connected === null ? 'YouTube: could not check' : 'YouTube: not connected yet'}
-          </span>
-          <button className="btn sm" onClick={sendYt} disabled={ytBusy || saving}>{ytBusy ? 'Sending\u2026' : 'Email YouTube connect link'}</button>
-          <button className="btn sm" onClick={loadYt}>Refresh</button>
-          {ytMsg && <span className="mono" style={{ color: 'var(--ok)', fontSize: 12 }}>{ytMsg}</span>}
+        <div className="col" style={{ gap: 8, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+          <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="mono" style={{ fontSize: 12, color: yt && yt.connected ? 'var(--ok)' : 'var(--text-3)' }}>
+              {yt == null ? 'YouTube: checking\u2026' : yt.connected === true ? '\u2713 YouTube connected' : yt.connected === null ? 'YouTube: could not check' : 'YouTube: not connected yet'}
+            </span>
+            <button className="btn sm" onClick={() => sendConnect('youtube', 'YouTube connect')} disabled={!!connectBusy || saving}>{connectBusy === 'youtube' ? 'Sending\u2026' : 'Email YouTube link'}</button>
+          </div>
+          <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="mono" style={{ fontSize: 12, color: (meta && (meta.facebook || meta.instagram)) ? 'var(--ok)' : 'var(--text-3)' }}>
+              {meta == null ? 'Facebook & Instagram: checking\u2026'
+                : (meta.facebook == null) ? 'Facebook & Instagram: could not check'
+                : (meta.facebook && meta.instagram) ? '\u2713 Facebook & Instagram connected'
+                : meta.facebook ? '\u2713 Facebook connected \u00b7 Instagram not yet'
+                : meta.instagram ? '\u2713 Instagram connected \u00b7 Facebook not yet'
+                : 'Facebook & Instagram: not connected yet'}
+            </span>
+            <button className="btn sm" onClick={() => sendConnect('facebook', 'Facebook & Instagram connect')} disabled={!!connectBusy || saving}>{connectBusy === 'facebook' ? 'Sending\u2026' : 'Email Facebook & Instagram link'}</button>
+          </div>
+          <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn sm primary" onClick={() => sendConnect('social', 'Connect your accounts')} disabled={!!connectBusy || saving}>{connectBusy === 'social' ? 'Sending\u2026' : 'Email both (one message)'}</button>
+            <button className="btn sm" onClick={() => { loadYt(); loadMeta(); }}>Refresh</button>
+            {connectMsg && <span className="mono" style={{ color: 'var(--ok)', fontSize: 12 }}>{connectMsg}</span>}
+          </div>
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
+            No self-serve disconnect from here \u2014 Upload-Post only supports deleting the WHOLE profile via their API, not one platform. To disconnect a single account, do it from the client's own Google/Meta account settings, or ask us to remove the whole profile at app.upload-post.com/manage-users.
+          </div>
         </div>
         <HashtagManager clientId={clientId} />
       </div>

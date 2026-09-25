@@ -416,6 +416,7 @@ function Onboarding() {
   const [form, setForm] = React.useState(EMPTY_ACCT);
   const [edit, setEdit] = React.useState(null);
   const [ytBusy, setYtBusy] = React.useState(false);
+  const [metaBusy, setMetaBusy] = React.useState(false);
 
   const load = React.useCallback(() => api.portalOnboarding()
     .then((d) => { setData(d); setContact(d.contact); })
@@ -449,6 +450,11 @@ function Onboarding() {
     try { const { url } = await api.portalYoutubeLink(); window.location.href = url; }
     catch (e) { setErr(e.message); setYtBusy(false); }
   };
+  const connectMeta = async () => {
+    setMetaBusy(true); setErr('');
+    try { const { url } = await api.portalMetaLink(); window.location.href = url; }
+    catch (e) { setErr(e.message); setMetaBusy(false); }
+  };
   const pick = (i) => {
     if (i === '') return;
     const [kind, platform] = ACCOUNT_PICKS[Number(i)];
@@ -459,6 +465,7 @@ function Onboarding() {
 
   const doneCount = data.steps.filter((x) => x.done).length;
   const yt = data.youtube;
+  const meta = data.meta;
   const F = ({ label, k, type = 'text', ph }) => (
     <div style={{ flex: '1 1 220px' }}>
       <div className="label" style={{ marginBottom: 4 }}>{label}</div>
@@ -492,6 +499,22 @@ function Onboarding() {
             : <button className="btn primary sm" disabled={ytBusy} onClick={connectYoutube}>{ytBusy ? 'Opening…' : 'Connect YouTube'}</button>}
           {yt.connected === true && <button className="btn sm" disabled={ytBusy} onClick={connectYoutube}>Reconnect</button>}
           {yt.connected === null && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>Couldn’t check the connection just now.</span>}
+        </div>
+      </div>
+
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div className="label" style={{ marginBottom: 4 }}>CONNECT FACEBOOK &amp; INSTAGRAM</div>
+        <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12.5, marginBottom: 10, lineHeight: 1.5 }}>
+          Sign in yourself and approve publishing to your Page and Instagram account — we never need your password or owner access. One sign-in connects both.
+        </div>
+        <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+          {(meta.facebook || meta.instagram)
+            ? <span className="mono" style={{ color: 'var(--ok)', fontSize: 13 }}>
+                ✓ {meta.facebook && meta.instagram ? 'Facebook & Instagram are connected' : meta.facebook ? 'Facebook is connected · Instagram not yet' : 'Instagram is connected · Facebook not yet'}
+              </span>
+            : <button className="btn primary sm" disabled={metaBusy} onClick={connectMeta}>{metaBusy ? 'Opening…' : 'Connect Facebook & Instagram'}</button>}
+          {(meta.facebook || meta.instagram) && <button className="btn sm" disabled={metaBusy} onClick={connectMeta}>{meta.facebook && meta.instagram ? 'Reconnect' : 'Connect the other one'}</button>}
+          {meta.facebook === null && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>Couldn’t check the connection just now.</span>}
         </div>
       </div>
 
