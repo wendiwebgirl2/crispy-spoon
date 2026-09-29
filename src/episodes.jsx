@@ -964,6 +964,19 @@ function EpGroupCard({ cid, group, open, onToggle, openId, setOpenId, onRemove, 
   const lead = items.find((e) => pieceKind(e).order === 0) || items[0]; // prefer longform for cover/title
   const title = baseSubject(lead);
   const anyOpenInside = items.some((e) => e.id === openId);
+  // Sanity-check what the auto-archive feature would do to this group before
+  // trusting it to run for real (Settings → the global on/off toggle).
+  const checkAutoArchive = async () => {
+    try {
+      const p = await ep.autoArchivePreview(cid, lead.id);
+      const lines = (p.scheduleRows || []).map((r) => `  ${r.channel} (ep ${r.episode_id}): ${r.status}`);
+      window.alert(
+        `E${p.epNum || '?'} — ${p.eligible ? 'ELIGIBLE — every scheduled channel is delivered.' : 'NOT eligible yet.'}\n\n` +
+        `${p.episodes.length} episode piece(s), ${p.scripts.length} script(s) would be bundled.\n\n` +
+        (lines.length ? `Schedule:\n${lines.join('\n')}` : 'No channels have been scheduled for this episode yet.')
+      );
+    } catch (e2) { window.alert('Could not check: ' + (e2.message || e2)); }
+  };
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid ' + ((open || anyOpenInside) ? 'var(--accent)' : 'var(--border)') }}>
       <div className="row" onClick={onToggle}
@@ -984,9 +997,15 @@ function EpGroupCard({ cid, group, open, onToggle, openId, setOpenId, onRemove, 
       </div>
       {open && (
         <div style={{ borderTop: '1px solid var(--border)', padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {epNum && onBundle && (
-            <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => onBundle(lead)}
-              title="Download a .zip of the whole episode number — all its videos, scripts, and thumbnail"><Icon name="download" size={12} /> Download bundle (E{epNum})</button>
+          {epNum && (
+            <div className="row" style={{ gap: 6 }}>
+              {onBundle && (
+                <button className="btn sm" onClick={() => onBundle(lead)}
+                  title="Download a .zip of the whole episode number — all its videos, scripts, and thumbnail"><Icon name="download" size={12} /> Download bundle (E{epNum})</button>
+              )}
+              <button className="btn sm" onClick={checkAutoArchive}
+                title="Preview whether this episode qualifies for auto-archive — no changes made">Check auto-archive</button>
+            </div>
           )}
           {items.map((e) => (
             <PieceRow key={e.id} cid={cid} e={e} active={openId === e.id}
@@ -1334,7 +1353,10 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
                 {archiveLog.map((a) => (
                   <div key={a.id} className="card" style={{ padding: 8, background: 'var(--surface)' }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 600 }}>{a.episode_number ? `E${String(a.episode_number).replace(/^E/i, '')} - ` : ''}{a.title || '(untitled)'}</div>
+                    <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600 }}>{a.episode_number ? `E${String(a.episode_number).replace(/^E/i, '')} - ` : ''}{a.title || '(untitled)'}</div>
+                      {a.zip_path && <a className="btn sm" href={ep.archiveZipUrl(cid, a.id)} style={{ flexShrink: 0 }}>Download .zip</a>}
+                    </div>
                     <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
                       {a.job_number ? `Job ${a.job_number} · ` : ''}archived {String(a.archived_at || '').slice(0, 10)}{a.archived_by ? ' by ' + a.archived_by : ''}
                     </div>

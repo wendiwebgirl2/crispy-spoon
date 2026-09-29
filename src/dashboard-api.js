@@ -50,6 +50,8 @@ export const ep = {
   setMeta: (cid, id, body) => put(`/api/clients/${cid}/episodes/${id}/meta`, body),
   archive: (cid, id) => post(`/api/clients/${cid}/episodes/${id}/archive`, {}),
   archiveLog: (cid) => get(`/api/clients/${cid}/episodes/archive-log`),
+  archiveZipUrl: (cid, logId) => `/api/clients/${cid}/episodes/archive-log/${logId}/zip`,
+  autoArchivePreview: (cid, id) => get(`/api/clients/${cid}/episodes/${id}/auto-archive/preview`),
   publish: (cid, id, platforms, scheduleId) => post(`/api/clients/${cid}/episodes/${id}/publish`, { platforms, scheduleId }),
   publishTransistor: (cid, id, scheduleId) => post(`/api/clients/${cid}/episodes/${id}/publish-transistor`, { scheduleId }),
 };

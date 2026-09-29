@@ -233,6 +233,42 @@ function UsersSection() {
   );
 }
 
+// Global (not per-client) on/off switch for auto-archiving an episode number
+// once every channel scheduled for it shows delivered — off by default, see
+// autoArchive.js server-side. Admin-only, same as user management.
+function AutoArchiveSection() {
+  const [me, setMe] = React.useState(null);
+  const [enabled, setEnabled] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { api.me().then(setMe).catch(() => setMe(null)); }, []);
+  React.useEffect(() => { if (me && me.role === 'admin') api.getAutoArchive().then((r) => setEnabled(!!r.enabled)).catch(() => setEnabled(false)); }, [me]);
+  if (!me || me.role !== 'admin') return null;
+  const toggle = async () => {
+    setBusy(true);
+    try { const r = await api.setAutoArchive(!enabled); setEnabled(!!r.enabled); }
+    catch { /* leave as-is on failure */ }
+    finally { setBusy(false); }
+  };
+  return (
+    <Section title="Auto-archive">
+      <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12, maxWidth: 640 }}>
+        Once every distribution channel scheduled for an episode number (the longform + its shortforms) shows delivered,
+        automatically zip the videos/audio and scripts, mark the scripts archived, and remove the episodes from the
+        active list — checked once a minute alongside the publish scheduler. Use "Check auto-archive" on an episode
+        group in Episodes to preview what it would do before relying on it.
+      </div>
+      {enabled == null ? (
+        <div className="mono" style={{ color: 'var(--text-4)' }}>Loading…</div>
+      ) : (
+        <label className="row" style={{ gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+          <input type="checkbox" checked={enabled} disabled={busy} onChange={toggle} />
+          <span className="mono" style={{ fontSize: 13 }}>{enabled ? 'On — episodes archive automatically once fully delivered' : 'Off — nothing is archived automatically'}</span>
+        </label>
+      )}
+    </Section>
+  );
+}
+
 const SettingsView = () => {
   return (
     <div className="v-pad fade-in" style={{ maxWidth: 920, margin: '0 auto' }}>
@@ -242,6 +278,8 @@ const SettingsView = () => {
       </h1>
 
       <UsersSection />
+
+      <AutoArchiveSection />
 
       <Section title="White-label">
         <Row k="Portal subdomain" v={<code className="mono" style={{ color: 'var(--text-2)' }}>portal.cuecreative.com</code>} />
