@@ -151,41 +151,48 @@ function SlotCard({ name, label, pathField, full, busy, audioOpts, recordings = 
   );
 }
 
-// A B-roll cutaway over the main avatar cast — for [start, start+duration) the
-// stitcher cuts the picture to a montage (any video-kind client asset, e.g. a
-// rendered montage) full-frame while the body's own audio keeps playing, then
-// cuts back. Only shown once the body slot actually holds a video — a cutaway
-// makes no sense over an audio-only or image-card body.
-function BodyCutawayCard({ cid, epId, full, assets = [], busy, onSet, onClear }) {
+// B-roll cutaways over a main recording part (body/body2/body3) — for each
+// [start, start+duration) the stitcher cuts the picture to a montage (any
+// video-kind client asset, e.g. a rendered montage) full-frame while that
+// part's own audio keeps playing, then cuts back. Any number can be added
+// to a single part — they're applied in start-time order at stitch time.
+// Only shown once that part actually holds a video — a cutaway makes no
+// sense over an audio-only or image-card part.
+const PART_LABEL = { body: 'Part 1', body2: 'Part 2', body3: 'Part 3' };
+function CutawayCard({ part, videoPathField, full, assets = [], busy, onAdd, onRemove }) {
   const videoAssets = assets.filter((a) => a.kind === 'video' || /\.(mp4|mov|m4v|webm)$/i.test(a.filename || ''));
   const [assetId, setAssetId] = useState('');
   const [start, setStart] = useState('');
-  const active = !!full.body_cutaway_path;
-  const label = (() => { try { return full.slot_labels ? JSON.parse(full.slot_labels).body_cutaway : null; } catch { return null; } })();
+  const list = (full.cutaways && full.cutaways[part]) || [];
 
-  if (!full.body_video_path) return null;
+  if (!full[videoPathField]) return null;
+
+  const add = () => {
+    onAdd(part, Number(assetId), Number(start));
+    setAssetId(''); setStart('');
+  };
 
   return (
     <div className="card card-pad" style={{ marginBottom: 10, marginTop: -4 }}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontWeight: 600, fontSize: 13 }}>Montage cutaway over the main cast</div>
-        <div className="row" style={{ gap: 6, alignItems: 'center' }}>
-          {active && <button className="btn sm" onClick={onClear}>Clear</button>}
-          {active && (
-            <span className="badge" title={label || ''} style={{ color: 'var(--ok)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              video{label ? ' · ' + label : ''}
-            </span>
-          )}
-        </div>
+        <div style={{ fontWeight: 600, fontSize: 13 }}>Montage cutaways over {PART_LABEL[part]}</div>
       </div>
       <div className="mono" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>
-        From the chosen point, the picture cuts full-frame to the montage for its own natural length (played once, never looped or stretched), then cuts back to the avatar for the rest — while the cast's own audio keeps playing throughout. The seconds count from the start of the main avatar video itself, not the whole episode (so it lands in the same place regardless of how long the intro runs).
+        From each chosen point, the picture cuts full-frame to that montage for its own natural length (played once, never looped or stretched), then cuts back for the rest — while {PART_LABEL[part]}'s own audio keeps playing throughout. Seconds count from the start of {PART_LABEL[part]} itself, not the whole episode. Add as many as you like — they're applied in time order.
       </div>
-      {active ? (
-        <div className="mono" style={{ fontSize: 12, color: 'var(--ok)', marginTop: 8 }}>
-          {'✓'} Set{label ? ' (' + label + ')' : ''} — cuts away at {full.body_cutaway_start_sec}s into the main video for the montage's own length, then back to the avatar.
+      {list.length > 0 && (
+        <div className="col" style={{ gap: 4, marginTop: 8 }}>
+          {list.map((c) => (
+            <div key={c.id} className="row" style={{ gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+              <span className="mono" style={{ fontSize: 12, color: 'var(--ok)' }}>
+                {'✓'} {c.startSec}s{c.label ? ' — ' + c.label : ''}
+              </span>
+              <button className="btn sm" disabled={busy} onClick={() => onRemove(c.id)}>Remove</button>
+            </div>
+          ))}
         </div>
-      ) : videoAssets.length === 0 ? (
+      )}
+      {videoAssets.length === 0 ? (
         <div className="mono" style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 8 }}>
           No montage or other video asset for this client yet — render one first (Studio → Montage).
         </div>
@@ -198,11 +205,10 @@ function BodyCutawayCard({ cid, epId, full, assets = [], busy, onSet, onClear })
           <label className="mono" style={{ fontSize: 12, display: 'flex', gap: 5, alignItems: 'center' }}>
             starts at
             <input type="number" min="0" value={start} onChange={(e) => setStart(e.target.value)} style={{ ...inputStyle, width: 64 }} />
-            sec into the main video
+            sec into {PART_LABEL[part]}
           </label>
-          <button className="btn sm primary" disabled={busy || !assetId || start === ''}
-            onClick={() => onSet(Number(assetId), Number(start))}>
-            Set cutaway
+          <button className="btn sm primary" disabled={busy || !assetId || start === ''} onClick={add}>
+            Add cutaway
           </button>
         </div>
       )}
@@ -351,16 +357,16 @@ function EpisodeEditor({ cid, epId, onChange }) {
     catch (e) { setErr(e.message || 'Could not apply asset.'); }
     finally { setBusy(''); }
   };
-  const setBodyCutaway = async (assetId, startSec) => {
+  const addCutaway = async (part, assetId, startSec) => {
     setBusy('cutaway'); setErr('');
-    try { await ep.setBodyCutaway(cid, epId, assetId, startSec); await refresh(); }
-    catch (e) { setErr(e.message || 'Could not set the cutaway.'); }
+    try { await ep.addCutaway(cid, epId, part, assetId, startSec); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not add the cutaway.'); }
     finally { setBusy(''); }
   };
-  const clearBodyCutaway = async () => {
+  const removeCutaway = async (cutawayId) => {
     setBusy('cutaway'); setErr('');
-    try { await ep.clearBodyCutaway(cid, epId); await refresh(); }
-    catch (e) { setErr(e.message || 'Could not clear the cutaway.'); }
+    try { await ep.removeCutaway(cid, epId, cutawayId); await refresh(); }
+    catch (e) { setErr(e.message || 'Could not remove the cutaway.'); }
     finally { setBusy(''); }
   };
 
@@ -736,9 +742,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
       </div>
 
       <SlotCard name="body" label="Main recording (required)" pathField="body_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
-      <BodyCutawayCard cid={cid} epId={epId} full={full} assets={assets} busy={busy === 'cutaway'} onSet={setBodyCutaway} onClear={clearBodyCutaway} />
+      <CutawayCard part="body" videoPathField="body_video_path" full={full} assets={assets} busy={busy === 'cutaway'} onAdd={addCutaway} onRemove={removeCutaway} />
       <SlotCard name="body2" label="Main recording — Part 2 (optional)" pathField="body2_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <CutawayCard part="body2" videoPathField="body2_video_path" full={full} assets={assets} busy={busy === 'cutaway'} onAdd={addCutaway} onRemove={removeCutaway} />
       <SlotCard name="body3" label="Main recording — Part 3 (optional)" pathField="body3_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
+      <CutawayCard part="body3" videoPathField="body3_video_path" full={full} assets={assets} busy={busy === 'cutaway'} onAdd={addCutaway} onRemove={removeCutaway} />
       <SlotCard name="outro" label="Outro — content (video or image)" pathField="outro_path" full={full} busy={busy} audioOpts={audioOpts} recordings={recordings} avatarVideos={twinVids} assets={assets} onUseAsset={applyAsset} onStillSec={setStillSec} onUpload={doUpload} onSynth={useSynth} onUseRecording={useRecording} onUseVideo={useVideo} onClearVideo={clearVideo} onClearSlot={clearSlot} />
 
       <div className="card card-pad" style={{ marginBottom: 10 }}>

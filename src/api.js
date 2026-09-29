@@ -407,7 +407,7 @@ export const api = {
   deleteScriptsByTopic: (id, topic) => vcReq(`/clients/${id}/scripts/topic/delete`, { method: "POST", body: JSON.stringify({ topic }) }),
   deleteScript: (id, sid) => vcReq(`/clients/${id}/scripts/${sid}`, { method: "DELETE" }),
   sendScriptApproval: (id, sid, email, note) => vcReq(`/clients/${id}/scripts/${sid}/send-approval`, { method: "POST", body: JSON.stringify({ ...(email ? { email } : {}), ...(note ? { note } : {}) }) }),
-  reviseScript: (id, sid, instruction) => vcReq(`/clients/${id}/scripts/${sid}/revise`, { method: "POST", body: JSON.stringify({ instruction }) }),
+  reviseScript: (id, sid, instruction, provider) => vcReq(`/clients/${id}/scripts/${sid}/revise`, { method: "POST", body: JSON.stringify({ instruction, provider }) }),
   // ---- accounts & roles ----
   me: () => vcReq('/me'),
   logout: () => vcReq('/logout', { method: 'POST' }),

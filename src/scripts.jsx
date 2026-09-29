@@ -149,6 +149,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [jobNumber, setJobNumber] = useState('');
   const [episodeNumber, setEpisodeNumber] = useState('');
   const [extra, setExtra] = useState('');
+  const [provider, setProvider] = useState('claude');
   const [results, setResults] = useState([]);
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -272,6 +273,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         job_number: jobNumber.trim() || undefined,
         episode_number: episodeNumber.trim() || undefined,
         qa_bypass_by: qaBypassBy || undefined,
+        provider,
       });
       setResults(out.scripts || []);
       if (pendingTopicId != null) {
@@ -553,11 +555,11 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     if (!revisePrompt.trim() || !editing) return;
     setRevising(true); setErr(''); setReviseNote('');
     try {
-      const out = await api.reviseScript(clientId, editing.id, revisePrompt.trim());
+      const out = await api.reviseScript(clientId, editing.id, revisePrompt.trim(), provider);
       const revised = (out && (out.body || out.revised || out.text)) || (typeof out === 'string' ? out : '');
       if (revised && revised.trim()) {
         setEditBody(revised.trim());
-        setReviseNote('Claude revised the draft — review and Save to keep it.');
+        setReviseNote(`${provider === 'openai' ? 'ChatGPT' : 'Claude'} revised the draft — review and Save to keep it.`);
         setRevisePrompt('');
       } else {
         setErr('Claude returned an empty revision. Try rephrasing your instruction.');
@@ -652,6 +654,14 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
             <input className="textarea" value={episodeNumber} onChange={(e) => setEpisodeNumber(e.target.value)}
               placeholder="e.g. 1"
               style={{ minHeight: 0, height: 44, fontSize: 15, width: '100%' }} />
+          </div>
+          <div style={{ flex: '0 0 140px' }}>
+            <div className="label" style={{ marginBottom: 8 }}>MODEL</div>
+            <select value={provider} onChange={(e) => setProvider(e.target.value)}
+              style={{ minHeight: 0, height: 44, fontSize: 15, width: '100%', background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', font: 'inherit', padding: '0 10px' }}>
+              <option value="claude">Claude</option>
+              <option value="openai">ChatGPT</option>
+            </select>
           </div>
         </div>
 
@@ -919,12 +929,12 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
             </div>
             <div className="row" style={{ gap: 8 }}>
               <input className="textarea" value={revisePrompt} onChange={(e) => setRevisePrompt(e.target.value)}
-                placeholder="Tell Claude how to revise this (e.g. “make it shorter and punchier”)…"
+                placeholder={`Tell ${provider === 'openai' ? 'ChatGPT' : 'Claude'} how to revise this (e.g. “make it shorter and punchier”)…`}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !revising) reviseWithClaude(); }}
                 style={{ minHeight: 0, height: 40, fontSize: 14, flex: 1 }} />
               <button className="btn sm" onClick={reviseWithClaude} disabled={revising || !revisePrompt.trim()}
                 style={{ opacity: (revising || !revisePrompt.trim()) ? 0.5 : 1, whiteSpace: 'nowrap' }}>
-                <Icon name="sparkle" size={13} /> {revising ? 'Revising…' : 'Edit with Claude'}
+                <Icon name="sparkle" size={13} /> {revising ? 'Revising…' : `Edit with ${provider === 'openai' ? 'ChatGPT' : 'Claude'}`}
               </button>
             </div>
             {err && <div className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>{err}</div>}
