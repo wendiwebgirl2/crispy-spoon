@@ -571,6 +571,15 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
 
   // Group history by TOPIC — each topic is a collapsible card you click to open
   // and see every script composed on it. Entries with no topic group together.
+  // One approval per episode batch: the shortforms + blog are cut from the
+  // longform and ride on its approval (the server mirrors every approval change
+  // across the batch), so only the longform carries approval controls.
+  const batchesWithLongform = React.useMemo(
+    () => new Set(history.filter((x) => x.channel === 'longform' && x.batch_id).map((x) => x.batch_id)),
+    [history]
+  );
+  const ridesOnLongform = (h) => h.channel !== 'longform' && !!h.batch_id && batchesWithLongform.has(h.batch_id);
+
   const groupedHistory = React.useMemo(() => {
     const groups = new Map();
     for (const h of history) {
@@ -837,12 +846,14 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 <button className="btn sm" onClick={() => download(h)}><Icon name="download" size={12} /> Download</button>
                 <button className="btn sm" onClick={() => openEdit(h)}><Icon name="sliders" size={12} /> Edit</button>
                 <button className="btn sm" onClick={() => printScript(h, labelFor(h.channel))}><Icon name="doc" size={12} /> Print</button>
-                {h.approval_status !== 'approved' && h.approval_status !== 'in_production' && <button className="btn sm" onClick={() => setApproval(h.id, 'approved', 'approved')}><Icon name="check" size={12} /> Mark approved</button>}
-                {h.approval_status === 'approved' && <button className="btn sm" onClick={() => undoApproval(h.id)}><Icon name="arrow-l" size={12} /> Undo approve</button>}
-                {(h.approval_status === 'approved' || h.approval_status === 'approved_with_changes') && <button className="btn sm" onClick={() => setApproval(h.id, 'in_production', 'approved')}><Icon name="play" size={12} /> In production</button>}
-                {h.approval_status === 'changes_requested' && <button className="btn sm" onClick={() => setApproval(h.id, 'changes_completed')} style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}><Icon name="check" size={12} /> Changes verified</button>}
+                {!ridesOnLongform(h) && h.approval_status !== 'approved' && h.approval_status !== 'in_production' && <button className="btn sm" onClick={() => setApproval(h.id, 'approved', 'approved')}><Icon name="check" size={12} /> {h.channel === 'longform' && h.batch_id ? 'Mark episode approved' : 'Mark approved'}</button>}
+                {!ridesOnLongform(h) && h.approval_status === 'approved' && <button className="btn sm" onClick={() => undoApproval(h.id)}><Icon name="arrow-l" size={12} /> Undo approve</button>}
+                {!ridesOnLongform(h) && (h.approval_status === 'approved' || h.approval_status === 'approved_with_changes') && <button className="btn sm" onClick={() => setApproval(h.id, 'in_production', 'approved')}><Icon name="play" size={12} /> In production</button>}
+                {!ridesOnLongform(h) && h.approval_status === 'changes_requested' && <button className="btn sm" onClick={() => setApproval(h.id, 'changes_completed')} style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}><Icon name="check" size={12} /> Changes verified</button>}
                 {h.prev_body && h.prev_body !== h.body && <button className="btn sm" onClick={() => setDiffOpen(diffOpen === h.id ? null : h.id)}><Icon name="sliders" size={12} /> {diffOpen === h.id ? 'Hide changes' : 'Show changes'}</button>}
-                <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> {h.approval_status === 'changes_completed' ? 'Resend for approval' : 'Send for approval'}</button>
+                {ridesOnLongform(h)
+                  ? <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }} title="Shortforms and the blog are cut from the longform, so the client approves the whole episode once, on the longform.">approval: with the longform</span>
+                  : <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> {h.approval_status === 'changes_completed' ? 'Resend for approval' : (h.channel === 'longform' && h.batch_id ? 'Send episode for approval' : 'Send for approval')}</button>}
                 {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body, castTitleFor(h), h.job_number, h.id)}><Icon name="sparkle" size={12} /> Cast</button>}
                 <button className="btn sm" onClick={() => archiveScript(h)} title="Download a .zip backup, then delete"><Icon name="download" size={12} /> Archive</button>
                 <button className="btn sm" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Delete</button>
