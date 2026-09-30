@@ -18,6 +18,7 @@ import { SettingsView } from './settings.jsx'
 import { ActivityLogView } from './activity.jsx'
 import { TaskStatusView } from './task-status.jsx'
 import { ProductionReportView } from './report.jsx'
+import { AnalyticsView } from './analytics.jsx'
 
 const NAV = [
   { id: 'clients',       label: 'Clients',        icon: 'avatars' },
@@ -26,6 +27,7 @@ const NAV = [
   { id: 'planner',       label: 'Planner',        icon: 'history',  countKey: 'planner' },
   { id: 'onboarding',    label: 'Record on-site', icon: 'mic' },
   { id: 'report',        label: 'Production',     icon: 'chart', roles: ['admin', 'manager'] },
+  { id: 'analytics',     label: 'Analytics',      icon: 'chart' },
   { id: 'billing',       label: 'Billing',        icon: 'sliders' },
 ];
 
@@ -43,6 +45,7 @@ const HEADER_TITLES = {
   billing:         { title: 'Billing',         sub: 'plans, usage, and invoices' },
   changes:         { title: 'Client changes',  sub: 'requested changes across every client — newest first' },
   attention:       { title: 'Needs attention',  sub: 'clients & tasks waiting on you — newest first' },
+  analytics:       { title: 'Analytics',       sub: 'YouTube + Facebook results — PDF overview for clients' },
   report:          { title: 'Production report', sub: 'all production in a date range — printable' },
   'task-status':   { title: 'Task Status',     sub: 'onboarding tasks — check them off as you go' },
   activity:        { title: 'Activity log',    sub: 'every action across the dashboard — newest first' },
@@ -611,6 +614,7 @@ function App() {
           {view === 'task-status' && <TaskStatusView me={me} onOpenClient={(clientId) => { setActiveClientId(clientId); setView('brief'); }} />}
           {view === 'activity' && <ActivityLogView me={me} />}
           {view === 'report' && <ProductionReportView />}
+          {view === 'analytics' && <AnalyticsView activeClientId={activeClientId} onSelectClient={setActiveClientId} />}
           {view === 'billing' && <BillingView />}
         </section>
       </main>
