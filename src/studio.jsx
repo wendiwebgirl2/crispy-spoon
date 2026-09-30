@@ -9,6 +9,7 @@ import { clientToken, voice } from './dashboard-api.js'
 import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, ApprovalMethodModal, buildMotionPrompt } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
 import { LookPicker, AssetsSection } from './brief.jsx'
+import { NewLookPanel } from './talent.jsx'
 
 const SCENES = [
   { id: 'plain',     label: 'Plain', desc: 'No background.' },
@@ -109,6 +110,9 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
 
   // —— render step (video) ——
   const [avatarId, setAvatarId] = React.useState(null);
+  // New-look generator for the selected client avatar (hooks stay above the early returns).
+  const [newLookOpen, setNewLookOpen] = React.useState(false);
+  const [lookNonce, setLookNonce] = React.useState(0);
   const [script, setScript] = React.useState(DEFAULT_SCRIPT);
   const scriptRef = React.useRef(null);
   const [castTitle, setCastTitle] = React.useState('');
@@ -231,9 +235,13 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       }).catch(() => { setVoiceProfiles([]); setVoiceProfileId(''); });
       voice.outputs(id).then((o) => setAudioOutputs(Array.isArray(o) ? o : [])).catch(() => setAudioOutputs([]));
 
-      const perToken = await Promise.all(
-        tokens.map((t) => api.listAvatars(t).then((r) => r.avatars || []).catch(() => []))
+      const perTokenFull = await Promise.all(
+        tokens.map((t) => api.listAvatars(t).catch(() => ({})))
       );
+      const perToken = perTokenFull.map((r) => (r && r.avatars) || []);
+      // Shared talent library (generic AI announcers/voiceovers) — castable for
+      // every client; the render engine returns it with each client's list.
+      const talentList = ((perTokenFull[0] && perTokenFull[0].talent) || []);
       const seen = new Set();
       const list = [];
       for (const a of perToken.flat()) {
@@ -250,6 +258,9 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
           _token: a.invite_token || tokens[0] || null,
           _invite: (a.invite_token && inviteName[a.invite_token]) || a.name || null,
         });
+      }
+      for (const t of talentList) {
+        list.push({ ...normalizeAvatar(t), _talent: true, _voiceOnly: false, _token: tokens[0] || null, _invite: t.name });
       }
       // Recordings whose twin has not been built yet. Without these the Cast
       // page shows nothing for a client who has recorded but has no avatar -
@@ -1124,7 +1135,14 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                     background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13, cursor: 'pointer'
                   }}>
                   <option value="" disabled>Select an avatar…</option>
-                  {readyAvatars.map((av) => (
+                  {readyAvatars.some((av) => av._talent) && (
+                    <optgroup label="Talent library (generic AI talent)">
+                      {readyAvatars.filter((av) => av._talent).map((av) => (
+                        <option key={av.id} value={av.id}>{av._invite}{av.voice_name ? ' · ' + av.voice_name : ''}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {readyAvatars.filter((av) => !av._talent).map((av) => (
                     <option key={av.id} value={av.id} disabled={av._voiceOnly && !av._unbuilt && castType !== 'audio'}>
                       {(av._invite || av.contact)
                         + (av.created_at ? ' · ' + String(av.created_at).slice(0, 10) : '')
@@ -1191,17 +1209,31 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
               {avatarId && (() => {
                 const sel = readyAvatars.find((a) => a.id === avatarId);
                 if (!sel || !sel.heygen_group_id) return null;
+                if (sel._talent) {
+                  return (
+                    <div className="mono" style={{ marginBottom: 22, fontSize: 12, color: 'var(--text-3)' }}>
+                      Talent library avatar · voice {sel.voice_name || 'set in Talent'} · change its look or voice on the Talent page.
+                    </div>
+                  );
+                }
                 return (
                   <div style={{ marginBottom: 22 }}>
                     <div className="label" style={{ marginBottom: 8 }}>LOOK</div>
-                    <LookPicker avatar={sel} onSet={() => loadClient(clientId)} />
+                    <LookPicker key={sel.id + ':' + lookNonce} avatar={sel} onSet={() => loadClient(clientId)} />
+                    <button className="btn sm" style={{ marginTop: 8 }} onClick={() => setNewLookOpen((v) => !v)}>
+                      <Icon name="sparkle" size={12} /> {newLookOpen ? 'Hide new look' : 'New look'}
+                    </button>
+                    {newLookOpen && (
+                      <NewLookPanel groupId={sel.heygen_group_id} baseLookId={sel.heygen_avatar_id} defaultName={(sel._invite || sel.contact || 'Avatar') + ' — new look'}
+                        onCreated={() => setTimeout(() => setLookNonce((n) => n + 1), 1500)} onClose={() => setNewLookOpen(false)} />
+                    )}
                   </div>
                 );
               })()}
 
               <a href="https://app.heygen.com/avatars" target="_blank" rel="noopener noreferrer" className="btn sm"
                 style={{ marginBottom: 22, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Icon name="globe" size={13} /> Edit avatar in HeyGen
+                <Icon name="globe" size={13} /> HeyGen dashboard (subscription features)
               </a>
               <div className="label" style={{ marginBottom: 10 }}>BACKGROUND</div>
               <div className="row" style={{ gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
