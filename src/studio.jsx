@@ -1804,7 +1804,7 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
             {onApprove && !['approved', 'approved_with_changes'].includes((meta || {}).approval_status) && (
               <button className="btn sm" onClick={onApprove}><Icon name="check" size={12} /> Approve</button>
             )}
-            {onSend && <button className="btn sm" onClick={onSend}><Icon name="send" size={12} /> Send for review</button>}
+            {onSend && <button className="btn sm" onClick={onSend}><Icon name="send" size={12} /> {(meta || {}).approval_sent_at ? 'Resend for review' : 'Send for review'}</button>}
             {onPlanner && <button className="btn sm" onClick={onPlanner}><Icon name="history" size={12} /> Add to planner</button>}
           </div>
         )}

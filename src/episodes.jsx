@@ -861,7 +861,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
             {full.approval_status === 'changes_requested' && (
               <button className="btn sm" disabled={busy === 'verify'} onClick={verifyChanges} style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}><Icon name="check" size={12} /> Changes verified</button>
             )}
-            <button className="btn sm" disabled={busy === 'send'} onClick={() => { setErr(''); setShowSend(true); }}><Icon name="send" size={12} /> {busy === 'send' ? 'Sending…' : (full.approval_status === 'changes_completed' ? 'Resend to client' : 'Send to client')}</button>
+            <button className="btn sm" disabled={busy === 'send'} onClick={() => { setErr(''); setShowSend(true); }}><Icon name="send" size={12} /> {busy === 'send' ? 'Sending…' : (full.approval_sent_at ? 'Resend to client' : 'Send to client')}</button>
             <button className="btn sm" disabled={busy === 'planner'} onClick={addToPlanner}><Icon name="history" size={12} /> Add to planner</button>
           </div>
           {/* Air date/time — record when the episode aired or was distributed. */}
