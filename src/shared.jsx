@@ -490,6 +490,25 @@ async function buildArchiveZip({ zipName, files = [], texts = [], manifest }) {
   return written;
 }
 
+// Upload several files one request at a time. The upload endpoints take a
+// single file per call, so looping here means one oversized or rejected file
+// never sinks the rest. uploadOne(file) -> result; onProgress({ done, total,
+// name }) fires before each file. Returns { ok: [{ file, result }], failed:
+// [{ file, name, error }] } so the caller can report exactly what happened.
+async function uploadMany(files, uploadOne, onProgress) {
+  const list = Array.from(files || []).filter(Boolean);
+  const ok = [];
+  const failed = [];
+  for (let i = 0; i < list.length; i++) {
+    const file = list[i];
+    if (onProgress) onProgress({ done: i, total: list.length, name: file.name });
+    try { ok.push({ file, result: await uploadOne(file) }); }
+    catch (e) { failed.push({ file, name: file.name, error: (e && e.message) || 'Upload failed' }); }
+  }
+  if (onProgress) onProgress({ done: list.length, total: list.length, name: '' });
+  return { ok, failed };
+}
+
 // Send-for-review modal: collects an optional client email + an optional note
 // that the backend includes in the approval email. Used by the episode send and
 // the cast send. onSend(email, note) is called with trimmed values.
@@ -566,6 +585,7 @@ function SendReviewModal({ open, title, busy, onSend, onClose }) {
 }
 
 export {
+  uploadMany,
   SendReviewModal,
   ApprovalMethodModal,
   APPROVAL_METHODS,

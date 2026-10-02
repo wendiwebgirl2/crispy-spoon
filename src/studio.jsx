@@ -6,7 +6,7 @@
 import React from 'react'
 import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, castBoostedVideoBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
 import { clientToken, voice } from './dashboard-api.js'
-import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, ApprovalMethodModal, buildMotionPrompt } from './shared.jsx'
+import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, ApprovalMethodModal, buildMotionPrompt, uploadMany } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
 import { LookPicker, AssetsSection } from './brief.jsx'
 import { NewLookPanel } from './talent.jsx'
@@ -1891,6 +1891,7 @@ function MontageBuilder({ clientId }) {
   const [aiPrompt, setAiPrompt] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
+  const [uploadProg, setUploadProg] = React.useState(null);
   const [err, setErr] = React.useState('');
   const [result, setResult] = React.useState(null);
 
@@ -1907,14 +1908,20 @@ function MontageBuilder({ clientId }) {
   const removeItem = (i) => setItems((x) => x.filter((_, k) => k !== i));
   const move = (i, d) => setItems((x) => { const n = [...x]; const j = i + d; if (j < 0 || j >= n.length) return n; [n[i], n[j]] = [n[j], n[i]]; return n; });
 
+  // Several images at once: uploaded one request at a time, then added to the
+  // montage in the order they were chosen. A failed file is named in the error
+  // and the rest still go in.
   const onUpload = async (e) => {
-    const file = e.target.files && e.target.files[0]; e.target.value = '';
-    if (!file) return;
-    const audio = (file.type || '').startsWith('audio/');
+    const files = Array.from(e.target.files || []); e.target.value = '';
+    if (!files.length) return;
     setUploading(true); setErr('');
-    try { const a = await api.uploadAsset(clientId, audio ? 'music' : 'background', file); await load(); if (!audio) addAsset(a); }
-    catch (ex) { setErr(ex.message || 'Upload failed'); }
-    finally { setUploading(false); }
+    const isAudioFile = (f) => (f.type || '').startsWith('audio/');
+    const { ok, failed } = await uploadMany(files, (f) => api.uploadAsset(clientId, isAudioFile(f) ? 'music' : 'background', f), setUploadProg);
+    await load();
+    for (const { file, result } of ok) { if (!isAudioFile(file) && result) addAsset(result); }
+    setUploadProg(null);
+    if (failed.length) setErr(`${failed.length} of ${files.length} failed: ` + failed.map((f) => `${f.name} (${f.error})`).join('; '));
+    setUploading(false);
   };
 
   const render = async () => {
@@ -1980,8 +1987,8 @@ function MontageBuilder({ clientId }) {
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div className="label">FROM LIBRARY</div>
             <label className="btn sm" style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
-              <Icon name="upload" size={13} /> {uploading ? 'Uploading…' : 'Upload image'}
-              <input type="file" accept="image/*" onChange={onUpload} disabled={uploading} style={{ display: 'none' }} />
+              <Icon name="upload" size={13} /> {uploading ? (uploadProg && uploadProg.total > 1 ? `Uploading ${Math.min(uploadProg.done + 1, uploadProg.total)} of ${uploadProg.total}…` : 'Uploading…') : 'Upload images'}
+              <input type="file" accept="image/*" multiple onChange={onUpload} disabled={uploading} style={{ display: 'none' }} />
             </label>
           </div>
           {imageAssets.length === 0

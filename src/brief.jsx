@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { api } from './api.js'
-import { Icon, ensureOperatorName } from './shared.jsx'
+import { Icon, ensureOperatorName, uploadMany } from './shared.jsx'
 
 // Live Brief editor for the selected client. Contact fields (phone/address/
 // mobile/website) are the source of truth the Scripts tab injects verbatim;
@@ -444,19 +444,30 @@ function AssetsSection({ clientId }) {
   const [kind, setKind] = useState('logo');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [progress, setProgress] = useState(null);   // { done, total, name } while a batch uploads
+  const [dragOver, setDragOver] = useState(false);
   const [lightbox, setLightbox] = useState(null);   // { url, name } for click-to-enlarge
 
   const load = () => api.listAssets(clientId).then((r) => setAssets(Array.isArray(r) ? r : [])).catch(() => setAssets([]));
   useEffect(() => { if (clientId != null) load(); }, [clientId]);
 
-  const onFile = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
+  // One or many files (file picker or drag-and-drop), all saved as the kind
+  // currently selected. Uploads run one at a time; failures are listed by
+  // file name and the rest still go through.
+  const uploadFiles = async (files) => {
+    const list = Array.from(files || []);
+    if (!list.length || busy) return;
     setBusy(true); setErr('');
-    try { await api.uploadAsset(clientId, kind, file); await load(); }
-    catch (ex) { setErr(ex.message || 'Upload failed.'); }
-    finally { setBusy(false); }
+    const { failed } = await uploadMany(list, (f) => api.uploadAsset(clientId, kind, f), setProgress);
+    await load();
+    setProgress(null);
+    if (failed.length) setErr(`${failed.length} of ${list.length} failed: ` + failed.map((f) => `${f.name} (${f.error})`).join('; '));
+    setBusy(false);
+  };
+  const onFile = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    uploadFiles(files);
   };
   const remove = async (id) => {
     if (!window.confirm('Delete this asset? This cannot be undone.')) return;
@@ -469,15 +480,20 @@ function AssetsSection({ clientId }) {
   return (
     <div style={{ marginTop: 28 }}>
       <div className="label" style={{ marginBottom: 12 }}>ASSETS · logo, backgrounds, music, fonts</div>
-      <div className="card card-pad">
+      <div className="card card-pad"
+        onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); uploadFiles(e.dataTransfer.files); }}
+        style={dragOver ? { outline: '2px dashed var(--accent)', outlineOffset: -2 } : undefined}>
         <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
           <select value={kind} onChange={(e) => setKind(e.target.value)} style={{ height: 36, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 }}>
             {ASSET_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
           </select>
           <label className="btn sm" style={{ cursor: busy ? 'not-allowed' : 'pointer' }}>
-            <Icon name="upload" size={13} /> {busy ? 'Uploading…' : 'Upload'}
-            <input type="file" onChange={onFile} disabled={busy} style={{ display: 'none' }} />
+            <Icon name="upload" size={13} /> {busy ? (progress && progress.total > 1 ? `Uploading ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…` : 'Uploading…') : 'Upload files'}
+            <input type="file" multiple onChange={onFile} disabled={busy} style={{ display: 'none' }} />
           </label>
+          <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Pick several at once, or drop files here — saved as the type chosen on the left.</span>
           {err && <span className="mono" style={{ color: 'var(--accent)' }}>{err}</span>}
         </div>
         {assets.length === 0 ? (
@@ -538,7 +554,7 @@ function LookPicker({ avatar, onSet }) {
   const pick = async (lookId) => {
     setErr('');
     const look = (looks || []).find((l) => l.id === lookId);
-    try { await api.setAvatarLook(avatar._token, avatar.id, lookId, look && look.image_url); if (onSet) onSet(); }
+    try { await api.setAvatarLook(avatar._token, avatar.id, lookId, look && look.image_url); if (onSet) onSet(lookId, look); }
     catch (e) { setErr(e.message); }
   };
   return (

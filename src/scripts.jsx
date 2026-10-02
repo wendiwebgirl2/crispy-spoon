@@ -6,7 +6,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { api, generateVideo, listVideos } from './api.js'
 import { clientToken } from './dashboard-api.js'
 import { Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip, SendReviewModal, ApprovalMethodModal, approvalMethodLabel, buildMotionPrompt } from './shared.jsx'
-import { TopicsSection } from './brief.jsx'
+import { TopicsSection, LookPicker } from './brief.jsx'
 
 const CHANNEL_FALLBACK = [
   { key: 'longform',  label: 'Longform (5–7 min)', variants: 1 },
@@ -434,7 +434,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
             // filter on status, which can be a value other than 'ready'.
             if (a.heygen_avatar_id && !seen.has(a.id)) {
               seen.add(a.id);
-              found.push({ id: a.id, name: a.name || a.title || ('Avatar ' + a.id), _token: t });
+              found.push({ id: a.id, name: a.name || a.title || ('Avatar ' + a.id), heygen_group_id: a.heygen_group_id, heygen_avatar_id: a.heygen_avatar_id, _token: t });
             }
           }
         } catch { /* try next token */ }
@@ -986,6 +986,21 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 <span className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>No ready avatar for this client — build a twin in Studio first.</span>
               )}
             </label>
+
+            {(() => {
+              const av = castAvatars.find((a) => a.id === castAvatarId);
+              if (!av || !av.heygen_group_id) return null;
+              return (
+                <div className="col" style={{ gap: 4 }}>
+                  <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Look</span>
+                  <LookPicker key={av.id} avatar={av}
+                    onSet={(lookId) => setCastAvatars((xs) => xs.map((x) => (x.id === av.id ? { ...x, heygen_avatar_id: lookId } : x)))} />
+                  <span className="mono" style={{ color: 'var(--text-4)', fontSize: 10 }}>
+                    Used for every script in this batch. Picking one also sets it as {av.name}'s active look, same as in Studio.
+                  </span>
+                </div>
+              );
+            })()}
 
             <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
               <label className="col" style={{ gap: 4 }}>
