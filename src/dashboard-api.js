@@ -33,6 +33,8 @@ export const ep = {
   clearVideo: (cid, id, slot) => post(`/api/clients/${cid}/episodes/${id}/clear-video`, { slot }),
   clearSlot: (cid, id, slot) => post(`/api/clients/${cid}/episodes/${id}/clear-slot`, { slot }),
   outroText: (cid, id, text) => put(`/api/clients/${cid}/episodes/${id}/outro-text`, { text }),
+  // Video overlays (logo, lower-third, opening card, end-card CTA); null clears them.
+  overlays: (cid, id, overlays) => put(`/api/clients/${cid}/episodes/${id}/overlays`, { overlays }),
   outroImageUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/slot-file/outro_image`,
   videoFileUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/video`,
   fileUrl: (cid, id) => `/api/clients/${cid}/episodes/${id}/file`,

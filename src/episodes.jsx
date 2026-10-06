@@ -216,6 +216,118 @@ function CutawayCard({ part, videoPathField, full, assets = [], busy, onAdd, onR
   );
 }
 
+// Video overlays for the stitched episode: logo over the whole video, a
+// lower-third once early in the main part, an opening title card, and a call to
+// action built on the end card. Brand colors come from the Brief; logos from
+// Assets (type "logo"). The parent keys this card on the episode, so the form
+// starts fresh when another episode opens. Nothing applies until saved — an episode that was never
+// set up stitches exactly as before.
+const OV_CORNER_LABEL = { tr: 'Top right', tl: 'Top left', br: 'Bottom right', bl: 'Bottom left' };
+function OverlaysCard({ cid, epId, full, onSaved }) {
+  const start = full.overlays || full.overlay_defaults || {};
+  const [o, setO] = useState(start);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const set = (part, k, v) => { setO((x) => ({ ...x, [part]: { ...(x[part] || {}), [k]: v } })); setDirty(true); setMsg(''); };
+  const save = async (val) => {
+    setBusy(true); setMsg('');
+    try {
+      const out = await ep.overlays(cid, epId, val);
+      // Show what the server actually stored (it clamps/cleans values).
+      setO((out && out.overlays) || full.overlay_defaults || {});
+      setDirty(false); setMsg(val ? 'Saved — applied on the next stitch.' : 'Overlays turned off.');
+      await onSaved();
+    }
+    catch (e) { setMsg('Could not save: ' + (e.message || e)); } finally { setBusy(false); }
+  };
+  const logos = full.overlay_logos || [];
+  const colors = full.overlay_colors || {};
+  const lg = o.logo || {}, lt = o.lower_third || {}, oc = o.open_card || {}, ec = o.end_cta || {};
+  const isVideo = (full.output_format || 'video') === 'video';
+  const toggle = (part, label) => (
+    <label className="row" style={{ gap: 8, alignItems: 'center', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+      <input type="checkbox" checked={!!(o[part] && o[part].on)} onChange={(e) => set(part, 'on', e.target.checked)} /> {label}
+    </label>
+  );
+  const sub = { marginLeft: 24, marginTop: 8, gap: 8, flexWrap: 'wrap' };
+  const note = { color: 'var(--text-4)', fontSize: 11, marginLeft: 24, marginTop: 4 };
+  return (
+    <div className="card card-pad" style={{ marginBottom: 10 }}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontWeight: 600, fontSize: 13 }}>Overlays <span className="mono" style={{ color: 'var(--text-4)' }}>(logo, lower-third, opening &amp; end cards — video only)</span></div>
+        <span className="badge" style={{ color: full.overlays ? 'var(--ok)' : 'var(--text-4)' }}>{full.overlays ? 'set' : 'not set up'}</span>
+      </div>
+      {!isVideo && <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 6 }}>Overlays only apply when the output format is Video.</div>}
+      <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 8, fontSize: 11 }}>
+        <span className="mono" style={{ color: 'var(--text-4)' }}>Brand colors:</span>
+        <span title="Primary" style={{ width: 16, height: 16, borderRadius: 4, background: colors.primary, border: '1px solid var(--border)' }} />
+        <span title="Accent" style={{ width: 16, height: 16, borderRadius: 4, background: colors.accent, border: '1px solid var(--border)' }} />
+        <span className="mono" style={{ color: 'var(--text-4)' }}>{colors.from_brief ? 'from the Brief' : 'cue:creative defaults — set Primary / Accent in the Brief'}</span>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        {toggle('logo', 'Logo — over the whole episode')}
+        {logos.length ? (
+          <div className="row" style={sub}>
+            <select value={lg.asset_id || ''} onChange={(e) => set('logo', 'asset_id', Number(e.target.value) || null)} style={{ ...inputStyle, width: 220 }}>
+              <option value="">Pick a logo…</option>
+              {logos.map((a) => <option key={a.id} value={a.id}>{a.filename || ('logo ' + a.id)}</option>)}
+            </select>
+            <select value={lg.corner || 'tr'} onChange={(e) => set('logo', 'corner', e.target.value)} style={{ ...inputStyle, width: 140 }}>
+              {Object.entries(OV_CORNER_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <select value={lg.size || 'm'} onChange={(e) => set('logo', 'size', e.target.value)} style={{ ...inputStyle, width: 110 }}>
+              <option value="s">Small</option><option value="m">Medium</option><option value="l">Large</option>
+            </select>
+          </div>
+        ) : <div className="mono" style={note}>No logo yet — upload one in Studio → Assets with type “logo” (PNG with a transparent background looks best).</div>}
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        {toggle('lower_third', 'Lower-third — once, near the start of the main part')}
+        <div className="row" style={sub}>
+          <input value={lt.name || ''} onChange={(e) => set('lower_third', 'name', e.target.value)} maxLength={80} placeholder="Name" style={{ ...inputStyle, width: 220 }} />
+          <input value={lt.title || ''} onChange={(e) => set('lower_third', 'title', e.target.value)} maxLength={120} placeholder="Title line (optional)" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
+        </div>
+        <div className="mono" style={note}>Shows ~1s in, for 5s. Sits along the bottom, on the side away from the logo, so they never overlap.</div>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        {toggle('open_card', 'Opening card — title card before the intro')}
+        <div className="row" style={sub}>
+          <input value={oc.title || ''} onChange={(e) => set('open_card', 'title', e.target.value)} maxLength={160} placeholder="Title" style={{ ...inputStyle, flex: 1, minWidth: 220 }} />
+          <input value={oc.subtitle || ''} onChange={(e) => set('open_card', 'subtitle', e.target.value)} maxLength={120} placeholder="Subtitle (optional)" style={{ ...inputStyle, width: 200 }} />
+          <label className="row mono" style={{ gap: 6, alignItems: 'center', fontSize: 12 }}>
+            <input type="number" min={1} max={15} value={oc.sec || 3} onChange={(e) => set('open_card', 'sec', Number(e.target.value))} style={{ ...inputStyle, width: 64 }} /> sec
+          </label>
+        </div>
+        <div className="mono" style={note}>On the cover art (or the brand color if there's no cover). With intro music it lasts as long as the music.</div>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        {toggle('end_cta', 'End card — call to action')}
+        <div className="row" style={sub}>
+          <input value={ec.cta || ''} onChange={(e) => set('end_cta', 'cta', e.target.value)} maxLength={120} placeholder="Call to action" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
+          <input value={ec.website || ''} onChange={(e) => set('end_cta', 'website', e.target.value)} maxLength={120} placeholder="Website" style={{ ...inputStyle, width: 200 }} />
+          <input value={ec.phone || ''} onChange={(e) => set('end_cta', 'phone', e.target.value)} maxLength={60} placeholder="Phone" style={{ ...inputStyle, width: 160 }} />
+          <label className="row mono" style={{ gap: 6, alignItems: 'center', fontSize: 12 }}>
+            <input type="number" min={1} max={15} value={ec.sec || 5} onChange={(e) => set('end_cta', 'sec', Number(e.target.value))} style={{ ...inputStyle, width: 64 }} /> sec
+          </label>
+        </div>
+        <div className="mono" style={note}>Built on top of the end card above (outro image + closing text), or on the brand color if there's no outro image.</div>
+      </div>
+
+      <div className="row" style={{ gap: 8, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="btn sm primary" onClick={() => save(o)} disabled={busy || (!dirty && !!full.overlays)}><Icon name="check" size={12} /> {busy ? 'Saving…' : 'Save overlays'}</button>
+        {full.overlays && <button className="btn sm" onClick={() => { if (window.confirm('Turn off all overlays for this episode? The next stitch will be plain again.')) save(null); }} disabled={busy}>Turn off overlays</button>}
+        {dirty && <span className="mono" style={{ color: 'var(--warn)', fontSize: 11 }}>unsaved changes</span>}
+        {msg && <span className="mono" style={{ color: 'var(--text-3)', fontSize: 11 }}>{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
 function YourAvatars({ cid }) {
   const [avatars, setAvatars] = useState([]);
   const [orphans, setOrphans] = useState([]);
@@ -800,6 +912,9 @@ function EpisodeEditor({ cid, epId, onChange }) {
           <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>{outroText.length}/240</span>
         </div>
       </div>
+
+      {/* keyed on the episode so the form starts fresh when another episode opens */}
+      <OverlaysCard key={epId} cid={cid} epId={epId} full={full} onSaved={refresh} />
 
       <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
         <a className="btn" href={full.output_path ? (full.video_output_path ? ep.videoFileUrl(cid, epId) + '?b=' + bust : ep.fileUrl(cid, epId) + '?b=' + bust) : undefined}
