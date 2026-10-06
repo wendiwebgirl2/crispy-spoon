@@ -426,6 +426,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       }
       const found = [];
       const seen = new Set();
+      let talent = null;   // [{ t, token }] from the first token that answers
       for (const t of tokens) {
         try {
           const r = await api.listAvatars(t);
@@ -437,7 +438,14 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
               found.push({ id: a.id, name: a.name || a.title || ('Avatar ' + a.id), heygen_group_id: a.heygen_group_id, heygen_avatar_id: a.heygen_avatar_id, _token: t });
             }
           }
+          if (!talent && r && Array.isArray(r.talent)) talent = r.talent.map((x) => ({ x, token: t }));
         } catch { /* try next token */ }
+      }
+      // Shared talent library (generic AI announcers/voiceovers) — castable for
+      // every client, including one with no twin of their own. Same as Studio:
+      // cast with avatar_id "talent:<id>"; the render engine mirrors it per client.
+      for (const { x, token } of talent || []) {
+        found.push({ id: x.id, name: x.name, heygen_group_id: x.heygen_group_id, heygen_avatar_id: x.heygen_avatar_id, voice_name: x.voice_name, _talent: true, _token: token });
       }
       setCastAvatars(found);
       if (found.length && !found.some((a) => a.id === castAvatarId)) setCastAvatarId(found[0].id);
@@ -980,16 +988,28 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>Loading avatars…</span>
               ) : castAvatars.length ? (
                 <select value={castAvatarId || ''} onChange={(e) => setCastAvatarId(Number(e.target.value) || e.target.value)} style={inputStyle}>
-                  {castAvatars.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  {castAvatars.filter((a) => !a._talent).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  {castAvatars.some((a) => a._talent) && (
+                    <optgroup label="Talent library (generic AI talent)">
+                      {castAvatars.filter((a) => a._talent).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </optgroup>
+                  )}
                 </select>
               ) : (
-                <span className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>No ready avatar for this client — build a twin in Studio first.</span>
+                <span className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>No ready avatar for this client and no talent in the Talent library — build a twin in Studio or add talent first.</span>
               )}
             </label>
 
             {(() => {
               const av = castAvatars.find((a) => a.id === castAvatarId);
               if (!av || !av.heygen_group_id) return null;
+              if (av._talent) {
+                return (
+                  <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
+                    Talent library avatar · voice {av.voice_name || 'set in Talent'} · change its look or voice on the Talent page.
+                  </span>
+                );
+              }
               return (
                 <div className="col" style={{ gap: 4 }}>
                   <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Look</span>

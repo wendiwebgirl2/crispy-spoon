@@ -241,7 +241,11 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       const perToken = perTokenFull.map((r) => (r && r.avatars) || []);
       // Shared talent library (generic AI announcers/voiceovers) — castable for
       // every client; the render engine returns it with each client's list.
-      const talentList = ((perTokenFull[0] && perTokenFull[0].talent) || []);
+      // Take it from the first token that answered, so one dead invite can't hide
+      // talent from a client who has no twin of their own.
+      const talentIdx = perTokenFull.findIndex((r) => r && Array.isArray(r.talent));
+      const talentList = talentIdx >= 0 ? perTokenFull[talentIdx].talent : [];
+      const talentToken = talentIdx >= 0 ? tokens[talentIdx] : (tokens[0] || null);
       const seen = new Set();
       const list = [];
       for (const a of perToken.flat()) {
@@ -260,7 +264,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
         });
       }
       for (const t of talentList) {
-        list.push({ ...normalizeAvatar(t), _talent: true, _voiceOnly: false, _token: tokens[0] || null, _invite: t.name });
+        list.push({ ...normalizeAvatar(t), _talent: true, _voiceOnly: false, _token: talentToken, _invite: t.name });
       }
       // Recordings whose twin has not been built yet. Without these the Cast
       // page shows nothing for a client who has recorded but has no avatar -
