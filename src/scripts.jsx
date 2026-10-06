@@ -588,6 +588,29 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   );
   const ridesOnLongform = (h) => h.channel !== 'longform' && !!h.batch_id && batchesWithLongform.has(h.batch_id);
 
+  // Translate to Spanish: duplicates the WHOLE set (every part of the batch) as a
+  // new Spanish set with its own approval. The English scripts are never changed.
+  const [translatingId, setTranslatingId] = useState(null);
+  const translateToSpanish = async (h) => {
+    const set = h.batch_id ? history.filter((x) => x.batch_id === h.batch_id && x.status !== 'archived') : [h];
+    if (!window.confirm(`Translate ${set.length > 1 ? `this whole set (${set.length} scripts)` : 'this script'} into Spanish?\n\nThis makes a separate Spanish set, marked “Translated to Spanish”, with its own approval. The English scripts aren’t changed.`)) return;
+    setTranslatingId(h.id); setErr(''); setBatchMsg('Translating to Spanish…');
+    try {
+      let out;
+      try { out = await api.translateScript(clientId, h.id); }
+      catch (e) {
+        if (e.message !== 'already_translated') throw e;
+        if (!window.confirm('A Spanish translation of this set already exists. Make another copy?')) { setBatchMsg(''); return; }
+        out = await api.translateScript(clientId, h.id, true);
+      }
+      const over = (out.scripts || []).filter((s) => s.over_cap);
+      setBatchMsg(`Spanish translation created — ${out.scripts.length} script${out.scripts.length === 1 ? '' : 's'}, marked ES. Review, then send for approval.`
+        + (over.length ? ` Note: ${over.map((s) => labelFor(s.channel)).join(', ')} ran over the character limit — trim before casting.` : ''));
+      await refreshHistory();
+    } catch (e) { setBatchMsg(''); setErr('Translation failed: ' + (e.message || e)); }
+    finally { setTranslatingId(null); }
+  };
+
   const groupedHistory = React.useMemo(() => {
     const groups = new Map();
     for (const h of history) {
@@ -804,6 +827,10 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   <input type="checkbox" checked={selected.has(h.id)} onChange={() => toggleSel(h.id)}
                     onClick={(e) => e.stopPropagation()} title="Select for batch cast" style={{ cursor: 'pointer', flex: 'none' }} />
                   <span className="badge" style={chBadgeStyle(h.channel)}>{labelFor(h.channel)}</span>
+                  {h.language === 'es' && (() => {
+                    const src = h.source_script_id ? history.find((x) => x.id === h.source_script_id) : null;
+                    return <span className="mono" title={src ? `Translated from: ${(src.title || src.topic || labelFor(src.channel)).trim()}` : 'Translated to Spanish'} style={{ fontSize: 11, color: 'var(--accent-2, #fbb033)', border: '1px solid var(--accent-2, #fbb033)', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>ES · Translated to Spanish</span>;
+                  })()}
                   {h.job_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {h.job_number}</span>}
                   {h.episode_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>E{String(h.episode_number).replace(/^E/i, '')}</span>}
                   {h.status && h.status !== 'draft' && <span className="mono" style={{ color: h.status === 'approved' ? 'var(--ok)' : 'var(--text-4)' }}>{h.status}</span>}
@@ -854,6 +881,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 <button className="btn sm" onClick={() => download(h)}><Icon name="download" size={12} /> Download</button>
                 <button className="btn sm" onClick={() => openEdit(h)}><Icon name="sliders" size={12} /> Edit</button>
                 <button className="btn sm" onClick={() => printScript(h, labelFor(h.channel))}><Icon name="doc" size={12} /> Print</button>
+                {h.language !== 'es' && <button className="btn sm" disabled={!!translatingId} onClick={() => translateToSpanish(h)} title="Duplicate this whole set in Spanish, with its own approval"><Icon name="lang" size={12} /> {translatingId === h.id ? 'Translating…' : 'Translate to Spanish'}</button>}
                 {!ridesOnLongform(h) && h.approval_status !== 'approved' && h.approval_status !== 'in_production' && <button className="btn sm" onClick={() => setApproval(h.id, 'approved', 'approved')}><Icon name="check" size={12} /> {h.channel === 'longform' && h.batch_id ? 'Mark episode approved' : 'Mark approved'}</button>}
                 {!ridesOnLongform(h) && h.approval_status === 'approved' && <button className="btn sm" onClick={() => undoApproval(h.id)}><Icon name="arrow-l" size={12} /> Undo approve</button>}
                 {!ridesOnLongform(h) && (h.approval_status === 'approved' || h.approval_status === 'approved_with_changes') && <button className="btn sm" onClick={() => setApproval(h.id, 'in_production', 'approved')}><Icon name="play" size={12} /> In production</button>}
@@ -861,7 +889,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 {h.prev_body && h.prev_body !== h.body && <button className="btn sm" onClick={() => setDiffOpen(diffOpen === h.id ? null : h.id)}><Icon name="sliders" size={12} /> {diffOpen === h.id ? 'Hide changes' : 'Show changes'}</button>}
                 {ridesOnLongform(h)
                   ? <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }} title="Shortforms and the blog are cut from the longform, so the client approves the whole episode once, on the longform.">approval: with the longform</span>
-                  : <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> {h.approval_sent_at ? 'Resend for approval' : (h.channel === 'longform' && h.batch_id ? 'Send episode for approval' : 'Send for approval')}</button>}
+                  : <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> {h.approval_sent_at ? 'Resend for approval' : (h.language === 'es' ? 'Send Spanish set for approval' : (h.channel === 'longform' && h.batch_id ? 'Send episode for approval' : 'Send for approval'))}</button>}
                 {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body, castTitleFor(h), h.job_number, h.id)}><Icon name="sparkle" size={12} /> Cast</button>}
                 <button className="btn sm" onClick={() => archiveScript(h)} title="Download a .zip backup, then delete"><Icon name="download" size={12} /> Archive</button>
                 <button className="btn sm" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Delete</button>

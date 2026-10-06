@@ -424,6 +424,8 @@ export const api = {
   deleteScript: (id, sid) => vcReq(`/clients/${id}/scripts/${sid}`, { method: "DELETE" }),
   sendScriptApproval: (id, sid, email, note) => vcReq(`/clients/${id}/scripts/${sid}/send-approval`, { method: "POST", body: JSON.stringify({ ...(email ? { email } : {}), ...(note ? { note } : {}) }) }),
   reviseScript: (id, sid, instruction, provider) => vcReq(`/clients/${id}/scripts/${sid}/revise`, { method: "POST", body: JSON.stringify({ instruction, provider }) }),
+  // Duplicates the script's whole set into Spanish as a new set with its own approval.
+  translateScript: (id, sid, force) => vcReq(`/clients/${id}/scripts/${sid}/translate`, { method: "POST", body: JSON.stringify({ force: !!force }) }),
   // ---- accounts & roles ----
   me: () => vcReq('/me'),
   logout: () => vcReq('/logout', { method: 'POST' }),
