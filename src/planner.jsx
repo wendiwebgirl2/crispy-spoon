@@ -132,7 +132,9 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
   const [items, setItems] = useState([]);
   const [channels, setChannels] = useState([]);
   const [approved, setApproved] = useState([]);   // approved scripts (optional attach on manual posts)
-  const [episodes, setEpisodes] = useState([]);   // finished + approved episodes to distribute
+  const [episodes, setEpisodes] = useState([]);   // finished episodes to distribute (approved, or added by hand)
+  const [airedEps, setAiredEps] = useState([]);    // finished episodes marked aired / removed from the list — can be put back
+  const [showAired, setShowAired] = useState(false);
   const [publishing, setPublishing] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -173,9 +175,15 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
       const scr = Array.isArray(sc) ? sc : (sc.scripts || []);
       setApproved(scr.filter((s) => s.status === 'approved'));
       const epsArr = Array.isArray(eps) ? eps : (eps.episodes || []);
-      // Only finished + approved episodes that haven't aired yet are distributable.
-      // Once an episode has an air date logged, it drops off this section.
-      setEpisodes(epsArr.filter((e) => e.approval_status === 'approved' && e.hasVideo && !e.air_date));
+      const itArr = Array.isArray(it) ? it : (it.items || []);
+      // A stitched episode (video or audio) is distributable once the client has approved it
+      // (with or without changes) OR it was added to the planner by hand with "Add to planner".
+      // Once an episode has an air date logged it moves to "Marked aired" below, where it can be put back.
+      const linked = new Set(itArr.filter((i) => i.episode_id).map((i) => i.episode_id));
+      const finished = (e) => e.hasVideo || e.hasOutput;
+      const cleared = (e) => e.approval_status === 'approved' || e.approval_status === 'approved_with_changes' || linked.has(e.id);
+      setEpisodes(epsArr.filter((e) => finished(e) && cleared(e) && !e.air_date));
+      setAiredEps(epsArr.filter((e) => finished(e) && cleared(e) && e.air_date));
     }).catch((e) => setErr(e.message || 'Could not load planner.')).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, [cid]);
@@ -226,8 +234,12 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
   const toggleDistChannel = (key) => setDistChannels((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   // Remove an episode from the Distribute list by marking it aired (today).
   const markAired = async (epi) => {
-    if (!window.confirm(`Remove "${epi.title}" from Distribute? It will be marked aired today.`)) return;
+    if (!window.confirm(`Remove "${epi.title}" from Distribute? It will be marked aired today. You can put it back from “Marked aired” below.`)) return;
     try { await epApi.setMeta(cid, epi.id, { airDate: ymd(midnight()) }); load(); } catch (e) { setErr(e.message); }
+  };
+  // Undo a mark-aired (or an automatic air date from publishing): the episode returns to Distribute.
+  const putBack = async (epi) => {
+    try { await epApi.setMeta(cid, epi.id, { airDate: '' }); load(); } catch (e) { setErr(e.message); }
   };
   const saveDistribute = async () => {
     const chans = [...distChannels];
@@ -314,7 +326,7 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
       <div className="card card-pad" style={{ marginBottom: 14 }}>
         <div className="label" style={{ marginBottom: 10 }}>DISTRIBUTE AN EPISODE <span style={{ color: 'var(--text-4)' }}>({episodes.length})</span></div>
         {episodes.length === 0 ? (
-          <div className="mono" style={{ color: 'var(--text-4)' }}>No episodes ready yet — an episode appears here once it's rendered and approved by the client.</div>
+          <div className="mono" style={{ color: 'var(--text-4)' }}>No episodes ready yet — an episode appears here once it's stitched and approved by the client, or as soon as you click “Add to planner” on it.</div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
             {episodes.map((epi) => {
@@ -322,7 +334,8 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
               return (
                 <div key={epi.id} className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{epi.title}</div>
-                  <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                  <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {epi.approval_status !== 'approved' && epi.approval_status !== 'approved_with_changes' && <span className="mono" style={{ fontSize: 11, color: 'var(--warn)' }}>awaiting client approval</span>}
                     <span className="mono" style={{ fontSize: 11, color: epi.feedInclude ? 'var(--ok)' : 'var(--text-4)' }}>{epi.feedInclude ? '● podcast feed' : '○ feed off'}</span>
                     {scheduledCount > 0 && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{scheduledCount} scheduled</span>}
                   </div>
@@ -336,6 +349,25 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
           </div>
         )}
       </div>
+
+      {airedEps.length > 0 && (
+        <div className="card card-pad" style={{ marginBottom: 14 }}>
+          <button className="btn sm" onClick={() => setShowAired(!showAired)}>{showAired ? '▾' : '▸'} Marked aired / removed ({airedEps.length})</button>
+          {showAired && (
+            <div className="col" style={{ gap: 6, marginTop: 10 }}>
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Episodes with an air date drop off “Distribute an episode”. Use “Put back” if one was removed by mistake, or “Schedule” to plan posts for it anyway.</div>
+              {airedEps.map((epi) => (
+                <div key={epi.id} className="row" style={{ gap: 8, alignItems: 'center', padding: '6px 0', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{epi.title}</div>
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>aired {epi.air_date}</span>
+                  <button className="btn sm" onClick={() => putBack(epi)}>Put back</button>
+                  <button className="btn sm" onClick={() => openDistribute(epi)}><Icon name="send" size={12} /> Schedule</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
       {loading && <div className="mono" style={{ color: 'var(--text-3)' }}>Loading planner…</div>}

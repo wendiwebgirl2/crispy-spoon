@@ -1,6 +1,7 @@
 import React from 'react'
 import { Icon } from './shared.jsx'
 import { api } from './api.js'
+import { AnnotatableText } from './annotate.jsx'
 import cuecastLogo from './assets/cuecast-logo.svg'
 
 // Client-facing portal (Slice 14). A separate shell from the staff dashboard,
@@ -41,6 +42,7 @@ function NeedsApproval({ onChanged }) {
   const [busy, setBusy] = React.useState(null);
   const [changeFor, setChangeFor] = React.useState(null); // `${type}:${id}`
   const [note, setNote] = React.useState('');
+  const [annots, setAnnots] = React.useState({}); // `${type}:${id}` -> highlight notes
   const load = () => api.portalNeedsApproval().then(setData).catch((e) => setErr(e.message));
   React.useEffect(() => { load(); }, []);
 
@@ -48,8 +50,9 @@ function NeedsApproval({ onChanged }) {
     const key = `${item.type}:${item.id}`;
     setBusy(key); setErr('');
     try {
-      await api.portalApprove({ type: item.type, id: item.id, decision, comment: decision === 'changes_requested' ? note.trim() : '' });
-      setChangeFor(null); setNote('');
+      await api.portalApprove({ type: item.type, id: item.id, decision, comment: decision === 'changes_requested' ? note.trim() : '',
+        annotations: decision === 'changes_requested' ? (annots[key] || []).map((a) => { const p = item.parts[a.part]; return { channel: p.channel, variant: p.variant, quote: a.quote, note: a.note, start: a.start, end: a.end }; }) : [] });
+      setChangeFor(null); setNote(''); setAnnots((cur) => ({ ...cur, [key]: [] }));
       await load(); onChanged && onChanged();
     } catch (e) { setErr(e.message); } finally { setBusy(null); }
   };
@@ -79,18 +82,27 @@ function NeedsApproval({ onChanged }) {
                     <button className="btn sm" disabled={busy === key} onClick={() => { setChangeFor(changeFor === key ? null : key); setNote(''); }}>Request changes</button>
                   </div>
                 </div>
-                {item.type === 'script' && item.body && (
+                {item.type === 'script' && item.parts && item.parts.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <div className="mono" style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 6 }}>Want a change in one spot? Highlight the words, tap “Add note”, and tell us what to change.</div>
+                    <AnnotatableText
+                      parts={item.parts.map((p) => ({ label: p.channel === 'longform' ? 'LONGFORM' : p.channel === 'shortform' ? `SHORTFORM ${p.variant || ''}`.trim() : String(p.channel || 'script').toUpperCase(), body: p.body || '' }))}
+                      notes={annots[key] || []}
+                      onChange={(list) => setAnnots((cur) => ({ ...cur, [key]: list }))} />
+                  </div>
+                )}
+                {item.type === 'script' && !(item.parts && item.parts.length) && item.body && (
                   <div className="mono" style={{ whiteSpace: 'pre-wrap', color: 'var(--text-2)', fontSize: 13, marginTop: 10, maxHeight: 220, overflow: 'auto', borderTop: '1px solid var(--border)', paddingTop: 10 }}>{item.body}</div>
                 )}
                 {(item.type === 'cast' || item.type === 'episode') && (
                   <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 8 }}>Your producer has shared this for your review.</div>
                 )}
-                {changeFor === key && (
+                {(changeFor === key || (annots[key] || []).length > 0) && (
                   <div style={{ marginTop: 10 }}>
-                    <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="What would you like changed?" rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+                    <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={(annots[key] || []).length ? 'Anything else? (optional)' : 'What would you like changed?'} rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
                     <div className="row" style={{ gap: 6, marginTop: 6 }}>
-                      <button className="btn sm primary" disabled={busy === key || !note.trim()} onClick={() => decide(item, 'changes_requested')}>Send change request</button>
-                      <button className="btn sm" onClick={() => { setChangeFor(null); setNote(''); }}>Cancel</button>
+                      <button className="btn sm primary" disabled={busy === key || (!note.trim() && !(annots[key] || []).length)} onClick={() => decide(item, 'changes_requested')}>Send change request</button>
+                      <button className="btn sm" onClick={() => { setChangeFor(null); setNote(''); setAnnots((cur) => ({ ...cur, [key]: [] })); }}>Cancel</button>
                     </div>
                   </div>
                 )}

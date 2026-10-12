@@ -449,3 +449,5 @@
   /* fade-in — opacity starts at 1 to avoid holding at 0 if animation never starts */
   .fade-in { animation: fadeIn 240ms ease both; }
   @keyframes fadeIn { from { transform: translateY(4px); } to { transform: none; } }
+/* Highlight-and-note change requests (annotate.jsx): numbered badge on each highlight. */
+mark.cc-hl::after { content: attr(data-n); font-size: 10px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 8px; padding: 0 5px; margin-left: 3px; vertical-align: super; line-height: 1; display: inline-block; }

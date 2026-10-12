@@ -538,7 +538,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
   };
   const addToPlanner = async () => {
     setBusy('planner'); setErr('');
-    try { await sched.add(cid, { channel: 'episode', channel_name: 'Episode', title: full.title, status: 'draft', notes: 'From episode #' + epId }); alert('Added to planner.'); }
+    try {
+      // Linked to this episode so the planner's "Distribute an episode" list picks it up.
+      await sched.add(cid, { channel: 'episode', channelName: 'Episode', title: full.title, status: 'draft', episodeId: epId, notes: 'From episode #' + epId });
+      alert('Added to planner — find it under “Distribute an episode” in the Planner.');
+    }
     catch (e) { setErr(e.message || 'Could not add to planner.'); }
     finally { setBusy(''); }
   };

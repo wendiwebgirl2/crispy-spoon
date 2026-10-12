@@ -97,7 +97,7 @@ function ChangesView({ onOpen }) {
             </div>
           )}
           <div className="row" style={{ gap: 8 }}>
-            <button className="btn sm" onClick={() => onOpen(r.client_id, TYPE_VIEW[r.type] || 'clients')}>
+            <button className="btn sm" onClick={() => onOpen(r.client_id, TYPE_VIEW[r.type] || 'clients', r)}>
               Open in {TYPE_VIEW[r.type] || 'dashboard'} →
             </button>
             <button className="btn sm" disabled={clearing === (r.type + '-' + r.id)} onClick={() => clearChange(r)} title="Clear this change request off the list">
@@ -612,7 +612,7 @@ function App() {
             />
           )}
           {view === 'settings' && <SettingsView />}
-          {view === 'changes' && <ChangesView onOpen={(clientId, targetView) => { setActiveClientId(clientId); setView(targetView); }} />}
+          {view === 'changes' && <ChangesView onOpen={(clientId, targetView, row) => { setActiveClientId(clientId); if (row && row.type === 'script') setScriptRequest({ openId: row.id }); setView(targetView); }} />}
           {view === 'attention' && <AttentionView onOpen={openAttentionItem} filter={attnFilter} />}
           {view === 'task-status' && <TaskStatusView me={me} onOpenClient={(clientId) => { setActiveClientId(clientId); setView('brief'); }} />}
           {view === 'activity' && <ActivityLogView me={me} />}

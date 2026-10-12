@@ -7,6 +7,7 @@ import { api, generateVideo, listVideos } from './api.js'
 import { clientToken } from './dashboard-api.js'
 import { Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip, SendReviewModal, ApprovalMethodModal, approvalMethodLabel, buildMotionPrompt } from './shared.jsx'
 import { TopicsSection, LookPicker } from './brief.jsx'
+import { HighlightedText, locateQuote } from './annotate.jsx'
 
 const CHANNEL_FALLBACK = [
   { key: 'longform',  label: 'Longform (5–7 min)', variants: 1 },
@@ -531,7 +532,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch { /* noop */ }
   };
-  const openEdit = (h) => { setEditing(h); setEditBody(h.body || ''); setEditTitle(h.title || ''); setEditDesc(h.description || ''); setEditHashtags(h.hashtags || ''); setEditJob(h.job_number || ''); setEditEpisode(h.episode_number || ''); setRevisePrompt(''); setReviseNote(''); setErr(''); };
+  const openEdit = (h) => { setNoteMsg(''); setEditing(h); setEditBody(h.body || ''); setEditTitle(h.title || ''); setEditDesc(h.description || ''); setEditHashtags(h.hashtags || ''); setEditJob(h.job_number || ''); setEditEpisode(h.episode_number || ''); setRevisePrompt(''); setReviseNote(''); setErr(''); };
 
   // Deep-open from the alerts inbox: open the editor for a specific script once
   // this client's history has loaded (App has already set the active client).
@@ -543,6 +544,37 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     if (onScriptRequestConsumed) onScriptRequestConsumed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scriptRequest, history]);
+  // Client change requests shown in the edit screen. The client's note lives on the
+  // batch anchor (longform); read it fresh from history so it follows the whole episode.
+  const [doneNotes, setDoneNotes] = useState(() => new Set());
+  const [noteMsg, setNoteMsg] = useState('');
+  const clientChanges = React.useMemo(() => {
+    if (!editing) return null;
+    const rows = editing.batch_id ? history.filter((x) => x.batch_id === editing.batch_id) : history.filter((x) => x.id === editing.id);
+    const holder = rows.find((x) => (x.approval_annotations || x.approval_comment) && ['changes_requested', 'approved_with_changes', 'changes_completed'].includes(x.approval_status));
+    if (!holder) return null;
+    let general = '', notes = [];
+    try { const j = JSON.parse(holder.approval_annotations || 'null'); if (j) { general = j.general || ''; notes = Array.isArray(j.notes) ? j.notes : []; } } catch { /* plain comment */ }
+    if (!notes.length) general = holder.approval_comment || '';
+    const partOf = (n) => rows.find((x) => x.id === n.script_id) || rows.find((x) => x.channel === n.channel && (x.variant || null) === (n.variant || null)) || null;
+    const numbered = notes.map((n, i) => ({ ...n, num: i + 1, target: partOf(n) }));
+    return { holder, general, notes: numbered, status: holder.approval_status, by: holder.approval_by };
+  }, [editing, history]);
+  const partLabelOf = (n) => (n.channel === 'longform' ? 'Longform' : n.channel === 'shortform' ? `Shortform ${n.variant || ''}`.trim() : (n.channel || 'Script'));
+  const findNote = (n) => {
+    const ta = editBodyRef.current; const r = locateQuote(editBody, n.quote);
+    if (!ta) return;
+    if (!r) { setNoteMsg('That passage isn’t in the script any more — it may already be changed.'); return; }
+    setNoteMsg('');
+    ta.focus(); ta.setSelectionRange(r[0], r[1]);
+    ta.scrollTop = Math.max(0, (r[0] / Math.max(1, editBody.length)) * ta.scrollHeight - ta.clientHeight / 2);
+  };
+  const gotoPart = (n) => {
+    if (!n.target) return;
+    if (editing && editBody !== (editing.body || '') && !window.confirm('Switch parts? Unsaved edits to this part will be lost.')) return;
+    openEdit(n.target);
+  };
+  const toggleNoteDone = (id) => setDoneNotes((cur) => { const nx = new Set(cur); if (nx.has(id)) nx.delete(id); else nx.add(id); return nx; });
   const saveEdit = async () => {
     try {
       const payload = { body: editBody, title: editTitle, description: editDesc, hashtags: editHashtags.trim() || null, job_number: editJob.trim() || null, episode_number: editEpisode.trim() || null };
@@ -967,6 +999,46 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
               <input className="textarea" value={editHashtags} onChange={(e) => setEditHashtags(e.target.value)}
                 placeholder="Social hashtags — e.g. #podcast #marketing #smallbusiness"
                 style={{ minHeight: 0, height: 40, fontSize: 13, fontFamily: 'var(--f-mono)' }} />
+            )}
+            {clientChanges && (
+              <div style={{ border: '1px solid var(--warn)', borderRadius: 'var(--r-sm)', padding: 12, background: 'var(--surface-2)' }}>
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <div className="label" style={{ color: 'var(--warn)' }}>CHANGES FROM CLIENT{clientChanges.by ? ' · ' + clientChanges.by : ''}</div>
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{clientChanges.status === 'changes_completed' ? 'changes verified — resend to clear' : 'cleared when you resend for approval'}</span>
+                </div>
+                {clientChanges.general && <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', whiteSpace: 'pre-wrap', marginBottom: clientChanges.notes.length ? 8 : 0 }}>{clientChanges.general}</div>}
+                {clientChanges.notes.map((n) => {
+                  const here = n.target && n.target.id === editing.id;
+                  const done = doneNotes.has(editing.id + ':' + n.num);
+                  return (
+                    <div key={n.num} className="row" style={{ gap: 8, alignItems: 'flex-start', padding: '6px 0', borderTop: '1px solid var(--border)', opacity: done ? 0.5 : 1 }}>
+                      <span style={{ flex: '0 0 20px', height: 20, borderRadius: 10, background: 'var(--accent)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', marginTop: 1 }}>{n.num}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)', borderLeft: '3px solid #ffe08a', paddingLeft: 8 }}>{partLabelOf(n)}: <span style={{ background: '#ffe08a', color: '#14110f', padding: '0 2px', borderRadius: 2 }}>{n.quote}</span></div>
+                        <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', marginTop: 3, textDecoration: done ? 'line-through' : 'none' }}>{n.note}</div>
+                      </div>
+                      <div className="col" style={{ gap: 4, alignItems: 'flex-end' }}>
+                        {here
+                          ? <button className="btn sm" onClick={() => findNote(n)}>Find in script</button>
+                          : n.target ? <button className="btn sm" onClick={() => gotoPart(n)}>Open that part →</button> : null}
+                        <label className="mono" style={{ fontSize: 11, color: 'var(--text-4)', display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={done} onChange={() => toggleNoteDone(editing.id + ':' + n.num)} /> done
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+                {noteMsg && <div className="mono" style={{ fontSize: 12, color: 'var(--accent)', marginTop: 6 }}>{noteMsg}</div>}
+                {clientChanges.notes.some((n) => n.target && n.target.id === editing.id) && (
+                  <details open style={{ marginTop: 8 }}>
+                    <summary className="mono" style={{ fontSize: 11, color: 'var(--text-3)', cursor: 'pointer' }}>The client’s highlights in this part</summary>
+                    <div className="mono" style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.7, maxHeight: 200, overflow: 'auto', marginTop: 6, color: 'var(--text-2)' }}>
+                      <HighlightedText text={editBody}
+                        ranges={clientChanges.notes.filter((n) => n.target && n.target.id === editing.id).map((n) => { const r = locateQuote(editBody, n.quote); return r ? [r[0], r[1], n.num] : null; }).filter(Boolean)} />
+                    </div>
+                  </details>
+                )}
+              </div>
             )}
             <textarea ref={editBodyRef} value={editBody} onChange={(e) => setEditBody(e.target.value)}
               style={{ flex: 1, minHeight: 340, resize: 'vertical', padding: 14, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 15, lineHeight: 1.6 }} />
