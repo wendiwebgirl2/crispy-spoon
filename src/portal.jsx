@@ -50,8 +50,8 @@ function NeedsApproval({ onChanged }) {
     const key = `${item.type}:${item.id}`;
     setBusy(key); setErr('');
     try {
-      await api.portalApprove({ type: item.type, id: item.id, decision, comment: decision === 'changes_requested' ? note.trim() : '',
-        annotations: decision === 'changes_requested' ? (annots[key] || []).map((a) => { const p = item.parts[a.part]; return { channel: p.channel, variant: p.variant, quote: a.quote, note: a.note, start: a.start, end: a.end }; }) : [] });
+      await api.portalApprove({ type: item.type, id: item.id, decision, comment: decision !== 'approved' ? note.trim() : '',
+        annotations: decision !== 'approved' ? (annots[key] || []).map((a) => { const p = item.parts[a.part]; return { channel: p.channel, variant: p.variant, quote: a.quote, note: a.note, start: a.start, end: a.end }; }) : [] });
       setChangeFor(null); setNote(''); setAnnots((cur) => ({ ...cur, [key]: [] }));
       await load(); onChanged && onChanged();
     } catch (e) { setErr(e.message); } finally { setBusy(null); }
@@ -100,8 +100,10 @@ function NeedsApproval({ onChanged }) {
                 {(changeFor === key || (annots[key] || []).length > 0) && (
                   <div style={{ marginTop: 10 }}>
                     <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={(annots[key] || []).length ? 'Anything else? (optional)' : 'What would you like changed?'} rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+                    {item.type === 'script' && <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 4 }}>“Approve with these changes” approves it now — we’ll make your changes before it’s produced. “Send change request” holds approval until you’ve seen the revision.</div>}
                     <div className="row" style={{ gap: 6, marginTop: 6 }}>
                       <button className="btn sm primary" disabled={busy === key || (!note.trim() && !(annots[key] || []).length)} onClick={() => decide(item, 'changes_requested')}>Send change request</button>
+                      {item.type === 'script' && <button className="btn sm" disabled={busy === key || (!note.trim() && !(annots[key] || []).length)} onClick={() => decide(item, 'approved_with_changes')} title="You approve it — we'll make these small changes before it's produced">Approve with these changes</button>}
                       <button className="btn sm" onClick={() => { setChangeFor(null); setNote(''); setAnnots((cur) => ({ ...cur, [key]: [] })); }}>Cancel</button>
                     </div>
                   </div>

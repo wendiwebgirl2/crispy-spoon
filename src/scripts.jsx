@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { api, generateVideo, listVideos } from './api.js'
 import { clientToken } from './dashboard-api.js'
-import { Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip, SendReviewModal, ApprovalMethodModal, approvalMethodLabel, buildMotionPrompt } from './shared.jsx'
+import { fmtStamp, Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip, SendReviewModal, ApprovalMethodModal, approvalMethodLabel, buildMotionPrompt } from './shared.jsx'
 import { TopicsSection, LookPicker } from './brief.jsx'
 import { HighlightedText, locateQuote } from './annotate.jsx'
 
@@ -578,7 +578,10 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const saveEdit = async () => {
     try {
       const payload = { body: editBody, title: editTitle, description: editDesc, hashtags: editHashtags.trim() || null, job_number: editJob.trim() || null, episode_number: editEpisode.trim() || null };
-      if (editing && (editing.approval_status === 'changes_requested' || editing.approval_status === 'approved_with_changes')) {
+      if (editing && editing.approval_status === 'approved_with_changes') {
+        // The client already approved — applying their changes stamps "verified" but keeps the green approval.
+        payload.changes_verified = true;
+      } else if (editing && editing.approval_status === 'changes_requested') {
         payload.approval_status = 'changes_completed';
       } else if (editing && editBody !== (editing.body || '') &&
                  (editing.approval_status === 'approved' || editing.approval_status === 'in_production' || editing.status === 'approved')) {
@@ -872,8 +875,8 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   {(h.approval_sent_at || h.approval_approved_at || h.changes_verified_at) && (
                     <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>
                       {h.approval_sent_at ? 'sent ' + String(h.approval_sent_at).slice(0, 10) : ''}
-                      {h.approval_approved_at ? (h.approval_sent_at ? ' · ' : '') + 'approved ' + String(h.approval_approved_at).slice(0, 10) : ''}
-                      {h.changes_verified_at ? ((h.approval_sent_at || h.approval_approved_at) ? ' · ' : '') + 'verified ' + String(h.changes_verified_at).slice(0, 10) : ''}
+                      {h.approval_approved_at ? (h.approval_sent_at ? ' · ' : '') + (h.approval_status === 'approved_with_changes' ? 'approved by client ' : 'approved ') + fmtStamp(h.approval_approved_at) : ''}
+                      {h.changes_verified_at ? ((h.approval_sent_at || h.approval_approved_at) ? ' · ' : '') + 'changes verified ' + fmtStamp(h.changes_verified_at) : ''}
                     </span>
                   )}
                   {h.model === 'manual' && <span className="mono">manual</span>}

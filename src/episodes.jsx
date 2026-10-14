@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Icon, downloadWithPrompt, buildArchiveZip, SendReviewModal, ApprovalMethodModal, approvalMethodLabel } from './shared.jsx'
+import { fmtStamp, Icon, downloadWithPrompt, buildArchiveZip, SendReviewModal, ApprovalMethodModal, approvalMethodLabel } from './shared.jsx'
 import { ep, video, rec, clientToken, sched } from './dashboard-api.js'
 import { api, episodeWaveformStart, episodeWaveformStatus, episodeWaveformFileUrl } from './api.js'
 import { LookPicker } from './brief.jsx'
@@ -945,8 +945,8 @@ function EpisodeEditor({ cid, epId, onChange }) {
           {(full.approval_sent_at || full.approval_approved_at || full.changes_verified_at) && (
             <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 4 }}>
               {full.approval_sent_at ? 'sent ' + String(full.approval_sent_at).slice(0, 10) : ''}
-              {full.approval_approved_at ? (full.approval_sent_at ? ' · ' : '') + 'approved ' + String(full.approval_approved_at).slice(0, 10) : ''}
-              {full.changes_verified_at ? ((full.approval_sent_at || full.approval_approved_at) ? ' · ' : '') + 'verified ' + String(full.changes_verified_at).slice(0, 10) : ''}
+              {full.approval_approved_at ? (full.approval_sent_at ? ' · ' : '') + 'approved ' + fmtStamp(full.approval_approved_at) : ''}
+              {full.changes_verified_at ? ((full.approval_sent_at || full.approval_approved_at) ? ' · ' : '') + 'changes verified ' + fmtStamp(full.changes_verified_at) : ''}
               {full.approval_by ? ' · by ' + full.approval_by : ''}{full.approval_method ? ' · via ' + approvalMethodLabel(full.approval_method).toLowerCase() : ''}{full.approval_method_note ? ' (' + full.approval_method_note + ')' : ''}
             </div>
           )}

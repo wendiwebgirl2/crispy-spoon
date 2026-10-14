@@ -6,7 +6,7 @@
 import React from 'react'
 import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, castBoostedVideoBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
 import { clientToken, voice } from './dashboard-api.js'
-import { AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, ApprovalMethodModal, buildMotionPrompt, uploadMany } from './shared.jsx'
+import { fmtStamp, AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, ApprovalMethodModal, buildMotionPrompt, uploadMany } from './shared.jsx'
 import { EpisodesView } from './episodes.jsx'
 import { LookPicker, AssetsSection } from './brief.jsx'
 import { NewLookPanel } from './talent.jsx'
@@ -1777,8 +1777,8 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
         {meta && (meta.approval_sent_at || meta.approval_approved_at || meta.changes_verified_at) && (
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
             {meta.approval_sent_at ? 'sent ' + String(meta.approval_sent_at).slice(0, 10) : ''}
-            {meta.approval_approved_at ? (meta.approval_sent_at ? ' · ' : '') + 'approved ' + String(meta.approval_approved_at).slice(0, 10) : ''}
-            {meta.changes_verified_at ? ((meta.approval_sent_at || meta.approval_approved_at) ? ' · ' : '') + 'verified ' + String(meta.changes_verified_at).slice(0, 10) : ''}
+            {meta.approval_approved_at ? (meta.approval_sent_at ? ' · ' : '') + 'approved ' + fmtStamp(meta.approval_approved_at) : ''}
+            {meta.changes_verified_at ? ((meta.approval_sent_at || meta.approval_approved_at) ? ' · ' : '') + 'changes verified ' + fmtStamp(meta.changes_verified_at) : ''}
           </div>
         )}
         {video.status === 'rendering' && (

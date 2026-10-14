@@ -609,3 +609,10 @@ export {
   StatusBadge,
   paletteForId
 };
+// SQLite datetime('now') is UTC with no zone marker — show approval/verify stamps as local date + time.
+export function fmtStamp(t) {
+  if (!t) return '';
+  const iso = String(t).includes('T') ? String(t) : String(t).replace(' ', 'T');
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + 'Z');
+  return isNaN(d.getTime()) ? String(t) : d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
