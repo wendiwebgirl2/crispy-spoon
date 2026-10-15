@@ -374,6 +374,8 @@ export const api = {
   // Shared talent library + HeyGen look generation (voicecast -> Railway).
   talentList: () => vcReq(`/talent`),
   talentVoices: () => vcReq(`/talent/voices`),
+  talentVoiceLibrary: (params) => vcReq(`/talent/voices/library?${new URLSearchParams(params)}`),
+  talentAddLibraryVoice: (body) => vcReq(`/talent/voices/library/add`, { method: 'POST', body: JSON.stringify(body) }),
   talentStock: (pageToken) => vcReq(`/talent/stock${pageToken ? `?token=${encodeURIComponent(pageToken)}` : ''}`),
   talentStockLooks: (groupId) => vcReq(`/talent/stock/${encodeURIComponent(groupId)}/looks`),
   talentCreate: (payload) => vcReq(`/talent`, { method: "POST", body: JSON.stringify(payload) }),

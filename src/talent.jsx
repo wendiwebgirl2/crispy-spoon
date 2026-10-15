@@ -163,28 +163,114 @@ function LooksBlock({ groupId, currentLookId, onPick, canCreate, name }) {
   );
 }
 
+// Voice picker: "My voices" (already saved in our ElevenLabs account) or the full ElevenLabs
+// Voice Library (6,000+ public voices, filterable). A library voice is added to our account
+// when chosen — that uses one of the plan's voice slots, so the picker says so.
 function VoicePicker({ voices, value, onPick }) {
+  const [mode, setMode] = useState('mine'); // mine | library
   const [q, setQ] = useState('');
   const audio = useRef(null);
-  const list = (voices || []).filter((v) => !q || `${v.name} ${Object.values(v.labels || {}).join(' ')}`.toLowerCase().includes(q.toLowerCase()));
   const play = (url) => { try { if (audio.current) audio.current.pause(); audio.current = new Audio(url); audio.current.play(); } catch { /* ignore */ } };
+
+  // ---- library state
+  const [gender, setGender] = useState('female');
+  const [age, setAge] = useState('');
+  const [accent, setAccent] = useState('');
+  const [useCase, setUseCase] = useState('');
+  const [sort, setSort] = useState('trending');
+  const [lib, setLib] = useState([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(null);
+  const [slots, setSlots] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [adding, setAdding] = useState(null);
+  const [err, setErr] = useState('');
+
+  const fetchLib = async (pg, replace) => {
+    setLoading(true); setErr('');
+    try {
+      const params = { page: pg, page_size: 30, sort };
+      if (gender) params.gender = gender;
+      if (age) params.age = age;
+      if (accent) params.accent = accent;
+      if (useCase) params.use_cases = useCase;
+      if (q.trim()) params.search = q.trim();
+      const r = await api.talentVoiceLibrary(params);
+      setLib((cur) => (replace ? r.voices : [...cur, ...r.voices]));
+      setHasMore(!!r.has_more); setTotal(r.total_count); setPage(pg);
+      if (r.slots) setSlots(r.slots);
+    } catch (e) { setErr(e.message || 'Could not load the voice library.'); }
+    finally { setLoading(false); }
+  };
+  // Reload from page 0 when a filter changes (search is debounced).
+  useEffect(() => {
+    if (mode !== 'library') return undefined;
+    const t = setTimeout(() => fetchLib(0, true), q ? 400 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, gender, age, accent, useCase, sort, q]);
+
+  const useLibraryVoice = async (v) => {
+    setAdding(v.voice_id); setErr('');
+    try {
+      const r = await api.talentAddLibraryVoice({ public_owner_id: v.public_owner_id, voice_id: v.voice_id, name: v.name });
+      if (r.slots) setSlots(r.slots);
+      onPick({ voice_id: r.voice_id, name: r.name || v.name });
+    } catch (e) { setErr(e.message || 'Could not add that voice.'); }
+    finally { setAdding(null); }
+  };
+
+  const mine = (voices || []).filter((v) => !q || `${v.name} ${Object.values(v.labels || {}).join(' ')}`.toLowerCase().includes(q.toLowerCase()));
+  const sel = { ...inputStyle, width: 'auto', padding: '6px 8px', fontSize: 12 };
+  const tab = (id, label) => (
+    <button className="btn sm" onClick={() => setMode(id)} style={{ borderColor: mode === id ? 'var(--accent)' : undefined, color: mode === id ? 'var(--accent)' : undefined }}>{label}</button>
+  );
+  const rows = mode === 'mine' ? mine : lib;
   return (
     <div>
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search ElevenLabs voices (name, accent, age…)" style={{ ...inputStyle, width: '100%', marginBottom: 6 }} />
-      <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)' }}>
-        {voices === null && <div className="mono" style={{ padding: 8, fontSize: 12 }}>Loading voices…</div>}
-        {list.map((v) => (
+      <div className="row" style={{ gap: 6, marginBottom: 6 }}>
+        {tab('mine', `My voices${voices ? ` (${voices.length})` : ''}`)}
+        {tab('library', 'Full ElevenLabs library')}
+      </div>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={mode === 'mine' ? 'Search my voices (name, accent, age…)' : 'Search the whole library (name, style, accent…)'} style={{ ...inputStyle, width: '100%', marginBottom: 6 }} />
+      {mode === 'library' && (
+        <>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+            <select value={gender} onChange={(e) => setGender(e.target.value)} style={sel}><option value="">Any gender</option><option value="female">Female</option><option value="male">Male</option><option value="neutral">Neutral</option></select>
+            <select value={age} onChange={(e) => setAge(e.target.value)} style={sel}><option value="">Any age</option><option value="young">Young</option><option value="middle_aged">Middle-aged</option><option value="old">Older</option></select>
+            <select value={useCase} onChange={(e) => setUseCase(e.target.value)} style={sel}>
+              <option value="">Any use</option><option value="narration">Narration</option><option value="conversational">Conversational</option><option value="social_media">Social media</option><option value="advertisement">Advertisement</option><option value="informative_educational">Informative / educational</option><option value="characters_animation">Characters</option>
+            </select>
+            <select value={accent} onChange={(e) => setAccent(e.target.value)} style={sel}>
+              <option value="">Any accent</option><option value="american">American</option><option value="british">British</option><option value="australian">Australian</option><option value="canadian">Canadian</option><option value="irish">Irish</option><option value="indian">Indian</option><option value="southern">Southern</option><option value="standard">Standard</option>
+            </select>
+            <select value={sort} onChange={(e) => setSort(e.target.value)} style={sel}><option value="trending">Trending</option><option value="usage_character_count_1y">Most used</option><option value="cloned_by_count">Most added</option><option value="created_date">Newest</option></select>
+          </div>
+          <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 6 }}>
+            {total != null ? `${total.toLocaleString()} voices match · ` : ''}choosing one adds it to your ElevenLabs account{slots && slots.limit != null ? ` (uses 1 voice slot — ${slots.used} of ${slots.limit} used)` : ''}.
+          </div>
+        </>
+      )}
+      <div style={{ maxHeight: mode === 'library' ? 320 : 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)' }}>
+        {mode === 'mine' && voices === null && <div className="mono" style={{ padding: 8, fontSize: 12 }}>Loading voices…</div>}
+        {rows.map((v) => (
           <div key={v.voice_id} className="row" style={{ gap: 8, alignItems: 'center', padding: '6px 8px', borderTop: '1px solid var(--border)', background: value === v.voice_id ? 'var(--surface-2)' : 'transparent' }}>
             {v.preview_url && <button className="btn sm" onClick={() => play(v.preview_url)} title="Preview"><Icon name="play" size={11} /></button>}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13 }}>{v.name}</div>
               <div className="mono" style={{ fontSize: 10.5, color: 'var(--text-4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[v.category, ...Object.values(v.labels || {})].filter(Boolean).join(' · ')}</div>
             </div>
-            <button className="btn sm" onClick={() => onPick(v)} style={{ borderColor: value === v.voice_id ? 'var(--accent)' : undefined }}>{value === v.voice_id ? 'Selected' : 'Use'}</button>
+            {mode === 'mine'
+              ? <button className="btn sm" onClick={() => onPick(v)} style={{ borderColor: value === v.voice_id ? 'var(--accent)' : undefined }}>{value === v.voice_id ? 'Selected' : 'Use'}</button>
+              : <button className="btn sm" disabled={adding === v.voice_id} onClick={() => useLibraryVoice(v)}>{adding === v.voice_id ? 'Adding…' : (value === v.voice_id ? 'Selected' : 'Add & use')}</button>}
           </div>
         ))}
-        {voices && !list.length && <div className="mono" style={{ padding: 8, fontSize: 12, color: 'var(--text-4)' }}>No voices match.</div>}
+        {mode === 'library' && loading && <div className="mono" style={{ padding: 8, fontSize: 12 }}>Loading library…</div>}
+        {mode === 'library' && !loading && hasMore && <div style={{ padding: 8 }}><button className="btn sm" onClick={() => fetchLib(page + 1, false)}>Load more</button></div>}
+        {!loading && voices !== null && !rows.length && <div className="mono" style={{ padding: 8, fontSize: 12, color: 'var(--text-4)' }}>No voices match.</div>}
       </div>
+      {err && <div className="mono" style={{ fontSize: 11, color: 'var(--accent)', marginTop: 6 }}>{err}</div>}
     </div>
   );
 }
