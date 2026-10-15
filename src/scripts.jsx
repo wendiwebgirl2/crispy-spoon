@@ -560,6 +560,15 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     const numbered = notes.map((n, i) => ({ ...n, num: i + 1, target: partOf(n) }));
     return { holder, general, notes: numbered, status: holder.approval_status, by: holder.approval_by };
   }, [editing, history]);
+  // Permanent history of every set of notes the client has sent for this episode.
+  const [noteHistory, setNoteHistory] = useState([]);
+  useEffect(() => {
+    setNoteHistory([]);
+    if (!editing || !clientId) return undefined;
+    let live = true;
+    api.scriptNoteHistory(clientId, editing.id).then((r) => { if (live && Array.isArray(r)) setNoteHistory(r); }).catch(() => {});
+    return () => { live = false; };
+  }, [editing && editing.id, clientId]);
   const partLabelOf = (n) => (n.channel === 'longform' ? 'Longform' : n.channel === 'shortform' ? `Shortform ${n.variant || ''}`.trim() : (n.channel || 'Script'));
   const findNote = (n) => {
     const ta = editBodyRef.current; const r = locateQuote(editBody, n.quote);
@@ -578,11 +587,15 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const saveEdit = async () => {
     try {
       const payload = { body: editBody, title: editTitle, description: editDesc, hashtags: editHashtags.trim() || null, job_number: editJob.trim() || null, episode_number: editEpisode.trim() || null };
+      // Only an actual edit of the script text counts as "applying the client's changes". Saving just an
+      // episode #, job #, title, description or hashtags must never touch the approval state or hide the
+      // client's notes (that is how Flooring Liquidators EP18's notes disappeared on 2026-10-15).
+      const textChanged = !!editing && editBody !== (editing.body || '');
       if (editing && editing.approval_status === 'approved_with_changes') {
         // The client already approved — applying their changes stamps "verified" but keeps the green approval.
-        payload.changes_verified = true;
+        if (textChanged) payload.changes_verified = true;
       } else if (editing && editing.approval_status === 'changes_requested') {
-        payload.approval_status = 'changes_completed';
+        if (textChanged) payload.approval_status = 'changes_completed';
       } else if (editing && editBody !== (editing.body || '') &&
                  (editing.approval_status === 'approved' || editing.approval_status === 'in_production' || editing.status === 'approved')) {
         // The spoken copy changed after approval — approval no longer stands.
@@ -896,9 +909,9 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 6 }}>
                   {charCount(h.body).toLocaleString()} chars · ~{readTime(h.body)} read
                 </div>
-                {(h.approval_status === 'changes_requested' || h.approval_status === 'approved_with_changes') && h.approval_comment && (
+                {(h.approval_status === 'changes_requested' || h.approval_status === 'approved_with_changes' || h.approval_status === 'changes_completed') && h.approval_comment && (
                   <div className="mono" style={{ marginTop: 6, padding: '6px 8px', borderRadius: 6, background: 'var(--surface-2)', color: 'var(--text-2)', fontSize: 12, whiteSpace: 'pre-wrap' }}>
-                    <span style={{ color: 'var(--accent)' }}>Client notes:</span> {h.approval_comment}
+                    <span style={{ color: 'var(--accent)' }}>Client notes{h.approval_status === 'changes_completed' ? ' (changes verified — cleared when you resend)' : ''}:</span> {h.approval_comment}
                   </div>
                 )}
                 {(() => { let log = []; try { log = JSON.parse(h.approval_log || '[]'); } catch { log = []; } return log.length ? (
@@ -1042,6 +1055,17 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   </details>
                 )}
               </div>
+            )}
+            {noteHistory.length > 0 && (
+              <details style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '8px 12px' }}>
+                <summary className="mono" style={{ fontSize: 12, color: 'var(--text-3)', cursor: 'pointer' }}>Client note history ({noteHistory.length}) — never deleted, even after a resend</summary>
+                {noteHistory.map((h) => (
+                  <div key={h.id} style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                    <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{fmtStamp(h.created_at)}{h.by_name ? ' · ' + h.by_name : ''}{h.decision ? ' · ' + String(h.decision).replace(/_/g, ' ') : ''}</div>
+                    <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', whiteSpace: 'pre-wrap', marginTop: 2 }}>{h.comment}</div>
+                  </div>
+                ))}
+              </details>
             )}
             <textarea ref={editBodyRef} value={editBody} onChange={(e) => setEditBody(e.target.value)}
               style={{ flex: 1, minHeight: 340, resize: 'vertical', padding: 14, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 15, lineHeight: 1.6 }} />

@@ -419,6 +419,7 @@ export const api = {
   generate: (id, payload) => vcReq(`/clients/${id}/scripts/generate`, { method: "POST", body: JSON.stringify(payload) }),
   manual: (id, payload) => vcReq(`/clients/${id}/scripts/manual`, { method: "POST", body: JSON.stringify(payload) }),
   updateScript: (id, sid, payload) => vcReq(`/clients/${id}/scripts/${sid}`, { method: "PUT", body: JSON.stringify(payload) }),
+  scriptNoteHistory: (cid, sid) => vcReq(`/clients/${cid}/scripts/${sid}/note-history`),
   renameScriptTopic: (id, from, to) => vcReq(`/clients/${id}/scripts/topic/rename`, { method: "POST", body: JSON.stringify({ from, to }) }),
   deleteScriptsByTopic: (id, topic) => vcReq(`/clients/${id}/scripts/topic/delete`, { method: "POST", body: JSON.stringify({ topic }) }),
   deleteScript: (id, sid) => vcReq(`/clients/${id}/scripts/${sid}`, { method: "DELETE" }),
