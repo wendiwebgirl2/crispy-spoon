@@ -260,24 +260,36 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     try { const s = await api.listScripts(clientId); setHistory(s || []); } catch { /* noop */ }
   };
 
-  const generate = async (qaBypassBy) => {
+  const generate = async () => {
     if (!clientId || chosen.length === 0) return;
     // Synchronous lock: blocks a second call before React's `busy` state has
     // propagated (double-click, navigation re-fire) — prevents duplicate batches.
-    // The 428 verify-retry passes qaBypassBy and must be allowed through.
-    if (genLock.current && !qaBypassBy) return;
+    // The lock is held through the unverified-brief confirm + retry below, so
+    // the button can't start a second batch while the first is still running.
+    if (genLock.current) return;
     genLock.current = true;
     setBusy(true); setErr('');
+    const payload = {
+      topic: topic.trim(),
+      channels: chosen,
+      extra: extra.trim() || undefined,
+      job_number: jobNumber.trim() || undefined,
+      episode_number: episodeNumber.trim() || undefined,
+      provider,
+    };
     try {
-      const out = await api.generate(clientId, {
-        topic: topic.trim(),
-        channels: chosen,
-        extra: extra.trim() || undefined,
-        job_number: jobNumber.trim() || undefined,
-        episode_number: episodeNumber.trim() || undefined,
-        qa_bypass_by: qaBypassBy || undefined,
-        provider,
-      });
+      let out;
+      try {
+        out = await api.generate(clientId, payload);
+      } catch (e) {
+        if (e.message !== 'brief_not_verified') throw e;
+        // The brief isn't QA-verified — warn, and if the operator proceeds,
+        // record who bypassed it and retry (same lock, same request).
+        const ok = window.confirm("This client's brief has NOT been verified for accuracy.\n\nProceed with script generation anyway? Your name will be recorded on these scripts as having bypassed the verification check.");
+        const who = ok ? ensureOperatorName() : null;
+        if (!who) { setErr('Generation cancelled — brief not verified.'); return; }
+        out = await api.generate(clientId, { ...payload, qa_bypass_by: who });
+      }
       setResults(out.scripts || []);
       if (pendingTopicId != null) {
         try { await api.deleteTopic(clientId, pendingTopicId); } catch { /* queue entry may already be gone */ }
@@ -286,16 +298,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       }
       await refreshHistory();
     } catch (e) {
-      // The brief isn't QA-verified — warn, and if the operator proceeds,
-      // record who bypassed it and retry.
-      if (e.message === 'brief_not_verified') {
-        const ok = window.confirm("This client's brief has NOT been verified for accuracy.\n\nProceed with script generation anyway? Your name will be recorded on these scripts as having bypassed the verification check.");
-        if (ok) {
-          const who = ensureOperatorName();
-          if (who) { setBusy(false); return generate(who); }
-        }
-        setErr('Generation cancelled — brief not verified.');
-      } else if (e.message === 'duplicate_batch') {
+      if (e.message === 'duplicate_batch') {
         // The server blocked a duplicate run — just show what's already there.
         setErr('Scripts for this topic were just generated — showing the latest below.');
         await refreshHistory();
@@ -356,11 +359,12 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       await refreshHistory();
     } catch (e) { setErr(e.message); }
   };
-  // Delete every script sharing a topic group (one call, server-side).
+  // Delete every script in one history card. Cards group by episode #, so
+  // delete exactly these scripts — never everything that shares the topic.
   const deleteTopicGroup = async (g) => {
-    if (!window.confirm(`Delete all ${g.items.length} script${g.items.length > 1 ? 's' : ''} in “${g.topic}”? This can’t be undone.`)) return;
+    if (!window.confirm(`Delete all ${g.items.length} script${g.items.length > 1 ? 's' : ''} in “${g.epLabel}${g.topic}”? This can’t be undone.`)) return;
     try {
-      await api.deleteScriptsByTopic(clientId, g.key === 'untitled' ? '' : g.topic);
+      for (const h of g.items) await api.deleteScript(clientId, h.id);
       setExpandedTopic(null);
       setSelected(new Set());
       await refreshHistory();
@@ -397,10 +401,10 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     setErr('');
     try {
       await buildArchiveZip({
-        zipName: `topic-${safe(g.topic || 'untitled')}.zip`,
+        zipName: `${g.ep ? 'E' + safe(g.ep) + '-' : ''}topic-${safe(g.topic || 'untitled')}.zip`,
         texts: g.items.map((h) => ({ name: `${typePrefix(h.channel, h.variant)}-${h.id}.md`, content: scriptMd(h) })),
         manifest: {
-          type: 'topic', topic: g.topic, count: g.items.length,
+          type: 'topic', topic: g.topic, episode_number: g.ep || null, count: g.items.length,
           scripts: g.items.map((h) => ({ id: h.id, channel: h.channel, title: h.title, job_number: h.job_number })),
           archivedAt: new Date().toISOString(),
         },
@@ -661,21 +665,26 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     finally { setTranslatingId(null); }
   };
 
+  // History cards: one per episode number (so changing a script's Episode #
+  // moves it to that episode's card); scripts with no episode # group by topic.
   const groupedHistory = React.useMemo(() => {
     const groups = new Map();
     for (const h of history) {
       const t = (h.topic && h.topic.trim()) ? h.topic.trim() : '';
-      const key = t ? 'topic:' + t.toLowerCase() : 'untitled';
-      if (!groups.has(key)) groups.set(key, { key, topic: t || 'Untitled topic', date: h.created_at, items: [] });
+      const ep = String(h.episode_number || '').trim().replace(/^E/i, '');
+      const key = ep ? 'ep:' + ep.toLowerCase() : (t ? 'topic:' + t.toLowerCase() : 'untitled');
+      if (!groups.has(key)) groups.set(key, { key, ep, epLabel: ep ? 'E' + ep + ' - ' : '', topics: [], date: h.created_at, items: [] });
       const g = groups.get(key);
       g.items.push(h);
+      if (t && !g.topics.some((x) => x.toLowerCase() === t.toLowerCase())) g.topics.push(t);
       if (h.created_at && (!g.date || h.created_at > g.date)) g.date = h.created_at;
     }
-    // Episode number(s) in the group, shown before the topic on the collapsed row.
     for (const g of groups.values()) {
-      const nums = [...new Set(g.items.map((i) => String(i.episode_number || '').trim().replace(/^E/i, '')).filter(Boolean))];
-      nums.sort((a, b) => (Number(a) - Number(b)) || a.localeCompare(b));
-      g.epLabel = nums.length ? nums.map((n) => 'E' + n).join(', ') + ' - ' : '';
+      g.topic = g.topics.join(' / ') || 'Untitled topic';
+      // Rename/delete-by-topic act on every script with that topic, so only
+      // offer rename when this card holds all of them (one topic, no spill
+      // into another episode's card).
+      g.canRename = g.topics.length === 1 && history.every((x) => (x.topic || '').trim().toLowerCase() !== g.topics[0].toLowerCase() || g.items.includes(x));
     }
     return [...groups.values()].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [history]);
@@ -856,7 +865,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                       <span key={ch} title={labelFor(ch)} style={{ width: 8, height: 8, borderRadius: 4, background: chColor(ch), display: 'inline-block' }} />
                     ))}
                   </span>
-                  {g.key !== 'untitled' && (
+                  {g.canRename && (
                     <span className="icon-btn" title="Rename topic group" role="button"
                       onClick={(e) => { e.stopPropagation(); setRenamingTopic({ from: g.topic, to: g.topic }); }}>
                       <Icon name="sliders" size={12} />
