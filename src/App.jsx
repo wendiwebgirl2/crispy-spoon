@@ -127,12 +127,20 @@ function AttentionView({ onOpen, filter }) {
   const [data, setData] = React.useState(null);
   const [openClient, setOpenClient] = React.useState(null);
   const [busy, setBusy] = React.useState(null);
+  // Notes an admin sent me (Settings -> Users & access -> Send note). These
+  // used to sit behind the header bell; they live here now.
+  const [myNotes, setMyNotes] = React.useState([]);
   React.useEffect(() => {
     let live = true;
     api.attention().then((d) => { if (live) setData(d && d.clients ? d : { total: 0, clients: [] }); })
       .catch(() => { if (live) setData({ total: 0, clients: [] }); });
+    api.myNotifications().then((rows) => { if (live) setMyNotes(Array.isArray(rows) ? rows : []); }).catch(() => {});
     return () => { live = false; };
   }, []);
+  const dismissNote = async (id) => {
+    setMyNotes((cur) => cur.filter((n) => n.id !== id));
+    try { await api.dismissNotification(id); } catch { /* best-effort — it'll just show again next load */ }
+  };
 
   const dismiss = async (it) => {
     const key = it.code + '-' + it.id;
@@ -156,14 +164,19 @@ function AttentionView({ onOpen, filter }) {
       .filter((c) => c.items.length);
     return { total: clients.reduce((n, c) => n + c.items.length, 0), clients };
   })();
-  if (!view.clients.length) return <div className="v-pad fade-in"><div className="mono" style={{ color: 'var(--text-3)' }}>All caught up — nothing needs your attention right now.</div></div>;
-
   const current = openClient != null ? view.clients.find((c) => c.clientId === openClient) : null;
 
-  // ——— Landing: one card per client with its open-alert count ———
+  // ——— Landing: one card per client with its open-alert count, then the
+  // newest alerts across every client (formerly the header ticker) and any
+  // notes sent to me (formerly the header bell) at the bottom. ———
   if (!current) {
+    const recent = data.clients.flatMap((c) => c.items || [])
+      .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))
+      .slice(0, 10);
+    const sectionLabel = { fontSize: 12, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '26px 0 8px' };
     return (
       <div className="fade-in" style={{ padding: 'var(--pad)' }}>
+        {!view.clients.length && <div className="mono" style={{ color: 'var(--text-3)' }}>All caught up — nothing needs your attention right now.</div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 'var(--gap)', maxWidth: 900 }}>
           {view.clients.map((c) => {
             const counts = {};
@@ -190,6 +203,39 @@ function AttentionView({ onOpen, filter }) {
             );
           })}
         </div>
+
+        {myNotes.length > 0 && (
+          <div style={{ maxWidth: 900 }}>
+            <div className="mono" style={sectionLabel}>Notes sent to you · {myNotes.length}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {myNotes.map((n) => (
+                <div key={n.id} className="card" style={{ padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, whiteSpace: 'pre-wrap', flex: '1 1 300px' }}>{n.message}</span>
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{n.from_username ? 'from ' + n.from_username + ' · ' : ''}{fmtWhen(n.created_at)}</span>
+                  <button className="btn sm" onClick={() => dismissNote(n.id)}>Dismiss</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {recent.length > 0 && (
+          <div style={{ maxWidth: 900 }}>
+            <div className="mono" style={sectionLabel}>Recent alerts</div>
+            <div className="card" style={{ padding: '4px 0' }}>
+              {recent.map((it, i) => (
+                <button key={it.code + '-' + it.id} onClick={() => onOpen(it)} title="Open"
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 14px', background: 'transparent', border: 0, borderTop: i ? '1px solid var(--border)' : 0, color: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: (ATTN_META[it.type] || {}).color || 'var(--text-3)', flex: 'none' }} />
+                  <span style={{ fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {it.client_name ? <strong>{it.client_name}</strong> : null}{it.client_name ? ' — ' : ''}{it.title}{it.action ? <span style={{ color: 'var(--text-3)' }}> · {it.action}</span> : null}
+                  </span>
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)', flex: 'none' }}>{fmtWhen(it.at)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -285,9 +331,6 @@ function App() {
   const prevAlertsRef = React.useRef(null);
   const flashTimerRef = React.useRef(null);
   const [flashKeys, setFlashKeys] = React.useState(() => new Set());
-  // Most recent open alert item, shown as plain readable text in the header
-  // ticker — a flashing badge tells you SOMETHING changed, this tells you WHAT.
-  const [latestAlert, setLatestAlert] = React.useState(null);
   // Short chime via Web Audio — plays when the needs-attention count rises.
   const chime = React.useCallback(() => {
     try {
@@ -333,44 +376,6 @@ function App() {
     const t = setInterval(load, 60000);
     return () => { live = false; clearInterval(t); if (flashTimerRef.current) clearTimeout(flashTimerRef.current); };
   }, [view, chime]);
-  // Header ticker: the single most recent open alert item, in plain text
-  // ("Elite Exteriors — Cast approved · Add to planner"). Polls the same
-  // attention list the sidebar counts are drawn from, on the same cadence.
-  React.useEffect(() => {
-    let live = true;
-    const load = () => api.attention().then((d) => {
-      if (!live) return;
-      const items = (d && Array.isArray(d.clients) ? d.clients : []).flatMap((c) => c.items || []);
-      if (!items.length) { setLatestAlert(null); return; }
-      items.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
-      setLatestAlert(items[0]);
-    }).catch(() => {});
-    load();
-    const t = setInterval(load, 60000);
-    return () => { live = false; clearInterval(t); };
-  }, []);
-  // Custom notes an admin sent me (see Settings -> Users & access -> Send
-  // note). Polled the same way as alerts; dismissing marks it read server-side
-  // so it never reappears after a refresh.
-  const [myNotes, setMyNotes] = React.useState([]);
-  const [notesOpen, setNotesOpen] = React.useState(false);
-  React.useEffect(() => {
-    let live = true;
-    const load = () => api.myNotifications().then((rows) => { if (live) setMyNotes(Array.isArray(rows) ? rows : []); }).catch(() => {});
-    load();
-    const t = setInterval(load, 60000);
-    return () => { live = false; clearInterval(t); };
-  }, []);
-  const dismissNote = async (id) => {
-    setMyNotes((cur) => cur.filter((n) => n.id !== id));
-    try { await api.dismissNotification(id); } catch { /* best-effort — it'll just show again next poll */ }
-  };
-  React.useEffect(() => {
-    if (!notesOpen) return;
-    const close = () => setNotesOpen(false);
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, [notesOpen]);
   const [activeClientName, setActiveClientName] = React.useState('');
   React.useEffect(() => {
     if (!activeClientId) { setActiveClientName(''); return; }
@@ -531,19 +536,6 @@ function App() {
             </button>
           )}
           <div className="hd-spacer" />
-          {latestAlert && (
-            <button
-              className="mono hd-ticker"
-              onClick={() => openAttentionItem(latestAlert)}
-              title="Latest alert — click to open"
-            >
-              <Icon name="bell" size={13} className="hd-ticker-icon" style={{ color: (ATTN_META[latestAlert.type] || {}).color || 'var(--text-3)' }} />
-              <span className="hd-ticker-text">
-                {latestAlert.client_name ? latestAlert.client_name + ' — ' : ''}{latestAlert.title}{latestAlert.action ? ' · ' + latestAlert.action : ''}
-              </span>
-              <span className="hd-ticker-time">{fmtWhen(latestAlert.at)}</span>
-            </button>
-          )}
           {view === 'studio' && (
             <div className="hd-search">
               <Icon name="search" size={14} />
@@ -551,35 +543,6 @@ function App() {
               <span className="hd-kbd">⌘K</span>
             </div>
           )}
-          <div style={{ position: 'relative' }}>
-            <button className="icon-btn" title="Notes sent to you" onClick={() => setNotesOpen((v) => !v)} style={{ position: 'relative' }}>
-              <Icon name="bell" size={16} />
-              {myNotes.length > 0 && (
-                <span className="mono" style={{
-                  position: 'absolute', top: -4, right: -4, background: 'var(--accent)', color: '#fff',
-                  borderRadius: 999, fontSize: 10, lineHeight: '16px', minWidth: 16, height: 16, textAlign: 'center', padding: '0 3px',
-                }}>{myNotes.length}</span>
-              )}
-            </button>
-            {notesOpen && (
-              <div onClick={(e) => e.stopPropagation()} className="card" style={{
-                position: 'absolute', top: '110%', right: 0, width: 320, maxHeight: 360, overflowY: 'auto',
-                padding: 10, zIndex: 100, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
-              }}>
-                {myNotes.length === 0
-                  ? <div className="mono" style={{ color: 'var(--text-4)', fontSize: 12, padding: 8 }}>No notes.</div>
-                  : myNotes.map((n) => (
-                    <div key={n.id} style={{ padding: '8px 6px', borderBottom: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: 13, marginBottom: 4, whiteSpace: 'pre-wrap' }}>{n.message}</div>
-                      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span className="mono" style={{ fontSize: 10, color: 'var(--text-4)' }}>{n.from_username ? 'from ' + n.from_username : ''} · {fmtWhen(n.created_at)}</span>
-                        <button className="btn sm" onClick={() => dismissNote(n.id)}>Dismiss</button>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
         </header>
 
         <section className="view" key={view + (view === 'client-detail' && detailClient ? ':' + detailClient.id : '')}>
