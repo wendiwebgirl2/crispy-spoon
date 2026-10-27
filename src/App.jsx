@@ -20,6 +20,7 @@ import { TaskStatusView } from './task-status.jsx'
 import { ProductionReportView } from './report.jsx'
 import { AnalyticsView } from './analytics.jsx'
 import { TalentView } from './talent.jsx'
+import { UserAccountView } from './account.jsx'
 
 const NAV = [
   { id: 'clients',       label: 'Clients',        icon: 'avatars' },
@@ -52,6 +53,7 @@ const HEADER_TITLES = {
   report:          { title: 'Production report', sub: 'all production in a date range — printable' },
   'task-status':   { title: 'Task Status',     sub: 'onboarding tasks — check them off as you go' },
   activity:        { title: 'Activity log',    sub: 'every action across the dashboard — newest first' },
+  account:         { title: 'Account',         sub: 'details, tasks and notes for one person' },
 };
 
 // Local 12-hour, user-local time formatter for attention timestamps. SQLite
@@ -388,6 +390,10 @@ function App() {
       .catch(() => setActiveClientName(''));
   }, [activeClientId]);
   const [detailClient, setDetailClient] = React.useState(null);
+  // Which user's account page is open (null = my own), and where Back goes.
+  const [accountUserId, setAccountUserId] = React.useState(null);
+  const [accountBack, setAccountBack] = React.useState(null);
+  const openAccount = (uid, back) => { setAccountUserId(uid); setAccountBack(back || null); setView('account'); };
 
   // Nav badge counts. null hides the badge (see the countKey guard below).
   // Previously these were derived from mock fixtures and showed invented
@@ -491,6 +497,16 @@ function App() {
               <span>Activity log</span>
             </button>
           )}
+          {me && (
+            <button
+              className={'nav-item' + (view === 'account' && (accountUserId == null || accountUserId === me.id) ? ' active' : '')}
+              onClick={() => openAccount(me.id)}
+              title="My account"
+            >
+              <Icon name="avatars" size={16} className="nav-icon" style={{ color: view === 'account' && (accountUserId == null || accountUserId === me.id) ? 'var(--accent)' : 'var(--text-3)' }} />
+              <span>My account</span>
+            </button>
+          )}
           <button
             className={'nav-item' + (view === 'settings' ? ' active' : '')}
             onClick={() => setView('settings')}
@@ -574,7 +590,12 @@ function App() {
               onCancel={() => setView('clients')}
             />
           )}
-          {view === 'settings' && <SettingsView />}
+          {view === 'settings' && <SettingsView onOpenUser={(uid) => openAccount(uid, 'settings')} />}
+          {view === 'account' && (accountUserId || (me && me.id)) && (
+            <UserAccountView key={accountUserId || me.id} userId={accountUserId || me.id}
+              onBack={accountBack ? () => setView(accountBack) : null}
+              onOpenClient={(cid) => { api.getClient(cid).then((c) => { setActiveClientId(cid); setDetailClient(c); setView('client-detail'); }).catch(() => {}); }} />
+          )}
           {view === 'changes' && <ChangesView onOpen={(clientId, targetView, row) => { setActiveClientId(clientId); if (row && row.type === 'script') setScriptRequest({ openId: row.id }); setView(targetView); }} />}
           {view === 'attention' && <AttentionView onOpen={openAttentionItem} filter={attnFilter} />}
           {view === 'task-status' && <TaskStatusView me={me} onOpenClient={(clientId) => { setActiveClientId(clientId); setView('brief'); }} />}

@@ -16,7 +16,7 @@ function fmtLastLogin(t) {
 
 // Real accounts + roles. Everyone sees who they're signed in as and can log out;
 // admins additionally get user management (create/reset/disable, role, scoping).
-function UsersSection() {
+function UsersSection({ onOpenUser }) {
   const [me, setMe] = React.useState(null);
   const [users, setUsers] = React.useState(null);
   const [clients, setClients] = React.useState([]);
@@ -155,7 +155,8 @@ function UsersSection() {
           {(users || []).map((u) => (
             <div key={u.id}>
               <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
-                <span style={{ fontWeight: 600, minWidth: 130 }}>{u.username}</span>
+                <button onClick={() => onOpenUser && onOpenUser(u.id)} title="Open this person's account page"
+                  style={{ fontWeight: 600, minWidth: 130, textAlign: 'left', background: 'none', border: 0, padding: 0, color: 'var(--accent-2)', cursor: 'pointer', font: 'inherit' }}>{u.fullName || u.username}{u.fullName ? <span className="mono" style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-4)', marginLeft: 6 }}>{u.username}</span> : null}</button>
                 <select value={u.role} onChange={(e) => changeRole(u, e.target.value)} disabled={me.id === u.id} style={selStyle}>
                   <option value="admin">admin</option><option value="manager">manager</option><option value="editor">editor</option><option value="client">client</option>
                 </select>
@@ -163,6 +164,7 @@ function UsersSection() {
                 <span className="mono" style={{ fontSize: 11, color: u.active ? 'var(--ok)' : 'var(--text-4)' }}>{u.active ? 'active' : 'disabled'}</span>
                 <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{fmtLastLogin(u.last_login_at)}</span>
                 <div className="row" style={{ gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+                  <button className="btn sm" onClick={() => onOpenUser && onOpenUser(u.id)}>Open page</button>
                   <button className="btn sm" onClick={() => (editingId === u.id ? cancelEdit() : startEdit(u))}>{editingId === u.id ? 'Cancel' : 'Edit'}</button>
                   <button className="btn sm" onClick={() => sendNote(u)} title="Send a custom note — shown to them in the dashboard">Send note</button>
                   <button className="btn sm" onClick={() => loginAs(u)} disabled={me.id === u.id || !u.active} title="Sign in as this user to troubleshoot">Log in as</button>
@@ -269,7 +271,7 @@ function AutoArchiveSection() {
   );
 }
 
-const SettingsView = () => {
+const SettingsView = ({ onOpenUser }) => {
   return (
     <div className="v-pad fade-in" style={{ maxWidth: 920, margin: '0 auto' }}>
       <div className="label" style={{ marginBottom: 10 }}>WORKSPACE</div>
@@ -277,7 +279,7 @@ const SettingsView = () => {
         Brand kit & <em style={{ color: 'var(--accent)' }}>integrations</em>.
       </h1>
 
-      <UsersSection />
+      <UsersSection onOpenUser={onOpenUser} />
 
       <AutoArchiveSection />
 

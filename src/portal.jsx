@@ -348,7 +348,10 @@ function Account() {
   const [pwErr, setPwErr] = React.useState('');
   const [pwMsg, setPwMsg] = React.useState('');
   const [pwBusy, setPwBusy] = React.useState(false);
+  const [meInfo, setMeInfo] = React.useState(null);
   React.useEffect(() => { api.portalAccount().then(setData).catch((e) => setErr(e.message)); }, []);
+  React.useEffect(() => { api.portalMe().then(setMeInfo).catch(() => {}); }, []);
+  const day = (t) => { if (!t) return ''; const d = new Date(String(t).replace(' ', 'T') + 'Z'); return isNaN(d) ? String(t) : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
   const send = async () => {
     if (!q.trim()) return;
     setBusy(true); setErr(''); setMsg('');
@@ -377,6 +380,16 @@ function Account() {
     <div className="fade-in">
       <SectionHead title="Account" sub={data ? data.client.name : ''} />
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
+      {meInfo && (
+        <div style={{ ...card, marginBottom: 16 }}>
+          <div className="label" style={{ marginBottom: 4 }}>YOUR LOGIN</div>
+          {meInfo.fullName && <Row k="Name" v={meInfo.fullName} />}
+          <Row k="Username" v={meInfo.username} />
+          {meInfo.email && <Row k="Email" v={meInfo.email} />}
+          {meInfo.phone && <Row k="Phone" v={meInfo.phone} />}
+          <Row k="Member since" v={day(meInfo.created_at)} />
+        </div>
+      )}
       <div style={{ ...card, marginBottom: 16 }}>
         <div className="label" style={{ marginBottom: 4 }}>CONTACT ON FILE</div>
         <Row k="Email" v={contact.email} />

@@ -99,7 +99,8 @@ const typePrefix = (channel, variant) => {
   if (channel === 'blog') return 'Blog';
   return (channel || '—').slice(0, 2).toUpperCase();
 };
-const epPrefix = (s) => { const n = String(s.episode_number || '').trim().replace(/^E/i, ''); return n ? `E${n} - ` : ''; };
+// Skipped when the title already starts with "E{n} -" so it never doubles up.
+const epPrefix = (s) => { const n = String(s.episode_number || '').trim().replace(/^E/i, ''); return n && !/^E\d+\s*[-–]/i.test(String(s.title || '').trim()) ? `E${n} - ` : ''; };
 const castTitleFor = (s) => `${epPrefix(s)}${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || 'Untitled'}`;
 
 // Shared input/select style for the batch-cast modal.
@@ -133,7 +134,7 @@ const printScript = (h, label) => {
     <style>body{font-family:Georgia,serif;max-width:640px;margin:40px auto;color:#222;line-height:1.7}
     .meta{font-family:monospace;font-size:12px;color:#666;border-bottom:1px solid #ccc;padding-bottom:12px;margin-bottom:20px}
     h1{font-size:22px;margin:0 0 6px} .body{white-space:pre-wrap;font-size:15px}</style></head><body>
-    <h1>${esc(h.title || h.topic || 'Untitled')}</h1>
+    <h1>${esc(epPrefix(h) + (h.title || h.topic || 'Untitled'))}</h1>
     <div class="meta">${esc(label)}${h.variant ? ' · v' + h.variant : ''}${h.topic ? ' · topic: ' + esc(h.topic) : ''} · ${String(h.body || '').length.toLocaleString()} chars${h.created_at ? ' · ' + String(h.created_at).slice(0, 10) : ''}</div>
     <div class="body">${esc(h.body)}</div></body></html>`);
   w.document.close();
@@ -881,8 +882,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                     return <span className="mono" title={src ? `Translated from: ${(src.title || src.topic || labelFor(src.channel)).trim()}` : 'Translated to Spanish'} style={{ fontSize: 11, color: 'var(--accent-2, #fbb033)', border: '1px solid var(--accent-2, #fbb033)', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>ES · Translated to Spanish</span>;
                   })()}
                   {h.job_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>Job {h.job_number}</span>}
-                  {h.episode_number && <span className="mono" style={{ fontSize: 11, color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>E{String(h.episode_number).replace(/^E/i, '')}</span>}
-                  {h.status && h.status !== 'draft' && <span className="mono" style={{ color: h.status === 'approved' ? 'var(--ok)' : 'var(--text-4)' }}>{h.status}</span>}
+                                    {h.status && h.status !== 'draft' && <span className="mono" style={{ color: h.status === 'approved' ? 'var(--ok)' : 'var(--text-4)' }}>{h.status}</span>}
                   {h.approval_status && h.approval_status !== 'none' && <span className="mono" style={{ color: (h.approval_status.startsWith('approved') || h.approval_status === 'in_production') ? 'var(--ok)' : h.approval_status === 'changes_completed' ? 'var(--text-2)' : h.approval_status === 'pending' ? 'var(--text-4)' : 'var(--accent)' }}>{(APPROVAL_LABEL[h.approval_status] || h.approval_status.replace(/_/g, ' '))}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production') && h.approval_by ? ' · by ' + h.approval_by : ''}{(h.approval_status.startsWith('approved') || h.approval_status === 'in_production') && h.approval_method ? ' · via ' + approvalMethodLabel(h.approval_method).toLowerCase() : ''}</span>}
                   {h.production_status && PRODUCTION_LABEL[h.production_status] && <span className="mono" style={{ color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', fontSize: 11 }}>{PRODUCTION_LABEL[h.production_status]}</span>}
                   {h.qa_bypassed_by && <span className="mono" title="Created while the client brief was unverified" style={{ color: 'var(--warn)', border: '1px solid var(--warn)', borderRadius: 4, padding: '1px 5px', fontSize: 11 }}>⚠ brief unverified · bypassed by {h.qa_bypassed_by}</span>}
@@ -896,7 +896,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   {h.model === 'manual' && <span className="mono">manual</span>}
                 </div>
                 <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                  <strong>{typePrefix(h.channel, h.variant)}: {(h.title && h.title.trim()) || (h.topic && h.topic.trim()) || 'Untitled'} · </strong>{h.body}
+                  <strong>{epPrefix(h)}{typePrefix(h.channel, h.variant)}: {(h.title && h.title.trim()) || (h.topic && h.topic.trim()) || 'Untitled'} · </strong>{h.body}
                 </div>
                 {h.description && (
                   <div className="mono" style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text-3)', marginTop: 6 }}>
@@ -1238,7 +1238,7 @@ const ResultCard = ({ script, label, onCopy, onDownload, onEdit, onSend, onCast,
           : <span className="mono" style={{ color: 'var(--gold, #b8852a)' }}>⚠ review</span>}
       </div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, lineHeight: 1.25, marginBottom: 6 }}>
-        <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)' }}>{typePrefix(script.channel, script.variant)}: </span>
+        <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)' }}>{epPrefix(script)}{typePrefix(script.channel, script.variant)}: </span>
         {(script.title && script.title.trim()) || (script.topic && script.topic.trim()) || 'Untitled'}
       </div>
       {Array.isArray(script.keywords) && script.keywords.length > 0 && (
