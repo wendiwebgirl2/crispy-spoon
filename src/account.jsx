@@ -1,9 +1,10 @@
 import React from 'react'
 import { api } from './api.js'
 import { Icon, fmtStamp, ensureOperatorName } from './shared.jsx'
+import { MessagesCard } from './messages.jsx'
 
-// User account page — one person's details, the onboarding tasks assigned to
-// them, and (admins/managers only) private staff notes about them. Admins and
+// User account page — one person's details, private messages, the onboarding
+// tasks assigned to them, and (admins/managers only) private staff notes about them. Admins and
 // managers can open anyone's page from Settings -> Users; everyone else gets
 // their own via "My account". Client accounts see their details in the portal.
 const ROLE_LABEL = { admin: 'Admin', manager: 'Manager', editor: 'Editor', client: 'Client portal' };
@@ -16,17 +17,18 @@ export function UserAccountView({ userId, onBack, onOpenClient }) {
   const [busy, setBusy] = React.useState('');
   const [draft, setDraft] = React.useState('');
   const [isAdmin, setIsAdmin] = React.useState(false);
+  const [myId, setMyId] = React.useState(null);
 
   const load = React.useCallback(() => {
     if (!userId) return;
     api.userAccount(userId).then((d) => { setData(d); setErr(''); }).catch((e) => setErr(e.message || 'Could not load this account.'));
   }, [userId]);
   React.useEffect(() => { load(); }, [load]);
-  React.useEffect(() => { api.me().then((m) => setIsAdmin(!!m && m.role === 'admin')).catch(() => {}); }, []);
+  React.useEffect(() => { api.me().then((m) => { setIsAdmin(!!m && m.role === 'admin'); setMyId(m ? m.id : null); }).catch(() => {}); }, []);
 
   if (err && !data) return <div className="v-pad fade-in"><div className="mono" style={{ color: 'var(--accent)' }}>{err}</div></div>;
   if (!data) return <div className="v-pad fade-in"><div className="mono">Loading…</div></div>;
-  const { user, clients, tasks, notes, canEdit } = data;
+  const { user, clients, tasks, notes, messages, canMessage, canEdit } = data;
 
   const startEdit = () => { setForm({ fullName: user.fullName || '', email: user.email || '', phone: user.phone || '' }); setEditing(true); };
   const saveDetails = async () => {
@@ -133,6 +135,8 @@ export function UserAccountView({ userId, onBack, onOpenClient }) {
           </>
         )}
       </div>
+
+      {messages && <MessagesCard user={user} messages={messages} isSelf={myId === user.id} canMessage={canMessage} isAdmin={isAdmin} onChanged={load} />}
 
       {user.role !== 'client' && (
         <div className="card card-pad">

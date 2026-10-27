@@ -1,6 +1,7 @@
 import React from 'react'
-import { Icon } from './shared.jsx'
+import { Icon, fmtStamp } from './shared.jsx'
 import { api } from './api.js'
+import { MessagePopup } from './messages.jsx'
 import { AnnotatableText } from './annotate.jsx'
 import cuecastLogo from './assets/cuecast-logo.svg'
 
@@ -349,8 +350,10 @@ function Account() {
   const [pwMsg, setPwMsg] = React.useState('');
   const [pwBusy, setPwBusy] = React.useState(false);
   const [meInfo, setMeInfo] = React.useState(null);
+  const [messages, setMessages] = React.useState(null);
   React.useEffect(() => { api.portalAccount().then(setData).catch((e) => setErr(e.message)); }, []);
   React.useEffect(() => { api.portalMe().then(setMeInfo).catch(() => {}); }, []);
+  React.useEffect(() => { api.portalMessages().then((r) => setMessages(Array.isArray(r) ? r : [])).catch(() => {}); }, []);
   const day = (t) => { if (!t) return ''; const d = new Date(String(t).replace(' ', 'T') + 'Z'); return isNaN(d) ? String(t) : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
   const send = async () => {
     if (!q.trim()) return;
@@ -388,6 +391,17 @@ function Account() {
           {meInfo.email && <Row k="Email" v={meInfo.email} />}
           {meInfo.phone && <Row k="Phone" v={meInfo.phone} />}
           <Row k="Member since" v={day(meInfo.created_at)} />
+        </div>
+      )}
+      {messages && messages.length > 0 && (
+        <div style={{ ...card, marginBottom: 16 }}>
+          <div className="label" style={{ marginBottom: 4 }}>MESSAGES FROM YOUR TEAM</div>
+          {messages.map((m) => (
+            <div key={m.id} style={{ padding: '9px 0', borderTop: '1px solid var(--border)' }}>
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{m.from_full_name || m.from_username || 'cue:cast team'} · {fmtStamp(m.created_at)}</div>
+              <div style={{ fontSize: 13.5, whiteSpace: 'pre-wrap', marginTop: 3 }}>{m.message}</div>
+            </div>
+          ))}
         </div>
       )}
       <div style={{ ...card, marginBottom: 16 }}>
@@ -711,6 +725,7 @@ export default function PortalApp({ me }) {
 
   return (
     <div className="row portal-shell" style={{ height: '100vh', alignItems: 'stretch', background: 'var(--bg)', color: 'var(--text)', overflow: 'hidden' }}>
+      <MessagePopup />
       <aside className="portal-aside" style={{ width: 232, flex: 'none', borderRight: '1px solid var(--border)', padding: 18, display: 'flex', flexDirection: 'column', gap: 4, background: 'var(--surface)', overflowY: 'auto', minHeight: 0 }}>
         <div style={{ padding: '4px 6px 14px' }}>
           <img src={cuecastLogo} alt="cue:cast" style={{ height: 26, width: 'auto', maxWidth: '100%', objectFit: 'contain', display: 'block' }} />

@@ -671,6 +671,12 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       g.items.push(h);
       if (h.created_at && (!g.date || h.created_at > g.date)) g.date = h.created_at;
     }
+    // Episode number(s) in the group, shown before the topic on the collapsed row.
+    for (const g of groups.values()) {
+      const nums = [...new Set(g.items.map((i) => String(i.episode_number || '').trim().replace(/^E/i, '')).filter(Boolean))];
+      nums.sort((a, b) => (Number(a) - Number(b)) || a.localeCompare(b));
+      g.epLabel = nums.length ? nums.map((n) => 'E' + n).join(', ') + ' - ' : '';
+    }
     return [...groups.values()].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [history]);
 
@@ -844,7 +850,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 style={{ width: '100%', display: 'flex', gap: 10, alignItems: 'center', padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text)' }}>
                 <Icon name="arrow-r" size={13} style={{ color: 'var(--text-4)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
                 <span style={{ fontSize: 14, fontWeight: 600, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {g.topic}
+                  {g.epLabel}{g.topic}
                   <span style={{ display: 'inline-flex', gap: 3 }}>
                     {[...new Set(g.items.map((i) => i.channel))].map((ch) => (
                       <span key={ch} title={labelFor(ch)} style={{ width: 8, height: 8, borderRadius: 4, background: chColor(ch), display: 'inline-block' }} />

@@ -21,6 +21,7 @@ import { ProductionReportView } from './report.jsx'
 import { AnalyticsView } from './analytics.jsx'
 import { TalentView } from './talent.jsx'
 import { UserAccountView } from './account.jsx'
+import { MessagePopup } from './messages.jsx'
 
 const NAV = [
   { id: 'clients',       label: 'Clients',        icon: 'avatars' },
@@ -129,20 +130,12 @@ function AttentionView({ onOpen, filter }) {
   const [data, setData] = React.useState(null);
   const [openClient, setOpenClient] = React.useState(null);
   const [busy, setBusy] = React.useState(null);
-  // Notes an admin sent me (Settings -> Users & access -> Send note). These
-  // used to sit behind the header bell; they live here now.
-  const [myNotes, setMyNotes] = React.useState([]);
   React.useEffect(() => {
     let live = true;
     api.attention().then((d) => { if (live) setData(d && d.clients ? d : { total: 0, clients: [] }); })
       .catch(() => { if (live) setData({ total: 0, clients: [] }); });
-    api.myNotifications().then((rows) => { if (live) setMyNotes(Array.isArray(rows) ? rows : []); }).catch(() => {});
     return () => { live = false; };
   }, []);
-  const dismissNote = async (id) => {
-    setMyNotes((cur) => cur.filter((n) => n.id !== id));
-    try { await api.dismissNotification(id); } catch { /* best-effort — it'll just show again next load */ }
-  };
 
   const dismiss = async (it) => {
     const key = it.code + '-' + it.id;
@@ -205,21 +198,6 @@ function AttentionView({ onOpen, filter }) {
             );
           })}
         </div>
-
-        {myNotes.length > 0 && (
-          <div style={{ maxWidth: 900 }}>
-            <div className="mono" style={sectionLabel}>Notes sent to you · {myNotes.length}</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {myNotes.map((n) => (
-                <div key={n.id} className="card" style={{ padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 13, whiteSpace: 'pre-wrap', flex: '1 1 300px' }}>{n.message}</span>
-                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{n.from_username ? 'from ' + n.from_username + ' · ' : ''}{fmtWhen(n.created_at)}</span>
-                  <button className="btn sm" onClick={() => dismissNote(n.id)}>Dismiss</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {recent.length > 0 && (
           <div style={{ maxWidth: 900 }}>
@@ -409,6 +387,7 @@ function App() {
 
   return (
     <div className="shell">
+      <MessagePopup />
       <aside className="side">
         <div className="side-brand">
           <img src={logoLockup} alt="cue:cast" style={{ height: 30, width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />

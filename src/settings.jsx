@@ -115,12 +115,6 @@ function UsersSection({ onOpenUser }) {
     setErr('');
     try { await api.impersonateUser(u.id); window.location.href = '/'; } catch (e) { setErr(e.message); }
   };
-  const sendNote = async (u) => {
-    const message = window.prompt(`Send a note to "${u.username}" — they'll see it next time they're in the dashboard:`, '');
-    if (!message || !message.trim()) return;
-    setErr(''); setMsg('');
-    try { await api.notifyUser(u.id, message.trim()); setMsg(`Note sent to ${u.username}.`); } catch (e) { setErr(e.message); }
-  };
 
   return (
     <Section title="Users & access">
@@ -166,7 +160,7 @@ function UsersSection({ onOpenUser }) {
                 <div className="row" style={{ gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
                   <button className="btn sm" onClick={() => onOpenUser && onOpenUser(u.id)}>Open page</button>
                   <button className="btn sm" onClick={() => (editingId === u.id ? cancelEdit() : startEdit(u))}>{editingId === u.id ? 'Cancel' : 'Edit'}</button>
-                  <button className="btn sm" onClick={() => sendNote(u)} title="Send a custom note — shown to them in the dashboard">Send note</button>
+                  <button className="btn sm" onClick={() => onOpenUser && onOpenUser(u.id)} title="Send a private message — opens their page; they see it as a pop-up">Message</button>
                   <button className="btn sm" onClick={() => loginAs(u)} disabled={me.id === u.id || !u.active} title="Sign in as this user to troubleshoot">Log in as</button>
                   <button className="btn sm" onClick={() => resendInvite(u)} title="Generate a new password and (optionally) email it">Resend invite</button>
                   <button className="btn sm" onClick={() => resetPw(u)}>Reset password</button>
