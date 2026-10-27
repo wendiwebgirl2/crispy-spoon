@@ -10,6 +10,19 @@ function fmt(s) {
 }
 function iso(d) { const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 10); }
 
+// Plain local 'YYYY-MM-DD' -> "Tue, Oct 28"; 'HH:MM' 24h -> "2:30 PM".
+function fmtDay(d) {
+  const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return d || '—';
+  return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+function fmtTime(t) {
+  const m = String(t || '').match(/^(\d{2}):(\d{2})/);
+  if (!m) return '—';
+  const h = +m[1];
+  return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
 const KIND_LABEL = { script: 'Script', cast: 'Cast', episode: 'Episode', distribution: 'Distribution' };
 
 export function ProductionReportView() {
@@ -20,14 +33,24 @@ export function ProductionReportView() {
   const [data, setData] = React.useState(null);
   const [err, setErr] = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const [tab, setTab] = React.useState('production'); // 'production' | 'air'
+  const [clientId, setClientId] = React.useState('');
+  const [clients, setClients] = React.useState([]);
+  const [air, setAir] = React.useState(null);
+  React.useEffect(() => {
+    api.listClients().then((r) => setClients(Array.isArray(r) ? r : (r.clients || []))).catch(() => setClients([]));
+  }, []);
 
   const run = React.useCallback(() => {
     setLoading(true); setErr('');
-    api.productionReport(`?start=${start}&end=${end}`)
-      .then(setData).catch((e) => setErr(e.message || 'Could not load the report.'))
+    const qs = `?start=${start}&end=${end}` + (clientId ? `&clientId=${clientId}` : '');
+    Promise.all([api.productionReport(qs), api.airSchedule(qs)])
+      .then(([p, a]) => { setData(p); setAir(a); })
+      .catch((e) => setErr(e.message || 'Could not load the report.'))
       .finally(() => setLoading(false));
-  }, [start, end]);
-  React.useEffect(() => { run(); /* initial load */ }, []); // eslint-disable-line
+  }, [start, end, clientId]);
+  React.useEffect(() => { run(); /* initial load + re-run when the client changes */ }, [clientId]); // eslint-disable-line
+  const clientName = clientId ? ((clients.find((c) => String(c.id) === String(clientId)) || {}).name || '') : '';
 
   const presetDays = (days) => { const s = new Date(); s.setDate(s.getDate() - days); setStart(iso(s)); setEnd(iso(new Date())); };
   const thisMonth = () => { const n = new Date(); setStart(iso(new Date(n.getFullYear(), n.getMonth(), 1))); setEnd(iso(n)); };
@@ -65,6 +88,13 @@ export function ProductionReportView() {
             <span className="label" style={{ margin: 0 }}>TO</span>
             <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} style={inp} />
           </div>
+          <div className="col" style={{ gap: 4 }}>
+            <span className="label" style={{ margin: 0 }}>CLIENT</span>
+            <select value={clientId} onChange={(e) => setClientId(e.target.value)} style={{ ...inp, minWidth: 180 }}>
+              <option value="">All clients</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
           <button className="btn primary sm" onClick={run} disabled={loading}>{loading ? 'Running…' : 'Run report'}</button>
           <button className="btn sm" onClick={() => window.print()}>Print / Save PDF</button>
         </div>
@@ -74,14 +104,47 @@ export function ProductionReportView() {
           <button className="btn sm" onClick={thisMonth}>This month</button>
           <button className="btn sm" onClick={lastMonth}>Last month</button>
         </div>
+        <div className="row" style={{ gap: 6, marginBottom: 16 }}>
+          <button className={'btn sm' + (tab === 'production' ? ' primary' : '')} onClick={() => setTab('production')}>Production</button>
+          <button className={'btn sm' + (tab === 'air' ? ' primary' : '')} onClick={() => setTab('air')}>Air schedule</button>
+        </div>
       </div>
 
       <div style={{ marginBottom: 18 }}>
-        <div className="label" style={{ marginBottom: 2 }}>PRODUCTION REPORT</div>
-        <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>{fmt(start + ' 00:00:00').replace(/,.*$/, '')} — {fmt(end + ' 00:00:00').replace(/,.*$/, '')}</div>
+        <div className="label" style={{ marginBottom: 2 }}>{tab === 'air' ? 'AIR SCHEDULE' : 'PRODUCTION REPORT'}{clientName ? ' · ' + clientName.toUpperCase() : ''}</div>
+        <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>{fmtDay(start)} — {fmtDay(end)}</div>
       </div>
 
       {err && <div className="card card-pad" style={{ borderColor: 'var(--accent)', marginBottom: 16 }}><div className="mono" style={{ color: 'var(--accent)' }}>{err}</div></div>}
+
+      {tab === 'air' ? (
+        loading && !air ? <div className="mono">Loading…</div>
+        : !air || !air.rows.length ? <div className="mono" style={{ color: 'var(--text-3)' }}>Nothing scheduled to air in this period.</div>
+        : (
+          <div className="card card-pad report-card">
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
+                <thead><tr>
+                  <th style={th}>Air date</th><th style={th}>Time</th><th style={th}>Channel</th>
+                  {!clientId && <th style={th}>Client</th>}<th style={th}>Episode / post</th>
+                </tr></thead>
+                <tbody>
+                  {air.rows.map((r) => (
+                    <tr key={r.kind + '-' + r.id}>
+                      <td style={td}>{fmtDay(r.date)}</td>
+                      <td style={td}>{fmtTime(r.time)}</td>
+                      <td style={{ ...td, color: r.channel ? 'var(--text)' : 'var(--text-4)' }}>{r.channel || 'not set'}</td>
+                      {!clientId && <td style={td}>{r.client_name || ('Client ' + r.client_id)}</td>}
+                      <td style={{ ...td, whiteSpace: 'normal', minWidth: 220 }}>{r.title}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 8 }}>{air.rows.length} airing{air.rows.length === 1 ? '' : 's'}</div>
+          </div>
+        )
+      ) : (<>
 
       <div className="row" style={{ gap: 12, flexWrap: 'wrap', marginBottom: 22 }}>
         {KPI.map((m) => (
@@ -136,6 +199,7 @@ export function ProductionReportView() {
             </div>
           );
         })}
+      </>)}
     </div>
   );
 }

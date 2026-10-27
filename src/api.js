@@ -352,6 +352,7 @@ export const api = {
   myTasks: () => vcReq('/alerts/my-tasks'),
   getActivity: (qs = '') => vcReq('/activity' + qs),
   productionReport: (qs = '') => vcReq('/report/production' + qs),
+  airSchedule: (qs = '') => vcReq('/report/air-schedule' + qs),
   billingOverview: (qs = '') => vcReq('/billing/overview' + qs),
   setCastApproval: (id, railwayVideoId, status, title, extra) =>
     vcReq(`/clients/${id}/casts/approval`, { method: "POST", body: JSON.stringify({ railwayVideoId, status, title, ...(extra ? { approvalMethod: extra.method, approvalMethodNote: extra.note } : {}) }) }),
