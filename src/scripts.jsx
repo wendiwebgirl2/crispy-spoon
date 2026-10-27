@@ -8,6 +8,7 @@ import { clientToken } from './dashboard-api.js'
 import { fmtStamp, Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip, SendReviewModal, ApprovalMethodModal, approvalMethodLabel, buildMotionPrompt } from './shared.jsx'
 import { TopicsSection, LookPicker } from './brief.jsx'
 import { HighlightedText, locateQuote } from './annotate.jsx'
+import { NotesThread } from './notes-thread.jsx'
 
 const CHANNEL_FALLBACK = [
   { key: 'longform',  label: 'Longform (5–7 min)', variants: 1 },
@@ -1067,6 +1068,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 ))}
               </details>
             )}
+            <NotesThread clientId={clientId} scriptId={editing.id} collapsible />
             <textarea ref={editBodyRef} value={editBody} onChange={(e) => setEditBody(e.target.value)}
               style={{ flex: 1, minHeight: 340, resize: 'vertical', padding: 14, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 15, lineHeight: 1.6 }} />
             <ExpressionTags value={editBody} onChange={setEditBody} textareaRef={editBodyRef} />
