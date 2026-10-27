@@ -673,8 +673,13 @@ function EpisodeEditor({ cid, epId, onChange }) {
     catch (e) { setErr(e.message || 'Could not clear video.'); } finally { setBusy(null); }
   };
 
+  // A video episode only opens with something (an intro video/image/voice, intro music, or the Overlays
+  // opening card) if one of those was set — otherwise it starts straight on the body (E4 Elite Exteriors).
+  const hasOpening = !!(full && (full.intro_path || full.intro_video_path || full.intro_still_path || full.intro_music_path || full.intro_music_video_path || full.intro_music_still_path || (full.overlays && full.overlays.openCard)));
+  const isVideoOut = !!full && (full.output_format || 'video') !== 'audio';
   const stitch = async () => {
     setErr('');
+    if (isVideoOut && !hasOpening && !window.confirm('Nothing is set up to open this episode: no Intro video, image or voice, no intro music, and no Overlays opening card.\n\nIt will start straight on the body.\n\nStitch anyway? (Cancel to add the cover art or an intro first.)')) return;
     try {
       const r = await ep.stitch(cid, epId);
       setStitchJob({ status: r.status || 'pending', error: null });
@@ -933,6 +938,11 @@ function EpisodeEditor({ cid, epId, onChange }) {
       </div>
       {stitchJob.status === 'error' && <div className="mono" style={{ color: 'var(--accent)', marginTop: 6 }}>{stitchJob.error || 'Stitch failed.'}</div>}
       {!full.body_path && <div className="mono" style={{ color: 'var(--text-4)', marginTop: 6 }}>Set a body recording before stitching.</div>}
+      {full.body_path && isVideoOut && !hasOpening && (
+        <div className="mono" style={{ color: 'var(--warn)', marginTop: 6, fontSize: 12 }}>
+          ⚠ No opening set — this episode will start straight on the body. Add an Intro (video, image or voice), intro music, or an Overlays opening card to open with the cover art.
+        </div>
+      )}
 
       {full.output_path && (
         <div style={{ marginTop: 12 }}>
