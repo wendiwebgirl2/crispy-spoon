@@ -454,6 +454,11 @@ function AddTalent({ voices, onAdded }) {
   );
 }
 
+// ElevenLabs model per talent, stored in voice_v3 (0/null = Multilingual v2,
+// 1 = v3, 4 = v4) and copied onto every cast of this talent.
+const VOICE_MODELS = [[0, 'Multilingual v2'], [1, 'Eleven v3'], [4, 'Eleven v4']];
+const voiceModelOf = (v) => (Number(v) === 4 ? 4 : v ? 1 : 0);
+
 function TalentCard({ t, voices, onChanged }) {
   const [open, setOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -470,7 +475,7 @@ function TalentCard({ t, voices, onChanged }) {
           <div className="mono" style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
             {{ stock: 'HeyGen stock', photo: 'from photo', prompt: 'described' }[t.source] || t.source}
             {' · '}<span style={{ color: stColor }}>{st}</span>
-            {t.voice_name ? ` · voice: ${t.voice_name}` : ''}
+            {t.voice_name ? ` · voice: ${t.voice_name} (${VOICE_MODELS.find(([k]) => k === voiceModelOf(t.voice_v3))[1]})` : ''}
           </div>
           {t.status === 'failed' && t.failure_reason && <div className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{t.failure_reason}</div>}
         </div>
@@ -484,6 +489,14 @@ function TalentCard({ t, voices, onChanged }) {
           </div>
           <button className="btn sm" onClick={() => setVoiceOpen((v) => !v)} style={{ marginBottom: 8 }}><Icon name="mic" size={12} /> {t.voice_id ? 'Change voice' : 'Pick a voice'}</button>
           {voiceOpen && <VoicePicker voices={voices} value={t.voice_id} onPick={(v) => { setVoiceOpen(false); save({ voice_id: v.voice_id, voice_name: v.name }); }} />}
+          {t.voice_id && (
+            <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <span className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>Voice model</span>
+              <select value={voiceModelOf(t.voice_v3)} onChange={(e) => save({ voice_v3: Number(e.target.value) })} style={{ ...inputStyle, width: 'auto' }}>
+                {VOICE_MODELS.map(([k, label]) => <option key={k} value={k}>{label}{k ? ' (audio tags)' : ''}</option>)}
+              </select>
+            </div>
+          )}
           {t.heygen_group_id && (
             <>
               <div className="label" style={{ marginTop: 8 }}>LOOKS {t.source === 'stock' ? '(stock looks — click to view & switch)' : '(click to view & switch, or make a new one)'}</div>
