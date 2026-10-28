@@ -1,37 +1,35 @@
 import React from 'react'
 import { api } from './api.js'
 import { Icon, fmtStamp } from './shared.jsx'
+import { refreshMessages, useUnreadMessages } from './unreadMessages.js'
 
 // Private messages (staff -> any user). Stored server-side in
-// user_notifications; the recipient gets a pop-up until they click "Got it",
-// and every message also lives on their account page (staff) or the portal
-// Account page (clients). Only admins can delete one.
+// user_notifications. Staff get a pop-up plus a flashing "Messages" row under
+// Alerts until they actually open their messages — a message only counts as
+// read once it has been shown on the Messages page / their account page.
+// Clients (portal) keep the simple pop-up with "Got it". Only admins can delete.
 
 const who = (username, fullName) => fullName || username || 'cue:cast team';
-const POLL_MS = 60 * 1000;
 
 // Pop-up for unread messages. Mounted once in the dashboard shell and once in
 // the portal shell; checks on load and every minute so a new message pops up
-// while the person is signed in.
-export function MessagePopup() {
-  const [queue, setQueue] = React.useState([]);
+// while the person is signed in. With `onOpen` (dashboard) the buttons are
+// "Later" (hide it for now — it stays unread and the sidebar keeps flashing)
+// and "Open messages"; without it (portal) "Got it" marks it read.
+export function MessagePopup({ onOpen }) {
+  const rows = useUnreadMessages();
+  const [later, setLater] = React.useState(() => new Set());
   const [busy, setBusy] = React.useState(false);
-  React.useEffect(() => {
-    let live = true;
-    const check = () => api.myNotifications()
-      .then((rows) => { if (live && Array.isArray(rows)) setQueue(rows.slice().reverse()); })
-      .catch(() => {});
-    check();
-    const t = setInterval(check, POLL_MS);
-    return () => { live = false; clearInterval(t); };
-  }, []);
+  const queue = rows.slice().reverse().filter((x) => !later.has(x.id));
   if (!queue.length) return null;
   const m = queue[0];
+  const hide = (ids) => setLater((cur) => new Set([...cur, ...ids]));
   const gotIt = async () => {
     setBusy(true);
     try { await api.dismissNotification(m.id); } catch { /* best-effort — it shows again next check */ }
-    setQueue((cur) => cur.filter((x) => x.id !== m.id));
+    hide([m.id]);
     setBusy(false);
+    refreshMessages();
   };
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', zIndex: 1100, display: 'grid', placeItems: 'center', padding: 16 }}>
@@ -44,8 +42,13 @@ export function MessagePopup() {
         </div>
         <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>From {who(m.from_username, m.from_full_name)} · {fmtStamp(m.created_at)}</div>
         <div style={{ fontSize: 14.5, lineHeight: 1.55, whiteSpace: 'pre-wrap', maxHeight: '50vh', overflowY: 'auto' }}>{m.message}</div>
-        <div className="row" style={{ justifyContent: 'flex-end' }}>
-          <button className="btn primary" disabled={busy} onClick={gotIt}>Got it</button>
+        <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          {onOpen ? (
+            <>
+              <button className="btn" onClick={() => hide([m.id])}>Later</button>
+              <button className="btn primary" onClick={() => { hide(queue.map((x) => x.id)); onOpen(); }}>Open messages</button>
+            </>
+          ) : <button className="btn primary" disabled={busy} onClick={gotIt}>Got it</button>}
         </div>
       </div>
     </div>
@@ -67,6 +70,16 @@ export function MessagesCard({ user, messages, isSelf, canMessage, isAdmin, onCh
     if (!isSelf) return;
     api.messageRecipients().then((r) => setRecipients(Array.isArray(r) ? r : [])).catch(() => setRecipients([]));
   }, [isSelf]);
+
+  // Opening your own messages is what marks them read (the sender's "read"
+  // stamp), then the sidebar row stops flashing.
+  React.useEffect(() => {
+    if (!isSelf) return;
+    const fresh = (messages.received || []).filter((m) => !m.read_at);
+    if (!fresh.length) return;
+    Promise.all(fresh.map((m) => api.dismissNotification(m.id).catch(() => {})))
+      .then(() => { refreshMessages(); onChanged && onChanged(); });
+  }, [isSelf, messages.received]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showComposer = isSelf || canMessage;
   const send = async () => {

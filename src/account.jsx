@@ -9,7 +9,7 @@ import { MessagesCard } from './messages.jsx'
 // their own via "My account". Client accounts see their details in the portal.
 const ROLE_LABEL = { admin: 'Admin', manager: 'Manager', editor: 'Editor', client: 'Client portal' };
 
-export function UserAccountView({ userId, onBack, onOpenClient }) {
+export function UserAccountView({ userId, onBack, onOpenClient, messagesOnly = false }) {
   const [data, setData] = React.useState(null);
   const [err, setErr] = React.useState('');
   const [editing, setEditing] = React.useState(false);
@@ -80,6 +80,13 @@ export function UserAccountView({ userId, onBack, onOpenClient }) {
       <button className="btn sm" onClick={() => onOpenClient && onOpenClient(t.client_id)} title="Open this client">{t.client_name}</button>
       {t.na && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>N/A</span>}
       {t.done && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{fmtStamp(t.completed_at)}</span>}
+    </div>
+  );
+
+  // Alerts → Messages: just this person's own messages card.
+  if (messagesOnly) return (
+    <div className="fade-in" style={{ padding: 'var(--pad)', maxWidth: 820 }}>
+      {messages && <MessagesCard user={user} messages={messages} isSelf canMessage={canMessage} isAdmin={isAdmin} onChanged={load} />}
     </div>
   );
 

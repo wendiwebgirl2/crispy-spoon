@@ -22,6 +22,7 @@ import { AnalyticsView } from './analytics.jsx'
 import { TalentView } from './talent.jsx'
 import { UserAccountView } from './account.jsx'
 import { MessagePopup } from './messages.jsx'
+import { useUnreadMessages } from './unreadMessages.js'
 
 const NAV = [
   { id: 'clients',       label: 'Clients',        icon: 'avatars' },
@@ -49,6 +50,7 @@ const HEADER_TITLES = {
   billing:         { title: 'Billing',         sub: 'plans, usage, and invoices' },
   changes:         { title: 'Client changes',  sub: 'requested changes across every client — newest first' },
   attention:       { title: 'Needs attention',  sub: 'clients & tasks waiting on you — newest first' },
+  messages:        { title: 'Messages',        sub: 'private messages to and from you' },
   talent:          { title: 'Talent library',  sub: 'generic AI announcers + voiceovers — castable for any client' },
   analytics:       { title: 'Analytics',       sub: 'YouTube + Facebook results — PDF overview for clients' },
   report:          { title: 'Production report', sub: 'all production in a date range — printable' },
@@ -371,6 +373,7 @@ function App() {
   // Which user's account page is open (null = my own), and where Back goes.
   const [accountUserId, setAccountUserId] = React.useState(null);
   const [accountBack, setAccountBack] = React.useState(null);
+  const unreadMessages = useUnreadMessages();
   const openAccount = (uid, back) => { setAccountUserId(uid); setAccountBack(back || null); setView('account'); };
 
   // Nav badge counts. null hides the badge (see the countKey guard below).
@@ -387,7 +390,7 @@ function App() {
 
   return (
     <div className="shell">
-      <MessagePopup />
+      <MessagePopup onOpen={() => setView('messages')} />
       <aside className="side">
         <div className="side-brand">
           <img src={logoLockup} alt="cue:cast" style={{ height: 30, width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
@@ -426,6 +429,15 @@ function App() {
           <>
             <div className="side-section" style={{ marginTop: 14 }}>ALERTS</div>
             <div className="side-nav">
+              <button
+                className={'nav-item' + (view === 'messages' ? ' active' : '') + (unreadMessages.length > 0 ? ' nav-flash-loop' : '')}
+                onClick={() => setView('messages')}
+                title={unreadMessages.length ? `${unreadMessages.length} unread message${unreadMessages.length === 1 ? '' : 's'}` : 'Messages'}
+              >
+                <Icon name="chat" size={16} stroke={1.6} className="nav-icon" style={{ color: view === 'messages' || unreadMessages.length ? 'var(--accent)' : 'var(--text-3)' }} />
+                <span style={{ fontWeight: unreadMessages.length ? 700 : undefined }}>Messages</span>
+                {unreadMessages.length > 0 && <span className="nav-count" style={{ background: 'var(--accent)', color: '#fff' }}>{unreadMessages.length}</span>}
+              </button>
               <button
                 className={'nav-item' + (view === 'attention' ? ' active' : '') + (flashKeys.size > 0 ? ' nav-flash' : '')}
                 onClick={() => { setAttnFilter(null); setView('attention'); }}
@@ -570,6 +582,10 @@ function App() {
             />
           )}
           {view === 'settings' && <SettingsView onOpenUser={(uid) => openAccount(uid, 'settings')} />}
+          {view === 'messages' && me && me.id && (
+            <UserAccountView key={'messages-' + me.id} userId={me.id} messagesOnly
+              onOpenClient={(cid) => { api.getClient(cid).then((c) => { setActiveClientId(cid); setDetailClient(c); setView('client-detail'); }).catch(() => {}); }} />
+          )}
           {view === 'account' && (accountUserId || (me && me.id)) && (
             <UserAccountView key={accountUserId || me.id} userId={accountUserId || me.id}
               onBack={accountBack ? () => setView(accountBack) : null}
