@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Icon } from './shared.jsx'
 import { api } from './api.js'
 
@@ -33,9 +34,48 @@ export function readImage(file) {
   });
 }
 
-function Thumb({ url, size = 56 }) {
+// Full-size image viewer. Any thumbnail calls expandImage(url, caption); the
+// one <ImageLightbox /> mounted in TalentView shows it (Esc or click to close).
+const LIGHTBOX_EVENT = 'talent:expand-image';
+const expandImage = (url, caption) => { if (url) window.dispatchEvent(new CustomEvent(LIGHTBOX_EVENT, { detail: { url, caption } })); };
+
+function ImageLightbox() {
+  const [img, setImg] = useState(null);
+  useEffect(() => {
+    const onOpen = (e) => setImg(e.detail);
+    const onKey = (e) => { if (e.key === 'Escape') setImg(null); };
+    window.addEventListener(LIGHTBOX_EVENT, onOpen);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener(LIGHTBOX_EVENT, onOpen); window.removeEventListener('keydown', onKey); };
+  }, []);
+  if (!img) return null;
+  // Portaled to <body>: the page's fade-in transform would otherwise trap a
+  // position:fixed overlay inside the content column.
+  return createPortal(
+    <div onClick={() => setImg(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(10,8,7,0.82)', zIndex: 1200, display: 'grid', placeItems: 'center', padding: 24, cursor: 'zoom-out' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, maxWidth: '100%' }}>
+        <img src={img.url} alt={img.caption || ''} style={{ maxWidth: 'min(900px, 92vw)', maxHeight: '82vh', objectFit: 'contain', borderRadius: 8, background: '#000', boxShadow: '0 10px 40px rgba(0,0,0,.5)' }} />
+        <div className="mono" style={{ color: '#eee', fontSize: 12 }}>{img.caption ? img.caption + ' · ' : ''}click or press Esc to close</div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// Small "expand" corner button for a look tile — sits on top of the tile so
+// the tile's own click (pick this look) still works.
+function ExpandBtn({ url, caption }) {
+  if (!url) return null;
   return (
-    <div style={{ width: size, height: size, borderRadius: 'var(--r-sm)', overflow: 'hidden', background: 'var(--surface-2)', flex: 'none', display: 'grid', placeItems: 'center', border: '1px solid var(--border)' }}>
+    <span role="button" title="View full size" onClick={(e) => { e.stopPropagation(); expandImage(url, caption); }}
+      style={{ position: 'absolute', top: 3, right: 3, width: 20, height: 20, borderRadius: 4, background: 'rgba(0,0,0,0.6)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, lineHeight: 1, cursor: 'zoom-in' }}>⤢</span>
+  );
+}
+
+function Thumb({ url, size = 56, caption }) {
+  return (
+    <div onClick={url ? () => expandImage(url, caption) : undefined} title={url ? 'View full size' : undefined}
+      style={{ width: size, height: size, borderRadius: 'var(--r-sm)', overflow: 'hidden', background: 'var(--surface-2)', flex: 'none', display: 'grid', placeItems: 'center', border: '1px solid var(--border)', cursor: url ? 'zoom-in' : 'default' }}>
       {url ? <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="avatars" size={18} />}
     </div>
   );
@@ -149,9 +189,10 @@ function LooksBlock({ groupId, currentLookId, onPick, canCreate, name }) {
         {(looks || []).map((l) => (
           <button key={l.id} title={(l.name || 'Look') + (l.status && l.status !== 'completed' ? ` · ${l.status}` : '')} disabled={l.status && l.status !== 'completed'}
             onClick={() => onPick && onPick(l)}
-            style={{ padding: 0, width: 48, height: 48, borderRadius: 6, overflow: 'hidden', cursor: onPick ? 'pointer' : 'default', background: 'var(--surface-2)', opacity: l.status && l.status !== 'completed' ? 0.5 : 1,
+            style={{ position: 'relative', padding: 0, width: 64, height: 64, borderRadius: 6, overflow: 'hidden', cursor: onPick ? 'pointer' : 'default', background: 'var(--surface-2)', opacity: l.status && l.status !== 'completed' ? 0.5 : 1,
               border: currentLookId === l.id ? '2px solid var(--accent)' : '1px solid var(--border)' }}>
             {l.preview_image_url ? <img src={l.preview_image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span className="mono" style={{ fontSize: 9 }}>{l.status || '…'}</span>}
+            <ExpandBtn url={l.preview_image_url} caption={l.name || 'Look'} />
           </button>
         ))}
         {canCreate && <button className="btn sm" onClick={() => setCreating((v) => !v)}><Icon name="plus" size={12} /> New look</button>}
@@ -299,8 +340,9 @@ function StockBrowser({ onPickLook }) {
         {looks === null ? <div className="mono">Loading looks…</div> : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
             {looks.map((l) => (
-              <button key={l.id} onClick={() => onPickLook(l, open)} style={{ padding: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--surface-2)', cursor: 'pointer', textAlign: 'left' }}>
+              <button key={l.id} onClick={() => onPickLook(l, open)} style={{ position: 'relative', padding: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--surface-2)', cursor: 'pointer', textAlign: 'left' }}>
                 {l.preview_image_url && <img src={l.preview_image_url} alt="" style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }} />}
+                <ExpandBtn url={l.preview_image_url} caption={`${open.name} — ${l.name || 'Look'}`} />
                 <div className="mono" style={{ fontSize: 10.5, padding: '4px 6px' }}>{l.name || 'Look'}</div>
               </button>
             ))}
@@ -314,8 +356,9 @@ function StockBrowser({ onPickLook }) {
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter loaded characters by name" style={{ ...inputStyle, width: '100%', marginBottom: 8 }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
         {shown.map((g) => (
-          <button key={g.id} onClick={() => openGroup(g)} style={{ padding: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--surface-2)', cursor: 'pointer', textAlign: 'left' }}>
+          <button key={g.id} onClick={() => openGroup(g)} style={{ position: 'relative', padding: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--surface-2)', cursor: 'pointer', textAlign: 'left' }}>
             {g.preview_image_url && <img src={g.preview_image_url} alt="" style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }} />}
+            <ExpandBtn url={g.preview_image_url} caption={g.name} />
             <div className="mono" style={{ fontSize: 10.5, padding: '4px 6px' }}>{g.name} · {g.looks_count} look{g.looks_count === 1 ? '' : 's'}</div>
           </button>
         ))}
@@ -413,7 +456,7 @@ function TalentCard({ t, voices, onChanged }) {
   return (
     <div className="card card-pad">
       <div className="row" style={{ gap: 12, alignItems: 'center' }}>
-        <Thumb url={t.thumbnail_url} />
+        <Thumb url={t.thumbnail_url} caption={t.name} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600 }}>{t.name}</div>
           <div className="mono" style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
@@ -468,6 +511,7 @@ const TalentView = () => {
   }, [talent]);
   return (
     <div className="v-pad fade-in">
+      <ImageLightbox />
       <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 26, letterSpacing: '-0.01em', margin: '0 0 4px' }}>
         <em style={{ color: 'var(--accent)' }}>Talent</em> library
       </h1>
