@@ -1185,10 +1185,20 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
     api.listScripts(activeClientId)
       .then((r) => {
         const rows = Array.isArray(r) ? r : (r && r.scripts ? r.scripts : []);
-        setApprovedScripts(rows.filter((s) => s.status === 'approved' || (s.approval_status || '').startsWith('approved') || s.approval_status === 'in_production'));
+        setApprovedScripts(rows.filter((s) => s.status !== 'archived' && (s.status === 'approved' || (s.approval_status || '').startsWith('approved') || s.approval_status === 'in_production')));
       })
       .catch(() => setApprovedScripts([]));
   }, [activeClientId]);
+
+  // The picker offers only scripts still to produce: a script drops out once its
+  // episode is stitched AND aired, or once that episode number has been archived
+  // (archiving deletes the episode row, so the archive log is the record).
+  const pickableScripts = React.useMemo(() => {
+    const epKey = (v) => String(v == null ? '' : v).trim().replace(/^E/i, '');
+    const archivedEps = new Set(archiveLog.map((a) => epKey(a.episode_number)).filter(Boolean));
+    const doneScripts = new Set(list.filter((e) => e.script_id != null && (e.hasOutput || e.hasVideo) && e.air_date).map((e) => String(e.script_id)));
+    return approvedScripts.filter((s) => !doneScripts.has(String(s.id)) && !archivedEps.has(epKey(s.episode_number)));
+  }, [approvedScripts, list, archiveLog]);
 
   const load = () => {
     if (cid == null) { setLoading(false); return Promise.resolve(); }
@@ -1385,9 +1395,9 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
       <div className="card card-pad" style={{ marginBottom: 14 }}>
         <div className="label" style={{ marginBottom: 10 }}>NEW EPISODE</div>
         <div className="row" style={{ gap: 8 }}>
-          {approvedScripts.length > 0 && (
+          {pickableScripts.length > 0 && (
             <select value="" onChange={(e) => {
-              const s = approvedScripts.find((x) => String(x.id) === e.target.value);
+              const s = pickableScripts.find((x) => String(x.id) === e.target.value);
               if (!s) return;
               setNewTitle(scriptEpLabel(s));
               setNewTopic((s.topic && s.topic.trim()) || '');
@@ -1395,7 +1405,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
               setNewScriptId(s.id);
             }} style={{ ...inputStyle, maxWidth: 240 }}>
               <option value="">Approved scripts…</option>
-              {approvedScripts.map((s) => (
+              {pickableScripts.map((s) => (
                 <option key={s.id} value={s.id}>{scriptEpLabel(s)}</option>
               ))}
             </select>
