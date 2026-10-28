@@ -327,7 +327,7 @@ function ensureOperatorName() {
 const GLOBAL_MOTION_PROMPT =
   'Role & Tone: Professional, warm, and composed presenter delivering clear, engaging messaging.\n\n' +
   'Camera & Eye Contact: Maintain steady, direct eye contact with the camera lens throughout the entire delivery. Keep head movements subtle and natural without tilting or turning away from the frame.\n\n' +
-  'Facial & Mouth Control: Maintain a relaxed, neutral mouth position with light lip closure between phrases. Speak with soft, fluid lip movements—avoid wide mouth openings, exaggerated enunciation, or full-smile dental displays. Rest the jaw naturally; keep smiles subtle and closed-lip or slight half-smiles.\n\n' +
+  'Facial & Mouth Control: Lip movements are natural and precisely synchronized to every spoken word, clearly shaping each syllable. The upper lip stays relaxed and low, covering the upper teeth; teeth are only minimally visible while speaking, at their natural size and proportions — never enlarged or exaggerated. No broad or toothy smiles; any smile is subtle and closed-lip.\n\n' +
   'Gestures & Posture: Integrate deliberate, natural open-palm hand gestures at key emphasis points, keeping hands within the chest and lower-frame area. Avoid rapid, constant, or repetitive hand movements. Maintain upright, relaxed body posture with steady shoulders. No hand jewelry — no rings, bracelets, or watches should appear on the hands at any point in the delivery.';
 
 // Every cast site builds its motion_prompt through this — combines the

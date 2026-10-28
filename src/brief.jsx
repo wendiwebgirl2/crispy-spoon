@@ -591,7 +591,9 @@ function LookPicker({ avatar, onSet }) {
 
 function VoiceSettings({ avatar, onClose, onSaved }) {
   const isEleven = avatar.voice_id && !/^[0-9a-f]{32}$/i.test(String(avatar.voice_id));
-  const [v3, setV3] = useState(!!avatar.voice_v3);
+  // voice_v3 holds the model choice: 0/null = Multilingual v2, 1 = v3, 4 = v4.
+  const [model, setModel] = useState(Number(avatar.voice_v3) === 4 ? 4 : avatar.voice_v3 ? 1 : 0);
+  const v3 = model !== 0; // v3 and v4 share the expressive settings + audio tags
   const [stability, setStability] = useState(avatar.voice_stability != null ? Number(avatar.voice_stability) : 0.5);
   const [similarity, setSimilarity] = useState(avatar.voice_similarity != null ? Number(avatar.voice_similarity) : 0.75);
   const [style, setStyle] = useState(avatar.voice_style != null ? Number(avatar.voice_style) : 0.0);
@@ -603,7 +605,7 @@ function VoiceSettings({ avatar, onClose, onSaved }) {
   const [saved, setSaved] = useState(false);
 
   const payload = () => ({
-    voice_v3: v3 ? 1 : 0,
+    voice_v3: model,
     voice_stability: Number(stability),
     voice_similarity: Number(similarity),
     voice_style: Number(style),
@@ -640,17 +642,22 @@ function VoiceSettings({ avatar, onClose, onSaved }) {
 
         {!isEleven ? (
           <div className="mono" style={{ fontSize: 13, color: 'var(--text-3)' }}>
-            This avatar's voice is still on HeyGen. Rebuild the twin on ElevenLabs to unlock v3 + voice settings.
+            This avatar's voice is still on HeyGen. Rebuild the twin on ElevenLabs to unlock v3/v4 + voice settings.
           </div>
         ) : (
           <>
-            <label className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 18 }}>
-              <input type="checkbox" checked={v3} onChange={(e) => { setV3(e.target.checked); setSaved(false); }} />
-              <span style={{ fontSize: 14, fontWeight: 600 }}>ElevenLabs v3 (expressive + audio tags)</span>
-            </label>
+            <div style={{ marginBottom: 18 }}>
+              <span style={rowLbl}>ElevenLabs voice model</span>
+              <select value={model} onChange={(e) => { setModel(Number(e.target.value)); setSaved(false); }}
+                style={{ width: '100%', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 13, padding: '7px 9px' }}>
+                <option value={0}>Multilingual v2 (steady, no audio tags)</option>
+                <option value={1}>Eleven v3 (expressive + audio tags)</option>
+                <option value={4}>Eleven v4 (newest, most natural + audio tags)</option>
+              </select>
+            </div>
 
             <div style={{ marginBottom: 18 }}>
-              <span style={rowLbl}>Stability{v3 ? ' (v3 modes)' : ': ' + Number(stability).toFixed(2)}</span>
+              <span style={rowLbl}>Stability{v3 ? ' (expressive modes)' : ': ' + Number(stability).toFixed(2)}</span>
               {v3 ? (
                 <div className="row" style={{ gap: 6 }}>
                   {[['Creative', 0], ['Natural', 0.5], ['Robust', 1]].map(([name, val]) => (
@@ -671,7 +678,7 @@ function VoiceSettings({ avatar, onClose, onSaved }) {
             </label>
 
             <div style={{ marginBottom: 16 }}>
-              <span style={rowLbl}>Preview script (v3 audio tags in [brackets])</span>
+              <span style={rowLbl}>Preview script (audio tags in [brackets] for v3/v4)</span>
               <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3}
                 style={{ width: '100%', boxSizing: 'border-box', fontSize: 13, padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', resize: 'vertical' }} />
             </div>
