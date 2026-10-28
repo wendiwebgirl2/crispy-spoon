@@ -37,7 +37,8 @@ export function readImage(file) {
 // Full-size image viewer. Any thumbnail calls expandImage(url, caption); the
 // one <ImageLightbox /> mounted in TalentView shows it (Esc or click to close).
 const LIGHTBOX_EVENT = 'talent:expand-image';
-const expandImage = (url, caption) => { if (url) window.dispatchEvent(new CustomEvent(LIGHTBOX_EVENT, { detail: { url, caption } })); };
+// Optional action = { label, run } adds a button under the image (e.g. "Use this look").
+const expandImage = (url, caption, action) => { if (url) window.dispatchEvent(new CustomEvent(LIGHTBOX_EVENT, { detail: { url, caption, action } })); };
 
 function ImageLightbox() {
   const [img, setImg] = useState(null);
@@ -55,6 +56,9 @@ function ImageLightbox() {
     <div onClick={() => setImg(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(10,8,7,0.82)', zIndex: 1200, display: 'grid', placeItems: 'center', padding: 24, cursor: 'zoom-out' }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, maxWidth: '100%' }}>
         <img src={img.url} alt={img.caption || ''} style={{ maxWidth: 'min(900px, 92vw)', maxHeight: '82vh', objectFit: 'contain', borderRadius: 8, background: '#000', boxShadow: '0 10px 40px rgba(0,0,0,.5)' }} />
+        {img.action && (
+          <button className="btn primary" onClick={(e) => { e.stopPropagation(); img.action.run(); setImg(null); }}>{img.action.label}</button>
+        )}
         <div className="mono" style={{ color: '#eee', fontSize: 12 }}>{img.caption ? img.caption + ' · ' : ''}click or press Esc to close</div>
       </div>
     </div>,
@@ -86,7 +90,7 @@ function ImagePick({ label, value, onChange }) {
   const [err, setErr] = useState('');
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-      {value && <Thumb url={value.preview} size={44} />}
+      {value && <Thumb url={value.preview} size={44} caption={value.name} />}
       <button className="btn sm" onClick={() => ref.current && ref.current.click()}><Icon name="upload" size={12} /> {value ? 'Change' : label}</button>
       {value && <button className="btn sm" onClick={() => onChange(null)}>Remove</button>}
       <input ref={ref} type="file" accept="image/*" hidden onChange={async (e) => {
@@ -187,12 +191,16 @@ function LooksBlock({ groupId, currentLookId, onPick, canCreate, name }) {
       <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         {looks === null && !err && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Loading looks…</span>}
         {(looks || []).map((l) => (
-          <button key={l.id} title={(l.name || 'Look') + (l.status && l.status !== 'completed' ? ` · ${l.status}` : '')} disabled={l.status && l.status !== 'completed'}
-            onClick={() => onPick && onPick(l)}
-            style={{ position: 'relative', padding: 0, width: 64, height: 64, borderRadius: 6, overflow: 'hidden', cursor: onPick ? 'pointer' : 'default', background: 'var(--surface-2)', opacity: l.status && l.status !== 'completed' ? 0.5 : 1,
+          <button key={l.id} title={(l.name || 'Look') + (currentLookId === l.id ? ' · current look' : '') + (l.status && l.status !== 'completed' ? ` · ${l.status}` : ' · click to view')} disabled={l.status && l.status !== 'completed'}
+            // Opens the look full size; switching happens from the viewer's button.
+            onClick={() => {
+              const caption = (l.name || 'Look') + (currentLookId === l.id ? ' (current look)' : '');
+              const action = onPick && currentLookId !== l.id ? { label: 'Use this look', run: () => onPick(l) } : null;
+              if (l.preview_image_url) expandImage(l.preview_image_url, caption, action); else if (action) action.run();
+            }}
+            style={{ position: 'relative', padding: 0, width: 64, height: 64, borderRadius: 6, overflow: 'hidden', cursor: 'zoom-in', background: 'var(--surface-2)', opacity: l.status && l.status !== 'completed' ? 0.5 : 1,
               border: currentLookId === l.id ? '2px solid var(--accent)' : '1px solid var(--border)' }}>
             {l.preview_image_url ? <img src={l.preview_image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span className="mono" style={{ fontSize: 9 }}>{l.status || '…'}</span>}
-            <ExpandBtn url={l.preview_image_url} caption={l.name || 'Look'} />
           </button>
         ))}
         {canCreate && <button className="btn sm" onClick={() => setCreating((v) => !v)}><Icon name="plus" size={12} /> New look</button>}
@@ -405,7 +413,7 @@ function AddTalent({ voices, onAdded }) {
       <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Talent name (e.g. Announcer — Grace)" style={{ ...inputStyle, width: '100%', marginBottom: 10 }} />
       {source === 'stock' && (look ? (
         <div className="row" style={{ gap: 10, alignItems: 'center', marginBottom: 10 }}>
-          <Thumb url={look.preview_image_url} /> <div className="mono" style={{ fontSize: 12 }}>{look.name}</div>
+          <Thumb url={look.preview_image_url} caption={look.name} /> <div className="mono" style={{ fontSize: 12 }}>{look.name}</div>
           <button className="btn sm" onClick={() => setLook(null)}>Change</button>
         </div>
       ) : <div style={{ marginBottom: 10 }}><StockBrowser onPickLook={(l, g) => { setLook(l); if (!name.trim()) setName(g.name); }} /></div>)}
@@ -478,7 +486,7 @@ function TalentCard({ t, voices, onChanged }) {
           {voiceOpen && <VoicePicker voices={voices} value={t.voice_id} onPick={(v) => { setVoiceOpen(false); save({ voice_id: v.voice_id, voice_name: v.name }); }} />}
           {t.heygen_group_id && (
             <>
-              <div className="label" style={{ marginTop: 8 }}>LOOKS {t.source === 'stock' ? '(stock looks — click to switch)' : '(click to switch, or make a new one)'}</div>
+              <div className="label" style={{ marginTop: 8 }}>LOOKS {t.source === 'stock' ? '(stock looks — click to view & switch)' : '(click to view & switch, or make a new one)'}</div>
               <LooksBlock groupId={t.heygen_group_id} currentLookId={t.heygen_avatar_id} name={t.name} canCreate={t.source !== 'stock'}
                 onPick={(l) => save({ heygen_avatar_id: l.id, thumbnail_url: l.preview_image_url || null })} />
             </>
