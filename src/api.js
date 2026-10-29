@@ -434,12 +434,13 @@ export const api = {
   reviseScript: (id, sid, instruction, provider) => vcReq(`/clients/${id}/scripts/${sid}/revise`, { method: "POST", body: JSON.stringify({ instruction, provider }) }),
   // Duplicates the script's whole set into Spanish as a new set with its own approval.
   translateScript: (id, sid, force) => vcReq(`/clients/${id}/scripts/${sid}/translate`, { method: "POST", body: JSON.stringify({ force: !!force }) }),
-  // ---- ads tracker (Meta + Google, entered by hand) ----
+  // ---- ads tracker (Meta + Google; hand-entered or synced) ----
   listAds: () => vcReq('/ads'),
   createAd: (cid, payload) => vcReq(`/clients/${cid}/ads`, { method: 'POST', body: JSON.stringify(payload) }),
   updateAd: (cid, adId, payload) => vcReq(`/clients/${cid}/ads/${adId}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteAd: (cid, adId) => vcReq(`/clients/${cid}/ads/${adId}`, { method: 'DELETE' }),
   saveAdAccount: (cid, payload) => vcReq(`/clients/${cid}/ads/account`, { method: 'PUT', body: JSON.stringify(payload) }),
+  syncAds: () => vcReq('/ads/sync', { method: 'POST' }),
   // ---- accounts & roles ----
   me: () => vcReq('/me'),
   logout: () => vcReq('/logout', { method: 'POST' }),

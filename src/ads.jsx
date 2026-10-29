@@ -3,9 +3,10 @@ import { createPortal } from 'react-dom'
 import { Icon } from './shared.jsx'
 import { api } from './api.js'
 
-// Ads — paid Meta + Google ads for every client, draft to wrap. Numbers are
-// typed in from Ads Manager / Google Ads (nothing is pulled from the platforms).
-// Data: voicecast routes/ads.js (ads + ad_accounts tables).
+// Ads — paid Meta + Google ads for every client, draft to wrap. Ads come in two
+// ways: typed in by hand, or synced from the Meta + Google APIs every 6h for
+// clients with account ids (source != 'manual'; the sync owns their name,
+// status, dates and numbers). Data: voicecast routes/ads.js + lib/adsSync.js.
 
 const inputStyle = {
   background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)',
@@ -13,6 +14,7 @@ const inputStyle = {
   boxSizing: 'border-box', height: 38,
 };
 const fld = { ...inputStyle, width: '100%', height: undefined, fontFamily: 'inherit', fontSize: 14 };
+const fldLocked = { ...fld, opacity: 0.6, cursor: 'not-allowed' };
 
 const STATUSES = [['draft', 'Draft'], ['review', 'Client review'], ['live', 'Live'], ['paused', 'Paused'], ['ended', 'Ended']];
 const STATUS_LABEL = Object.fromEntries(STATUSES);
@@ -22,6 +24,9 @@ const PCOLOR = { meta: '#1f5fbf', google: '#3d7a34' };
 const FORMATS = { meta: ['Image', 'Video', 'Carousel', 'Reel', 'Story', 'Lead form'], google: ['Search', 'Performance Max', 'Display', 'YouTube', 'Demand Gen'] };
 const OBJECTIVES = ['Awareness', 'Traffic', 'Leads', 'Calls', 'Sales', 'Engagement'];
 const DAY = 86400000;
+// Fields a sync owns on a synced ad (mirrors SYNC_OWNED in routes/ads.js).
+const SYNC_OWNED = ['platform', 'name', 'status', 'campaign', 'start_date', 'end_date', 'spend', 'impressions', 'clicks', 'results'];
+const isSynced = (a) => !!a.source && a.source !== 'manual';
 
 const money = (n) => (n == null || isNaN(n) ? '—' : '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: n >= 1000 ? 0 : 2 }));
 const fmtN = (n) => (n == null ? '—' : Number(n).toLocaleString());
@@ -31,6 +36,11 @@ const fmtDay = (s) => { const d = parseDay(s); return d ? d.toLocaleDateString(u
 // SQLite datetime('now') is UTC with no zone marker.
 const stampMs = (t) => { if (!t) return null; const iso = String(t).replace(' ', 'T'); const d = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + 'Z'); return isNaN(d) ? null : d; };
 const safeUrl = (u) => (typeof u === 'string' && /^https:\/\//i.test(u) ? u : null);
+const ago = (t) => {
+  const ms = stampMs(t); if (!ms) return '';
+  const m = Math.round((Date.now() - ms) / 60000);
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
+};
 const ctr = (a) => (a.impressions ? (a.clicks || 0) / a.impressions : null);
 const cpr = (a) => (a.results ? (a.spend || 0) / a.results : null);
 
@@ -46,6 +56,19 @@ function flagsFor(a) {
   }
   if (a.budget > 0 && a.spend > a.budget) out.push('Over budget by ' + money(a.spend - a.budget));
   const age = stampMs(a.updated_at) ? Math.floor((Date.now() - stampMs(a.updated_at)) / DAY) : 0;
+  if (isSynced(a)) {
+    if (a.status === 'ended') return out;
+    const P = PLABEL[a.platform];
+    const ps = a.platform_status;
+    if (ps === 'DISAPPROVED') out.push(`Rejected by ${P}`);
+    else if (ps === 'WITH_ISSUES') out.push(`${P} reports delivery issues`);
+    else if (ps === 'PENDING_BILLING_INFO') out.push(`${P} needs billing info`);
+    else if (ps === 'APPROVED_LIMITED') out.push(`Approved with limits by ${P}`);
+    const synced = stampMs(a.synced_at);
+    const sAge = synced ? Math.floor((Date.now() - synced) / DAY) : 0;
+    if (a.status === 'live' && sAge >= 2) out.push(`Sync hasn't updated this in ${sAge} days`);
+    return out;
+  }
   if (a.status === 'live' && age >= 7) out.push(`Numbers not updated in ${age} days`);
   if (a.status === 'review' && age >= 5) out.push(`Waiting on client ${age} days`);
   return out;
@@ -54,6 +77,9 @@ function flagsFor(a) {
 const PlatformBadge = ({ p }) => (
   <span className="badge" style={{ color: PCOLOR[p], borderColor: `color-mix(in srgb, ${PCOLOR[p]} 35%, transparent)`, background: `color-mix(in srgb, ${PCOLOR[p]} 8%, white)` }}>{PLABEL[p] || p}</span>
 );
+const SyncTag = ({ a }) => (isSynced(a)
+  ? <span className="mono" title={a.synced_at ? `Synced from ${PLABEL[a.platform]} ${ago(a.synced_at)}` : 'Synced'} style={{ fontSize: 9.5, letterSpacing: '0.1em', color: 'var(--text-4)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: 3 }}>SYNCED</span>
+  : null);
 const StatusPill = ({ s }) => (
   <span className={'badge ' + (STATUS_TONE[s] || '')}><span className="dot" />{STATUS_LABEL[s] || s}</span>
 );
@@ -66,6 +92,10 @@ function BudgetBar({ spend, budget }) {
     </div>
   );
 }
+const SyncLine = ({ at, error }) => (
+  error ? <span style={{ color: 'var(--err)', display: 'block' }}>Sync failed: {error}</span>
+    : <span style={{ display: 'block', fontSize: 10.5 }}>{at ? `synced ${ago(at)}` : 'not synced yet'}</span>
+);
 function Tile({ label, value, sub, alert }) {
   return (
     <div className="card card-pad" style={{ flex: '1 1 150px', minWidth: 140, borderColor: alert ? 'color-mix(in srgb, var(--maroon) 40%, transparent)' : undefined }}>
@@ -114,6 +144,8 @@ function AdModal({ ad, clients, onSave, onDelete, onClose }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [armed, setArmed] = useState(false);
+  const synced = isSynced(ad);
+  const lock = (k) => synced && SYNC_OWNED.includes(k);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const setPlatform = (p) => setF((x) => ({ ...x, platform: p, format: FORMATS[p].includes(x.format) ? x.format : FORMATS[p][0] }));
   const save = async () => {
@@ -138,14 +170,19 @@ function AdModal({ ad, clients, onSave, onDelete, onClose }) {
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+        {synced && (
+          <div className="mono" style={{ gridColumn: '1 / -1', color: 'var(--text-3)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '8px 10px' }}>
+            Synced from {PLABEL[ad.platform]}{ad.synced_at ? ` ${ago(ad.synced_at)}` : ''}. Name, status, dates and numbers update on their own every 6 hours. Budget, format, creative link and notes are yours to edit.
+          </div>
+        )}
         <Field label="Client">
-          <select value={f.client_id} onChange={(e) => setF((x) => ({ ...x, client_id: Number(e.target.value) }))} style={fld}>
+          <select value={f.client_id} disabled={synced} onChange={(e) => setF((x) => ({ ...x, client_id: Number(e.target.value) }))} style={synced ? fldLocked : fld}>
             {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Field>
-        <Field label="Platform"><Seg value={f.platform} options={[['meta', 'Meta'], ['google', 'Google']]} onChange={setPlatform} /></Field>
-        <Field label="Ad name" full><input value={f.name} onChange={set('name')} maxLength={200} placeholder="Fall open house, 30s video" style={fld} /></Field>
-        <Field label="Campaign"><input value={f.campaign} onChange={set('campaign')} maxLength={200} style={fld} /></Field>
+        <Field label="Platform">{synced ? <div style={{ paddingTop: 6 }}><PlatformBadge p={f.platform} /></div> : <Seg value={f.platform} options={[['meta', 'Meta'], ['google', 'Google']]} onChange={setPlatform} />}</Field>
+        <Field label="Ad name" full><input value={f.name} onChange={set('name')} disabled={lock('name')} maxLength={200} placeholder="Fall open house, 30s video" style={lock('name') ? fldLocked : fld} /></Field>
+        <Field label="Campaign"><input value={f.campaign} onChange={set('campaign')} disabled={lock('campaign')} maxLength={200} style={lock('campaign') ? fldLocked : fld} /></Field>
         <Field label="Format">
           <select value={f.format} onChange={set('format')} style={fld}>{FORMATS[f.platform].map((t) => <option key={t}>{t}</option>)}</select>
         </Field>
@@ -153,24 +190,25 @@ function AdModal({ ad, clients, onSave, onDelete, onClose }) {
           <select value={f.objective} onChange={set('objective')} style={fld}>{OBJECTIVES.map((t) => <option key={t}>{t}</option>)}</select>
         </Field>
         <Field label="Status">
-          <select value={f.status} onChange={set('status')} style={fld}>{STATUSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+          <select value={f.status} onChange={set('status')} disabled={lock('status')} style={lock('status') ? fldLocked : fld}>{STATUSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         </Field>
-        <Field label="Start date"><input type="date" value={f.start_date} onChange={set('start_date')} style={fld} /></Field>
-        <Field label="End date"><input type="date" value={f.end_date} onChange={set('end_date')} style={fld} /></Field>
+        <Field label="Start date"><input type="date" value={f.start_date} onChange={set('start_date')} disabled={lock('start_date')} style={lock('start_date') ? fldLocked : fld} /></Field>
+        <Field label="End date"><input type="date" value={f.end_date} onChange={set('end_date')} disabled={lock('end_date')} style={lock('end_date') ? fldLocked : fld} /></Field>
         <Field label="Flight budget ($)"><input type="number" min="0" step="0.01" inputMode="decimal" value={f.budget} onChange={set('budget')} style={fld} /></Field>
-        <Field label="Spend to date ($)"><input type="number" min="0" step="0.01" inputMode="decimal" value={f.spend} onChange={set('spend')} style={fld} /></Field>
-        <Field label="Impressions"><input type="number" min="0" step="1" inputMode="numeric" value={f.impressions} onChange={set('impressions')} style={fld} /></Field>
-        <Field label="Clicks"><input type="number" min="0" step="1" inputMode="numeric" value={f.clicks} onChange={set('clicks')} style={fld} /></Field>
-        <Field label="Results (leads, calls, sales)"><input type="number" min="0" step="1" inputMode="numeric" value={f.results} onChange={set('results')} style={fld} /></Field>
-        <Field label="Ads Manager / Google Ads link"><input type="url" value={f.link} onChange={set('link')} placeholder="https://" style={fld} /></Field>
+        <Field label="Spend to date ($)"><input type="number" min="0" step="0.01" inputMode="decimal" value={f.spend} onChange={set('spend')} disabled={lock('spend')} style={lock('spend') ? fldLocked : fld} /></Field>
+        <Field label="Impressions"><input type="number" min="0" step="1" inputMode="numeric" value={f.impressions} onChange={set('impressions')} disabled={lock('impressions')} style={lock('impressions') ? fldLocked : fld} /></Field>
+        <Field label="Clicks"><input type="number" min="0" step="1" inputMode="numeric" value={f.clicks} onChange={set('clicks')} disabled={lock('clicks')} style={lock('clicks') ? fldLocked : fld} /></Field>
+        <Field label="Results (leads, calls, sales)"><input type="number" min="0" step="1" inputMode="numeric" value={f.results} onChange={set('results')} disabled={lock('results')} style={lock('results') ? fldLocked : fld} /></Field>
+        <Field label="Ads Manager / Google Ads link"><input type="url" value={f.link} onChange={set('link')} disabled={synced && ad.platform === 'meta' && !!ad.link} placeholder="https://" style={synced && ad.platform === 'meta' && ad.link ? fldLocked : fld} /></Field>
         <Field label="Creative link (Drive, Frame, etc.)" full><input type="url" value={f.creative_link} onChange={set('creative_link')} placeholder="https://" style={fld} /></Field>
         <Field label="Notes" full><textarea value={f.notes} onChange={set('notes')} rows={3} maxLength={4000} style={{ ...fld, resize: 'vertical' }} /></Field>
       </div>
-      {ad.id && (ad.updated_by || ad.created_by) && <div className="mono" style={{ color: 'var(--text-4)' }}>Last edited by {ad.updated_by || ad.created_by}</div>}
+      {synced && armed && <div className="mono" style={{ color: 'var(--text-4)' }}>This only hides it in CueCast. The ad keeps running in {PLABEL[ad.platform]} until you change it there.</div>}
+      {ad.id && !synced && (ad.updated_by || ad.created_by) && <div className="mono" style={{ color: 'var(--text-4)' }}>Last edited by {ad.updated_by || ad.created_by}</div>}
       {err && <div style={{ color: 'var(--err)', fontSize: 13 }}>{err}</div>}
       <div className="row between" style={{ borderTop: '1px solid var(--border)', paddingTop: 14, flexWrap: 'wrap', gap: 8 }}>
         {ad.id
-          ? <button className="btn sm" onClick={del} disabled={busy} style={armed ? { background: 'var(--err)', color: '#fff', borderColor: 'transparent' } : { color: 'var(--err)' }}>{armed ? 'Click again to delete' : 'Delete ad'}</button>
+          ? <button className="btn sm" onClick={del} disabled={busy} style={armed ? { background: 'var(--err)', color: '#fff', borderColor: 'transparent' } : { color: 'var(--err)' }}>{armed ? (synced ? 'Click again to remove' : 'Click again to delete') : (synced ? 'Remove from tracker' : 'Delete ad')}</button>
           : <span />}
         <div className="row" style={{ gap: 8 }}>
           <button className="btn sm" onClick={onClose} disabled={busy}>Cancel</button>
@@ -220,7 +258,7 @@ function AdCard({ a, clientName, onOpen }) {
       </div>
       <div style={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{a.name}</div>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-4)' }}>
-        <PlatformBadge p={a.platform} />{a.format && <span>{a.format}</span>}{dates && <span>· {dates}</span>}
+        <PlatformBadge p={a.platform} /><SyncTag a={a} />{a.format && <span>{a.format}</span>}{dates && <span>· {dates}</span>}
       </div>
       {a.budget > 0 && (
         <div className="row between mono" style={{ fontSize: 11 }}><span>{money(a.spend || 0)} spent</span><span>of {money(a.budget)}</span></div>
@@ -251,6 +289,9 @@ const AdsView = () => {
   const [sort, setSort] = useState({ key: 'updated_at', dir: -1 });
   const [editing, setEditing] = useState(null);
   const [acctFor, setAcctFor] = useState(null);
+  const [sync, setSync] = useState({});
+  const [syncing, setSyncing] = useState(false);
+  const [syncErrs, setSyncErrs] = useState([]);
 
   const load = () => {
     setErr('');
@@ -258,7 +299,7 @@ const AdsView = () => {
       .then(([cs, d]) => {
         const list = Array.isArray(cs) ? cs : (cs.clients || []);
         setClients([...list].sort((a, b) => String(a.name).localeCompare(String(b.name))));
-        setAds(d.ads || []); setAccounts(d.accounts || []);
+        setAds(d.ads || []); setAccounts(d.accounts || []); setSync(d.sync || {});
       })
       .catch((e) => setErr(e.message || 'Could not load ads.'))
       .finally(() => setLoading(false));
@@ -278,6 +319,7 @@ const AdsView = () => {
   const live = shown.filter((a) => a.status === 'live');
   const liveMeta = live.filter((a) => a.platform === 'meta').length;
   const sum = (k) => shown.reduce((s, a) => s + (Number(a[k]) || 0), 0);
+  const budgetedSpend = shown.filter((a) => a.budget > 0).reduce((s, a) => s + (Number(a.spend) || 0), 0);
   const spend = sum('spend'), budget = sum('budget'), impr = sum('impressions'), clicks = sum('clicks'), results = sum('results');
   const attention = shown.flatMap((a) => flagsFor(a).map((f) => ({ a, f })));
 
@@ -288,6 +330,20 @@ const AdsView = () => {
     setEditing(null); setMsg(editing.id ? 'Ad saved.' : 'Ad added.'); load();
   };
   const deleteAd = async () => { await api.deleteAd(editing.client_id, editing.id); setEditing(null); setMsg('Ad deleted.'); load(); };
+  const canSync = !!(sync.meta || sync.google);
+  const syncNow = async () => {
+    setSyncing(true); setSyncErrs([]); setErr('');
+    try {
+      const r = await api.syncAds();
+      const add = (r.meta?.added || 0) + (r.google?.added || 0);
+      const upd = (r.meta?.updated || 0) + (r.google?.updated || 0);
+      const accts = (r.meta?.accounts || 0) + (r.google?.accounts || 0);
+      setSyncErrs(r.errors || []);
+      setMsg(!accts ? 'No client has an ad account ID yet.' : `Synced: ${add} new, ${upd} updated${r.errors?.length ? `, ${r.errors.length} account${r.errors.length === 1 ? '' : 's'} failed` : ''}.`);
+      await load();
+    } catch (e) { setErr(e.message || 'Sync failed.'); }
+    setSyncing(false);
+  };
   const saveAccount = async (f) => { await api.saveAdAccount(acctFor.id, f); setAcctFor(null); setMsg('Ad accounts saved.'); load(); };
   const newAd = (clientId) => setEditing({ client_id: clientId || (fClient ? Number(fClient) : undefined), platform: fPlatform || undefined });
 
@@ -308,16 +364,36 @@ const AdsView = () => {
           <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 26, letterSpacing: '-0.01em', margin: '0 0 4px', fontWeight: 400 }}>
             <em style={{ color: 'var(--accent)' }}>Ads</em> — Meta + Google
           </h1>
-          <div className="mono" style={{ color: 'var(--text-4)' }}>Numbers are entered by hand from Ads Manager and Google Ads. Update spend and results on live ads at least weekly.</div>
+          <div className="mono" style={{ color: 'var(--text-4)' }}>
+            {canSync
+              ? `${[sync.meta && 'Meta', sync.google && 'Google'].filter(Boolean).join(' and ')} ads sync every 6 hours for clients with an ad account ID.${sync.mock ? ' Test mode: synced ads are fake.' : ''} Hand-entered ads still work.`
+              : 'Numbers are entered by hand from Ads Manager and Google Ads. Live sync turns on once the Meta and Google keys are on the server.'}
+          </div>
         </div>
-        <button className="btn primary" onClick={() => newAd()} disabled={!clients.length}><Icon name="plus" size={14} /> New ad</button>
+        <div className="row" style={{ gap: 8 }}>
+          {canSync && <button className="btn" onClick={syncNow} disabled={syncing}><Icon name="history" size={14} /> {syncing ? 'Syncing…' : 'Sync now'}</button>}
+          <button className="btn primary" onClick={() => newAd()} disabled={!clients.length}><Icon name="plus" size={14} /> New ad</button>
+        </div>
       </div>
+
+      {syncErrs.length > 0 && (
+        <div className="card card-pad" style={{ borderLeft: '3px solid var(--err)' }}>
+          <div className="label" style={{ marginBottom: 8 }}>Sync problems</div>
+          <div className="col" style={{ gap: 6 }}>
+            {syncErrs.map((x, i) => (
+              <div key={i} className="row" style={{ gap: 8, flexWrap: 'wrap', fontSize: 13 }}>
+                <PlatformBadge p={x.platform} /><span style={{ fontWeight: 500 }}>{x.client}</span><span className="mono" style={{ color: 'var(--text-3)' }}>{x.error}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {err && <div className="card card-pad" style={{ color: 'var(--err)' }}>{err} <button className="btn sm" style={{ marginLeft: 8 }} onClick={load}>Try again</button></div>}
 
       <div className="row" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'stretch' }}>
         <Tile label="Live ads" value={live.length} sub={`Meta ${liveMeta} · Google ${live.length - liveMeta}`} />
-        <Tile label="Spend tracked" value={money(spend)} sub={budget ? `of ${money(budget)} in flight budgets` : null} />
+        <Tile label="Spend tracked" value={money(spend)} sub={budget ? `${money(budgetedSpend)} of ${money(budget)} on budgeted ads` : null} />
         <Tile label="CTR" value={impr ? pct(clicks / impr) : '—'} sub={impr ? `${fmtN(clicks)} clicks / ${fmtN(impr)} impr.` : null} />
         <Tile label="Cost per result" value={results ? money(spend / results) : '—'} sub={results ? `${fmtN(results)} results` : null} />
         <Tile label="Needs attention" value={new Set(attention.map((x) => x.a.id)).size} sub="ending soon, over budget, stale" alert={attention.length > 0} />
@@ -404,7 +480,7 @@ const AdsView = () => {
                   <tr key={a.id} onClick={() => setEditing(a)} style={{ cursor: 'pointer' }}>
                     {td(nameOf(a.client_id))}
                     {td(a.name, false, { whiteSpace: 'normal', minWidth: 180, fontWeight: 600 })}
-                    {td(<PlatformBadge p={a.platform} />)}
+                    {td(<span className="row" style={{ gap: 6 }}><PlatformBadge p={a.platform} /><SyncTag a={a} /></span>)}
                     {td(<StatusPill s={a.status} />)}
                     {td(fmtDay(a.start_date) || '—', false, { fontFamily: 'var(--f-mono)', fontSize: 12.5 })}
                     {td(fmtDay(a.end_date) || '—', false, { fontFamily: 'var(--f-mono)', fontSize: 12.5 })}
@@ -428,7 +504,7 @@ const AdsView = () => {
             {clients.map((c) => {
               const mine = ads.filter((a) => a.client_id === c.id);
               const cl = mine.filter((a) => a.status === 'live');
-              const active = mine.filter((a) => a.status !== 'ended');
+              const active = mine.filter((a) => a.status !== 'ended' && a.budget > 0);
               const sp = active.reduce((s, a) => s + (Number(a.spend) || 0), 0);
               const bu = active.reduce((s, a) => s + (Number(a.budget) || 0), 0);
               const acct = accountOf(c.id) || {};
@@ -446,15 +522,15 @@ const AdsView = () => {
                   </div>
                   {bu > 0 && (
                     <div className="col" style={{ gap: 4 }}>
-                      <div className="row between mono" style={{ fontSize: 11 }}><span>{money(sp)} spent</span><span>of {money(bu)} active budgets</span></div>
+                      <div className="row between mono" style={{ fontSize: 11 }}><span>{money(sp)} spent</span><span>of {money(bu)} budgeted</span></div>
                       <BudgetBar spend={sp} budget={bu} />
                     </div>
                   )}
                   {acct.monthly_budget != null && <div className="mono" style={{ color: 'var(--text-4)' }}>Monthly ad budget {money(acct.monthly_budget)}</div>}
                   {(acct.meta_account || acct.google_account) && (
                     <div className="mono" style={{ color: 'var(--text-4)', display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 8, borderTop: '1px solid var(--border)', overflowWrap: 'anywhere' }}>
-                      {acct.meta_account && <span>Meta {acct.meta_account}</span>}
-                      {acct.google_account && <span>Google {acct.google_account}</span>}
+                      {acct.meta_account && <span>Meta {acct.meta_account}{canSync && sync.meta && <SyncLine at={acct.meta_synced_at} error={acct.meta_sync_error} />}</span>}
+                      {acct.google_account && <span>Google {acct.google_account}{canSync && sync.google && <SyncLine at={acct.google_synced_at} error={acct.google_sync_error} />}</span>}
                     </div>
                   )}
                   <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
