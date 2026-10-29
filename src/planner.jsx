@@ -135,6 +135,8 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
   const [episodes, setEpisodes] = useState([]);   // finished episodes to distribute (approved, or added by hand)
   const [airedEps, setAiredEps] = useState([]);    // finished episodes marked aired / removed from the list — can be put back
   const [showAired, setShowAired] = useState(false);
+  const [plannedEps, setPlannedEps] = useState([]); // finished episodes with posts already scheduled or posted
+  const [showPlanned, setShowPlanned] = useState(false);
   const [publishing, setPublishing] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -178,11 +180,15 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
       const itArr = Array.isArray(it) ? it : (it.items || []);
       // A stitched episode (video or audio) is distributable once the client has approved it
       // (with or without changes) OR it was added to the planner by hand with "Add to planner".
-      // Once an episode has an air date logged it moves to "Marked aired" below, where it can be put back.
+      // Distribute is only for episodes with nothing planned yet: once any post is
+      // scheduled or posted it moves to "Scheduled / posted" below (still editable
+      // there), and once it has an air date it moves to "Marked aired".
       const linked = new Set(itArr.filter((i) => i.episode_id).map((i) => i.episode_id));
+      const planned = new Set(itArr.filter((i) => i.episode_id && SOCIAL_CHANNELS.some((s) => s.key === i.channel) && (i.status === 'scheduled' || i.status === 'delivered')).map((i) => i.episode_id));
       const finished = (e) => e.hasVideo || e.hasOutput;
       const cleared = (e) => e.approval_status === 'approved' || e.approval_status === 'approved_with_changes' || linked.has(e.id);
-      setEpisodes(epsArr.filter((e) => finished(e) && cleared(e) && !e.air_date));
+      setEpisodes(epsArr.filter((e) => finished(e) && cleared(e) && !e.air_date && !planned.has(e.id)));
+      setPlannedEps(epsArr.filter((e) => finished(e) && cleared(e) && !e.air_date && planned.has(e.id)));
       setAiredEps(epsArr.filter((e) => finished(e) && cleared(e) && e.air_date));
     }).catch((e) => setErr(e.message || 'Could not load planner.')).finally(() => setLoading(false));
   };
@@ -326,7 +332,7 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
       <div className="card card-pad" style={{ marginBottom: 14 }}>
         <div className="label" style={{ marginBottom: 10 }}>DISTRIBUTE AN EPISODE <span style={{ color: 'var(--text-4)' }}>({episodes.length})</span></div>
         {episodes.length === 0 ? (
-          <div className="mono" style={{ color: 'var(--text-4)' }}>No episodes ready yet — an episode appears here once it's stitched and approved by the client, or as soon as you click “Add to planner” on it.</div>
+          <div className="mono" style={{ color: 'var(--text-4)' }}>Nothing waiting to be scheduled — an episode appears here once it's stitched and approved by the client (or you click “Add to planner” on it), and leaves as soon as a post for it is scheduled.</div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
             {episodes.map((epi) => {
@@ -349,6 +355,30 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
           </div>
         )}
       </div>
+
+      {plannedEps.length > 0 && (
+        <div className="card card-pad" style={{ marginBottom: 14 }}>
+          <button className="btn sm" onClick={() => setShowPlanned(!showPlanned)}>{showPlanned ? '▾' : '▸'} Scheduled / posted ({plannedEps.length})</button>
+          {showPlanned && (
+            <div className="col" style={{ gap: 6, marginTop: 10 }}>
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Episodes with posts on the calendar. Use “Schedule” to add or move channels.</div>
+              {plannedEps.map((epi) => {
+                const mine = items.filter((i) => i.episode_id === epi.id && SOCIAL_CHANNELS.some((s) => s.key === i.channel));
+                const posted = mine.filter((i) => i.status === 'delivered').length;
+                const waiting = mine.filter((i) => i.status === 'scheduled').sort((a, b) => String(a.scheduled_for).localeCompare(String(b.scheduled_for)));
+                return (
+                  <div key={epi.id} className="row" style={{ gap: 8, alignItems: 'center', padding: '6px 0', borderTop: '1px solid var(--border)' }}>
+                    <div style={{ flex: 1, minWidth: 0, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={epi.title}>{epi.title}</div>
+                    {posted > 0 && <span className="mono" style={{ fontSize: 11, color: 'var(--ok)' }}>{posted} posted</span>}
+                    {waiting.length > 0 && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{waiting.length} scheduled · next {String(waiting[0].scheduled_for || '').slice(0, 16)}</span>}
+                    <button className="btn sm" onClick={() => openDistribute(epi)}><Icon name="send" size={12} /> Schedule</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {airedEps.length > 0 && (
         <div className="card card-pad" style={{ marginBottom: 14 }}>
