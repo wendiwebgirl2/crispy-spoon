@@ -127,8 +127,8 @@ function CalendarGrid({ mode, anchor, items, todayKey, onEventClick, onDayClick 
 
 const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStudio }) => {
   const cid = activeClientId;
-  const [clientList, setClientList] = useState([]);   // for the "pick a client" dropdown when none is selected
-  useEffect(() => { if (cid == null) api.listClients().then((cs) => setClientList(Array.isArray(cs) ? cs : [])).catch(() => setClientList([])); }, [cid]);
+  const [clientList, setClientList] = useState([]);   // for the client dropdown (top of the planner, or "pick a client")
+  useEffect(() => { api.listClients().then((cs) => setClientList(Array.isArray(cs) ? cs : (cs && cs.clients) || [])).catch(() => setClientList([])); }, []);
   const [items, setItems] = useState([]);
   const [channels, setChannels] = useState([]);
   const [approved, setApproved] = useState([]);   // approved scripts (optional attach on manual posts)
@@ -306,7 +306,15 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
 
   return (
     <div className="v-pad fade-in">
-      {onBackToStudio && <button className="btn sm" style={{ marginBottom: 10 }} onClick={onBackToStudio}><Icon name="arrow-l" size={12} /> Studio</button>}
+      <div className="row" style={{ gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        {onBackToStudio && <button className="btn sm" onClick={onBackToStudio}><Icon name="arrow-l" size={12} /> Studio</button>}
+        <span className="label" style={{ margin: 0 }}>CLIENT</span>
+        <select value={cid || ''} onChange={(e) => { const id = Number(e.target.value); if (id && onSelectClient) onSelectClient(id); }}
+          style={{ height: 34, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 14, minWidth: 240 }}>
+          {!clientList.some((c) => c.id === cid) && <option value={cid || ''}>Loading clients…</option>}
+          {clientList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
 
       {/* Calendar */}
       <div className="card card-pad" style={{ marginBottom: 14 }}>
