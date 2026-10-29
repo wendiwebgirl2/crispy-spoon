@@ -426,6 +426,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   /* ──────────────── STEP 1 · CLIENT ──────────────── */
   if (step === 'home') {
     const cards = [
+      { id: 'publish-status', label: 'Publish status', desc: "What's on air now & what's in production", icon: 'chart', go: () => onNavigate?.('publish-status') },
       { id: 'scripts',    label: 'Scripts',       desc: 'Write & manage client scripts',      icon: 'doc',     go: () => onNavigate?.('scripts') },
       { id: 'recordings', label: 'Recordings',    desc: 'Client masters & cue:cast renders',  icon: 'play',    go: () => onNavigate?.('recordings') },
       { id: 'cast',       label: 'Cast a script', desc: 'Quick-render an avatar video',        icon: 'sparkle', go: () => { if (activeClientId) selectClientInline(activeClientId); setStep('render'); } },

@@ -352,6 +352,7 @@ export const api = {
   myTasks: () => vcReq('/alerts/my-tasks'),
   getActivity: (qs = '') => vcReq('/activity' + qs),
   productionReport: (qs = '') => vcReq('/report/production' + qs),
+  episodeStatus: (clientId) => vcReq('/episode-status' + (clientId ? `?clientId=${encodeURIComponent(clientId)}` : '')),
   airSchedule: (qs = '') => vcReq('/report/air-schedule' + qs),
   billingOverview: (qs = '') => vcReq('/billing/overview' + qs),
   setCastApproval: (id, railwayVideoId, status, title, extra) =>

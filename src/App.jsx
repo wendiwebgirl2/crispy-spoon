@@ -23,6 +23,7 @@ import { TalentView } from './talent.jsx'
 import { UserAccountView } from './account.jsx'
 import { MessagePopup } from './messages.jsx'
 import { useUnreadMessages } from './unreadMessages.js'
+import { PublishStatusView } from './publish-status.jsx'
 
 const NAV = [
   { id: 'clients',       label: 'Clients',        icon: 'avatars' },
@@ -54,6 +55,7 @@ const HEADER_TITLES = {
   talent:          { title: 'Talent library',  sub: 'generic AI announcers + voiceovers — castable for any client' },
   analytics:       { title: 'Analytics',       sub: 'YouTube + Facebook results — PDF overview for clients' },
   report:          { title: 'Production report', sub: 'all production in a date range — printable' },
+  'publish-status': { title: 'Publish status', sub: 'what is on air now and what is in production, per client' },
   'task-status':   { title: 'Task Status',     sub: 'onboarding tasks — check them off as you go' },
   activity:        { title: 'Activity log',    sub: 'every action across the dashboard — newest first' },
   account:         { title: 'Account',         sub: 'details, tasks and notes for one person' },
@@ -582,6 +584,10 @@ function App() {
             />
           )}
           {view === 'settings' && <SettingsView onOpenUser={(uid) => openAccount(uid, 'settings')} />}
+          {view === 'publish-status' && (
+            <PublishStatusView onBack={goStudio}
+              onOpen={(clientId, target) => { setActiveClientId(clientId); setView(target || 'planner'); }} />
+          )}
           {view === 'messages' && me && me.id && (
             <UserAccountView key={'messages-' + me.id} userId={me.id} messagesOnly
               onOpenClient={(cid) => { api.getClient(cid).then((c) => { setActiveClientId(cid); setDetailClient(c); setView('client-detail'); }).catch(() => {}); }} />
