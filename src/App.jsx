@@ -24,6 +24,7 @@ import { UserAccountView } from './account.jsx'
 import { MessagePopup } from './messages.jsx'
 import { useUnreadMessages } from './unreadMessages.js'
 import { PublishStatusView } from './publish-status.jsx'
+import { AdsView } from './ads.jsx'
 
 const NAV = [
   { id: 'clients',       label: 'Clients',        icon: 'avatars' },
@@ -34,6 +35,7 @@ const NAV = [
   { id: 'report',        label: 'Production',     icon: 'chart', roles: ['admin', 'manager'] },
   { id: 'talent',        label: 'Talent',         icon: 'avatars' },
   { id: 'analytics',     label: 'Analytics',      icon: 'chart' },
+  { id: 'ads',           label: 'Ads',            icon: 'megaphone' },
   { id: 'billing',       label: 'Billing',        icon: 'sliders' },
 ];
 
@@ -54,6 +56,7 @@ const HEADER_TITLES = {
   messages:        { title: 'Messages',        sub: 'private messages to and from you' },
   talent:          { title: 'Talent library',  sub: 'generic AI announcers + voiceovers — castable for any client' },
   analytics:       { title: 'Analytics',       sub: 'YouTube + Facebook results — PDF overview for clients' },
+  ads:             { title: 'Ads',             sub: 'Meta + Google ads for every client — draft to wrap' },
   report:          { title: 'Production report', sub: 'all production in a date range — printable' },
   'publish-status': { title: 'Publish status', sub: 'what is on air now and what is in production, per client' },
   'task-status':   { title: 'Task Status',     sub: 'onboarding tasks — check them off as you go' },
@@ -605,6 +608,7 @@ function App() {
           {view === 'talent' && <TalentView />}
           {view === 'analytics' && <AnalyticsView activeClientId={activeClientId} onSelectClient={setActiveClientId} />}
           {view === 'billing' && <BillingView />}
+          {view === 'ads' && <AdsView />}
         </section>
       </main>
     </div>

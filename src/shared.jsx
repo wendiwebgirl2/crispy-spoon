@@ -33,6 +33,7 @@ const Icon = ({ name, size = 16, stroke = 1.6, style }) => {
     case 'chart':     return <svg {...common}><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6" fill="currentColor" stroke="none"/><rect x="12" y="7" width="3" height="10" fill="currentColor" stroke="none"/><rect x="17" y="14" width="3" height="3" fill="currentColor" stroke="none"/></svg>;
     case 'history':   return <svg {...common}><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>;
     case 'lang':      return <svg {...common}><path d="m3 5 8-3 8 3-8 3-8-3z"/><path d="M3 5v6c0 4 4 7 8 8 4-1 8-4 8-8V5"/></svg>;
+    case 'megaphone': return <svg {...common}><path d="M3 10v4h4l6 4V6L7 10z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M18.5 6.5a8 8 0 0 1 0 11"/></svg>;
     case 'bell':      return <svg {...common}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>;
     default:          return <svg {...common}><circle cx="12" cy="12" r="9"/></svg>;
   }
