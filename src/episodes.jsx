@@ -1202,7 +1202,12 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
     const epKey = (v) => String(v == null ? '' : v).trim().replace(/^E/i, '');
     const archivedEps = new Set(archiveLog.map((a) => epKey(a.episode_number)).filter(Boolean));
     const doneScripts = new Set(list.filter((e) => e.script_id != null && (e.hasOutput || e.hasVideo) && e.air_date).map((e) => String(e.script_id)));
-    return approvedScripts.filter((s) => !doneScripts.has(String(s.id)) && !archivedEps.has(epKey(s.episode_number)));
+    // Ascending by episode #, then LF, SF1, SF2…, TV, Blog within an episode.
+    const order = { longform: 0, shortform: 1, tvradio: 2, blog: 3 };
+    const num = (s) => { const n = parseInt(epKey(s.episode_number), 10); return Number.isNaN(n) ? Infinity : n; };
+    return approvedScripts
+      .filter((s) => !doneScripts.has(String(s.id)) && !archivedEps.has(epKey(s.episode_number)))
+      .sort((a, b) => (num(a) - num(b)) || ((order[a.channel] ?? 9) - (order[b.channel] ?? 9)) || ((a.variant || 1) - (b.variant || 1)) || (a.id - b.id));
   }, [approvedScripts, list, archiveLog]);
 
   const load = () => {
