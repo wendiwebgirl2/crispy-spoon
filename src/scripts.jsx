@@ -133,9 +133,12 @@ const printScript = (h, label) => {
   w.document.write(`<!doctype html><html><head><title>${esc(h.title || h.topic || 'Script')}</title>
     <style>body{font-family:Georgia,serif;max-width:640px;margin:40px auto;color:#222;line-height:1.7}
     .meta{font-family:monospace;font-size:12px;color:#666;border-bottom:1px solid #ccc;padding-bottom:12px;margin-bottom:20px}
-    h1{font-size:22px;margin:0 0 6px} .body{white-space:pre-wrap;font-size:15px}</style></head><body>
+    h1{font-size:22px;margin:0 0 6px} .body{white-space:pre-wrap;font-size:15px}
+    .desc{white-space:pre-wrap;font-size:14px;margin:0 0 20px;padding:10px 14px;border-left:3px solid #8b0f05;background:#faf7f0}
+    .desc b{display:block;font-family:monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#666;margin-bottom:2px}</style></head><body>
     <h1>${esc(epPrefix(h) + (h.title || h.topic || 'Untitled'))}</h1>
     <div class="meta">${esc(label)}${h.variant ? ' · v' + h.variant : ''}${h.topic ? ' · topic: ' + esc(h.topic) : ''} · ${String(h.body || '').length.toLocaleString()} chars${h.created_at ? ' · ' + String(h.created_at).slice(0, 10) : ''}</div>
+    ${h.description && String(h.description).trim() ? `<div class="desc"><b>Description</b>${esc(String(h.description).trim())}</div>` : ''}
     <div class="body">${esc(h.body)}</div></body></html>`);
   w.document.close();
   w.focus();
