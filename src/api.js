@@ -87,6 +87,23 @@ export async function previewVoiceBlob(token, avatarId, body) {
   return URL.createObjectURL(await resp.blob());
 }
 
+// Pre-render check: the whole cast script in the exact voice the render will
+// use (ElevenLabs takes are reused by the render, so this costs nothing extra).
+// Returns { url, source } where source is 'elevenlabs' | 'heygen'.
+export async function previewCastAudio(token, script, avatarId) {
+  const resp = await fetch(API_BASE + "/api/videos/preview-audio", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, script, avatar_id: avatarId || null }),
+  });
+  const ct = resp.headers.get("content-type") || "";
+  if (!ct.includes("audio")) {
+    let msg = "HTTP " + resp.status;
+    try { const j = await resp.json(); msg = j.error || msg; } catch { /* keep */ }
+    throw new Error(msg);
+  }
+  return { url: URL.createObjectURL(await resp.blob()), source: resp.headers.get("x-preview-source") || "elevenlabs" };
+}
+
 // For multipart uploads (e.g. recordings). Pass a FormData instance;
 // the browser sets the multipart boundary header itself.
 export async function apiPostForm(path, formData) {

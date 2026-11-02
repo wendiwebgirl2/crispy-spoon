@@ -4,7 +4,7 @@
 // cast.cuecreative.com Episodes tab.
 
 import React from 'react'
-import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, castBoostedVideoBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
+import { api, generateVideo, previewCastAudio, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, castBoostedVideoBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
 import { clientToken, voice, ep } from './dashboard-api.js'
 import { fmtStamp, AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, buildMotionPrompt, uploadMany } from './shared.jsx'
 import { EpisodesView, scriptEpLabel } from './episodes.jsx'
@@ -40,7 +40,7 @@ const fmtWhen = (v) => {
   if (isNaN(d.getTime())) return String(v);
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 };
-const engineLabel = (e) => (e === 'avatar_v' ? 'Avatar V' : e === 'avatar_iv' ? 'Avatar IV' : '');
+const engineLabel = (e) => (e === 'avatar_v' ? 'Avatar V' : e === 'avatar_iv' ? 'Avatar IV' : e === 'avatar_iii' ? 'Avatar III' : '');
 
 // destination = where the finished piece goes. types = valid content shapes per
 // destination (each presets an aspect ratio). 'download' is always available so a
@@ -119,7 +119,14 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [scene, setScene] = React.useState('studio');
   const [language, setLanguage] = React.useState('EN');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
-  const [engine, setEngine] = React.useState('auto');  // 'auto' | 'avatar_v' | 'avatar_iv'
+  const [engine, setEngine] = React.useState('auto');  // 'auto' | 'avatar_v' | 'avatar_iv' | 'avatar_iii'
+  // Pre-render check (credit safety): Generate/Recast open this instead of
+  // rendering. take = the full-script voice preview; checks gate the Render button.
+  const [preflight, setPreflight] = React.useState(null);   // { kind: 'cast' | 'recast', script, avatarId, aspect }
+  const [take, setTake] = React.useState(null);              // { url, source, script, avatarId }
+  const [takeBusy, setTakeBusy] = React.useState(false);
+  const [takeErr, setTakeErr] = React.useState('');
+  const [checks, setChecks] = React.useState({ voice: false, look: false, final: false });
   const [expressiveness, setExpressiveness] = React.useState('low');  // 'low' | 'medium' | 'high'
   const [delivery, setDelivery] = React.useState('calm');
   const [customMotion, setCustomMotion] = React.useState('');
@@ -864,6 +871,33 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     }
   };
 
+  // —— pre-render check ——
+  // HeyGen's credit-safety habit, built in: hear the full script, check the
+  // look, and confirm everything is final before a single credit is spent.
+  const openPreflight = (kind) => {
+    const pScript = (kind === 'recast' ? editCastScript : script).trim();
+    if (!pScript) return;
+    setChecks({ voice: false, look: false, final: false });
+    setTakeErr('');
+    setPreflight({ kind, script: pScript, avatarId: kind === 'recast' ? (editCast && editCast.avatar_id) || null : avatarId, aspect: kind === 'recast' ? editCastAspect : aspectRatio });
+  };
+  const takeFresh = !!(take && preflight && take.script === preflight.script && take.avatarId === preflight.avatarId);
+  const loadTake = async () => {
+    if (!preflight || !token) return;
+    setTakeBusy(true); setTakeErr('');
+    try {
+      const r = await previewCastAudio(token, preflight.script, preflight.avatarId);
+      if (take && take.url) URL.revokeObjectURL(take.url);
+      setTake({ ...r, script: preflight.script, avatarId: preflight.avatarId });
+    } catch (e) { setTakeErr(e.message || 'Could not preview the voice.'); }
+    finally { setTakeBusy(false); }
+  };
+  const confirmRender = () => {
+    const kind = preflight && preflight.kind;
+    setPreflight(null);
+    if (kind === 'recast') recastVideo(); else generate();
+  };
+
   const ModeToggle = () => (
     <div className="row" style={{ gap: 4 }}>
       {[['video', 'Avatar video'], ['assembly', 'Episode assembly']].map(([m, label]) => (
@@ -1098,11 +1132,90 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   </div>
                   <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
                     <button className="btn sm" onClick={saveCastEdit}>Save title</button>
-                    <button className="btn primary sm" disabled={recasting || !editCastScript.trim()} onClick={recastVideo}><Icon name="sparkle" size={12} /> {recasting ? 'Recasting…' : 'Recast'}</button>
+                    <button className="btn primary sm" disabled={recasting || !editCastScript.trim()} onClick={() => openPreflight('recast')}><Icon name="sparkle" size={12} /> {recasting ? 'Recasting…' : 'Recast'}</button>
                   </div>
                 </div>
               </div>
             )}
+            {preflight && (() => {
+              const pAv = avatars.find((a) => a.id === preflight.avatarId) || avatar;
+              const img = pAv && (pAv.image_url || pAv.thumbnail_url);
+              const pWords = preflight.script.split(/\s+/).filter(Boolean).length;
+              const pSecs = Math.max(5, Math.round(pWords / 2.5));
+              const bgText = backgroundAssetId ? 'Background image' : (backgroundColor ? `Color ${backgroundColor}` : 'Default background');
+              const ready = checks.voice && checks.look && checks.final;
+              const check = (k, label, disabled) => (
+                <label className="row" style={{ gap: 8, alignItems: 'flex-start', fontSize: 13, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+                  <input type="checkbox" checked={checks[k]} disabled={disabled} onChange={(e) => setChecks((c) => ({ ...c, [k]: e.target.checked }))} style={{ marginTop: 2 }} />
+                  <span>{label}</span>
+                </label>
+              );
+              return (
+                <div onClick={() => setPreflight(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.6)', display: 'grid', placeItems: 'center', padding: 16, zIndex: 150 }}>
+                  <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(620px, 96vw)', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="label">PRE-RENDER CHECK</div>
+                      <button className="btn sm" onClick={() => setPreflight(null)}>Back to edit</button>
+                    </div>
+                    <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5 }}>
+                      Nothing is spent until you press Render. Fix anything that's off first, so credits only go on the final draft.
+                    </div>
+
+                    <div className="col" style={{ gap: 8 }}>
+                      <div className="label">1 · LISTEN TO THE FULL SCRIPT</div>
+                      {takeFresh
+                        ? <audio src={take.url} controls style={{ width: '100%' }} />
+                        : <button className="btn sm" onClick={loadTake} disabled={takeBusy} style={{ alignSelf: 'flex-start' }}>
+                            <Icon name="play" size={12} /> {takeBusy ? 'Preparing audio…' : 'Play full script'}
+                          </button>}
+                      {takeErr && <div className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>{takeErr}</div>}
+                      {takeFresh && (
+                        <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>
+                          {take.source === 'heygen'
+                            ? 'HeyGen free voice preview - close to the render voice.'
+                            : 'This exact take is reused by the render - the video says what you hear.'}
+                        </div>
+                      )}
+                      {check('voice', 'Pauses, pacing and pronunciation sound right', !takeFresh)}
+                    </div>
+
+                    <div className="col" style={{ gap: 8 }}>
+                      <div className="label">2 · CHECK THE LOOK</div>
+                      <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+                        {img && <img src={img} alt="avatar look" style={{ width: 160, maxHeight: 200, objectFit: 'contain', background: '#0a0a0a', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)' }} />}
+                        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                          <span className="badge">{engineLabel(engine) || 'Auto engine'}</span>
+                          <span className="badge">{preflight.aspect}</span>
+                          {preflight.kind === 'cast' && <span className="badge">{bgText}</span>}
+                          {preflight.kind === 'cast' && <span className="badge">{caption ? 'Captions on' : 'No captions'}</span>}
+                          {engine !== 'avatar_iii' && <span className="badge">{customMotion.trim() ? 'Custom delivery' : (DELIVERY_LABELS[delivery] || delivery)}</span>}
+                          {engine !== 'avatar_iii' && engine !== 'avatar_v' && <span className="badge">Expressiveness {expressiveness}</span>}
+                        </div>
+                      </div>
+                      {engine !== 'avatar_iii' && (
+                        <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12, color: 'var(--text-3)' }}>
+                          <span>Jewelry or accessories flickering in past renders? Avatar III keeps them steady.</span>
+                          <button className="btn sm" onClick={() => setEngine('avatar_iii')}>Use Avatar III</button>
+                        </div>
+                      )}
+                      {check('look', 'Framing, background and engine are right for this avatar')}
+                    </div>
+
+                    <div className="col" style={{ gap: 8 }}>
+                      <div className="label">3 · CONFIRM IT'S FINAL</div>
+                      {check('final', 'Script, layout and voice are final - this is the draft I want to pay for')}
+                    </div>
+
+                    <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      <span className="mono" style={{ fontSize: 12 }}>~{pSecs}s · {pWords} words · est. ${(pSecs * 0.04).toFixed(2)}</span>
+                      <button className="btn primary" disabled={!ready} onClick={confirmRender} style={{ opacity: ready ? 1 : 0.5 }}>
+                        <Icon name="sparkle" size={12} /> Render - spends credits
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
             {/* —— right rail: settings —— */}
             <div className="rail-aside-320" style={{ borderLeft: '1px solid var(--border)', padding: 'var(--pad)', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
               <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -1315,7 +1428,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
               </button>
               <div className="label" style={{ marginBottom: 10 }}>RENDER ENGINE</div>
               <div className="row" style={{ gap: 4, marginBottom: 6 }}>
-                {[{ k: 'auto', t: 'Auto' }, { k: 'avatar_v', t: 'Avatar V' }, { k: 'avatar_iv', t: 'Avatar IV' }].map(o => (
+                {[{ k: 'auto', t: 'Auto' }, { k: 'avatar_v', t: 'Avatar V' }, { k: 'avatar_iv', t: 'Avatar IV' }, { k: 'avatar_iii', t: 'Avatar III' }].map(o => (
                   <button key={o.k} onClick={() => { setEngine(o.k); if (o.k === 'avatar_v' && aspectRatio === '1:1') setAspectRatio('16:9'); }} className="btn sm"
                     style={{
                       flex: 1, justifyContent: 'center',
@@ -1330,15 +1443,17 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   ? 'Avatar V - preserves the photo\u2019s teeth/structure; minimal expression.'
                   : engine === 'avatar_iv'
                     ? 'Avatar IV - more expressive delivery, but photo twins can show the wide-smile glitch.'
-                    : 'Auto - Avatar V for photo twins (falls back to IV), Avatar IV for stock avatars.'}
+                    : engine === 'avatar_iii'
+                      ? 'Avatar III - steadiest render: jewelry and accessories stay put. Less animated; ignores Expressiveness and Delivery.'
+                      : 'Auto - Avatar V for photo twins (falls back to IV), Avatar IV for stock avatars.'}
               </div>
 
               <div className="label" style={{ marginBottom: 10 }}>EXPRESSIVENESS</div>
               <div className="row" style={{ gap: 4, marginBottom: 6 }}>
                 {[{ k: 'low', t: 'Low' }, { k: 'medium', t: 'Medium' }, { k: 'high', t: 'High' }].map(o => (
-                  <button key={o.k} onClick={() => setExpressiveness(o.k)} className="btn sm" disabled={engine === 'avatar_v'}
+                  <button key={o.k} onClick={() => setExpressiveness(o.k)} className="btn sm" disabled={engine === 'avatar_v' || engine === 'avatar_iii'}
                     style={{
-                      flex: 1, justifyContent: 'center', opacity: engine === 'avatar_v' ? 0.4 : 1,
+                      flex: 1, justifyContent: 'center', opacity: (engine === 'avatar_v' || engine === 'avatar_iii') ? 0.4 : 1,
                       background: expressiveness === o.k ? 'var(--surface-2)' : 'transparent',
                       borderColor: expressiveness === o.k ? 'var(--accent)' : 'var(--border)',
                       color: expressiveness === o.k ? 'var(--text)' : 'var(--text-2)'
@@ -1346,7 +1461,9 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 ))}
               </div>
               <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 22, lineHeight: 1.5 }}>
-                {engine === 'avatar_v'
+                {engine === 'avatar_iii'
+                  ? 'Avatar III ignores expressiveness.'
+                  : engine === 'avatar_v'
                   ? 'Avatar V ignores expressiveness \u2014 use Delivery below, or switch to Avatar IV.'
                   : 'Applies to Avatar IV. Higher = more animated gestures and face.'}
               </div>
@@ -1367,7 +1484,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 placeholder="Custom delivery, overrides preset - e.g. laughs, then leans in warmly"
                 style={{ minHeight: 0, height: 36, fontSize: 12, marginBottom: 6 }} />
               <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 22, lineHeight: 1.5 }}>
-                Drives gestures + expression on both engines. Laughing lands best on Avatar IV + High; on Avatar V a big laugh can bring back the wide-smile glitch.
+                {engine === 'avatar_iii' ? 'Avatar III ignores Delivery - it renders a steady, neutral read. ' : ''}Drives gestures + expression on Avatar IV and V. Laughing lands best on Avatar IV + High; on Avatar V a big laugh can bring back the wide-smile glitch.
               </div>
 
               <div className="label" style={{ marginBottom: 10 }}>LANGUAGE</div>
@@ -1399,7 +1516,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
               </div>
 
               {castType === 'video' ? (
-                <button className="btn primary lg" onClick={generate} disabled={!canGenerate}
+                <button className="btn primary lg" onClick={() => openPreflight('cast')} disabled={!canGenerate}
                   style={{ justifyContent: 'center', opacity: canGenerate ? 1 : 0.5 }}>
                   {generating
                     ? <>Queueing…</>

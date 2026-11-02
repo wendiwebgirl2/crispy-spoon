@@ -192,7 +192,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [castAvatarId, setCastAvatarId] = useState(null);
   const [castLoadingAv, setCastLoadingAv] = useState(false);
   const [castAspect, setCastAspect] = useState('auto');     // 'auto' | '16:9' | '9:16' | '1:1'
-  const [castEngine, setCastEngine] = useState('auto');     // 'auto' | 'avatar_v' | 'avatar_iv'
+  const [castEngine, setCastEngine] = useState('auto');     // 'auto' | 'avatar_v' | 'avatar_iv' | 'avatar_iii'
   const [castExpr, setCastExpr] = useState('low');          // 'low' | 'medium' | 'high'
   const [castDelivery, setCastDelivery] = useState('calm');
   const [castProgress, setCastProgress] = useState(null);   // { done, total, failed: [] }
@@ -1192,11 +1192,12 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   <option value="auto">Auto</option>
                   <option value="avatar_v">Avatar V</option>
                   <option value="avatar_iv">Avatar IV</option>
+                  <option value="avatar_iii">Avatar III (steady)</option>
                 </select>
               </label>
               <label className="col" style={{ gap: 4 }}>
                 <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Expressiveness</span>
-                <select value={castExpr} onChange={(e) => setCastExpr(e.target.value)} style={{ ...inputStyle, width: 130 }}>
+                <select value={castExpr} onChange={(e) => setCastExpr(e.target.value)} disabled={castEngine === 'avatar_iii'} title={castEngine === 'avatar_iii' ? 'Avatar III ignores this setting' : undefined} style={{ ...inputStyle, width: 130 }}>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -1204,7 +1205,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
               </label>
               <label className="col" style={{ gap: 4 }}>
                 <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Delivery</span>
-                <select value={castDelivery} onChange={(e) => setCastDelivery(e.target.value)} style={{ ...inputStyle, width: 140 }}>
+                <select value={castDelivery} onChange={(e) => setCastDelivery(e.target.value)} disabled={castEngine === 'avatar_iii'} title={castEngine === 'avatar_iii' ? 'Avatar III ignores this setting' : undefined} style={{ ...inputStyle, width: 140 }}>
                   {['calm', 'warm', 'energetic', 'laughing', 'serious'].map((d) => <option key={d} value={d}>{d[0].toUpperCase() + d.slice(1)}</option>)}
                 </select>
               </label>
