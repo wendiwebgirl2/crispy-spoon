@@ -679,7 +679,11 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       if (t && !g.topics.some((x) => x.toLowerCase() === t.toLowerCase())) g.topics.push(t);
       if (h.created_at && (!g.date || h.created_at > g.date)) g.date = h.created_at;
     }
+    // Within a card: LF on top, then SF1, SF2…, TV/Radio, Blog (a translation
+    // sits right after its original, by id).
+    const chOrder = { longform: 0, shortform: 1, tvradio: 2, blog: 3 };
     for (const g of groups.values()) {
+      g.items.sort((a, b) => ((chOrder[a.channel] ?? 9) - (chOrder[b.channel] ?? 9)) || ((a.variant || 1) - (b.variant || 1)) || (a.id - b.id));
       g.topic = g.topics.join(' / ') || 'Untitled topic';
       // Rename/delete-by-topic act on every script with that topic, so only
       // offer rename when this card holds all of them (one topic, no spill
