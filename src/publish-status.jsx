@@ -134,20 +134,22 @@ export function PublishStatusView({ onOpen, onBack }) {
   );
 }
 
-// One-line version for the top of a client page: "E18 on air · E19 in production (stage)".
-export function PublishStatusLine({ clientId, onOpen }) {
+// One-line status for the header, beside the client name, so it's visible
+// from every page: "E18 on air · E19 in production (stage)". `refreshKey`
+// re-fetches when it changes (the app passes the current view).
+export function PublishStatusLine({ clientId, onOpen, refreshKey }) {
   const [row, setRow] = React.useState(null);
   React.useEffect(() => {
     let live = true;
+    if (clientId == null) { setRow(null); return undefined; }
     api.episodeStatus(clientId).then((r) => { if (live) setRow(Array.isArray(r) ? r[0] || null : null); }).catch(() => {});
     return () => { live = false; };
-  }, [clientId]);
+  }, [clientId, refreshKey]);
   if (!row || !row.hasEpisodes) return null;
   return (
-    <div className="card" style={{ padding: '10px 14px', marginBottom: 16, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-      <span className="label" style={{ margin: 0 }}>PUBLISH STATUS</span>
-      <span style={{ fontSize: 14 }}>
-        {row.current ? <><b>E{row.current.num}</b> on air <span className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>(aired {fmtDay(row.current.airDate)})</span></> : <span style={{ color: 'var(--text-3)' }}>Nothing aired yet</span>}
+    <div className="row" style={{ gap: 8, alignItems: 'center', whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden', fontSize: 13 }} title="Publish status">
+      <span>
+        {row.current ? <><b>E{row.current.num}</b> on air <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>({fmtDay(row.current.airDate)})</span></> : <span style={{ color: 'var(--text-3)' }}>Nothing aired yet</span>}
       </span>
       <span style={{ color: 'var(--text-4)' }}>·</span>
       {row.next ? (

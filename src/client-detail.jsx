@@ -1,7 +1,6 @@
 import React from 'react'
 import { Icon } from './shared.jsx'
 import { BriefView } from './brief.jsx'
-import { PublishStatusLine } from './publish-status.jsx'
 
 // Client workspace. The Brief is edited here; every other area has a single
 // source elsewhere (Scripts / Invitations / Episodes views, and Studio for
@@ -40,7 +39,6 @@ function ClientDetailView({ client, onBack, onOpenStudio, onNavigate, onSendTopi
       <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 32, lineHeight: 1.1, margin: '6px 0 16px' }}>
         {client.name}
       </h1>
-      <PublishStatusLine clientId={client.id} onOpen={(target) => go(target)} />
 
       <div className="row" style={{ gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
         {NAV.map((t) => (

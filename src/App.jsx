@@ -23,7 +23,7 @@ import { TalentView } from './talent.jsx'
 import { UserAccountView } from './account.jsx'
 import { MessagePopup } from './messages.jsx'
 import { useUnreadMessages } from './unreadMessages.js'
-import { PublishStatusView } from './publish-status.jsx'
+import { PublishStatusView, PublishStatusLine } from './publish-status.jsx'
 import { AdsView } from './ads.jsx'
 
 const NAV = [
@@ -537,6 +537,7 @@ function App() {
               CLIENT · {activeClientName}
             </div>
           )}
+          {activeClientId != null && <PublishStatusLine clientId={activeClientId} refreshKey={view} onOpen={(target) => setView(target)} />}
           {activeClientId != null && ['studio', 'scripts', 'episodes', 'recordings', 'planner', 'episode-log'].includes(view) && (
             <button
               className="btn sm"

@@ -1185,7 +1185,12 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
     api.listScripts(activeClientId)
       .then((r) => {
         const rows = Array.isArray(r) ? r : (r && r.scripts ? r.scripts : []);
-        setApprovedScripts(rows.filter((s) => s.status !== 'archived' && (s.status === 'approved' || (s.approval_status || '').startsWith('approved') || s.approval_status === 'in_production')));
+        const isApproved = (s) => s.status === 'approved' || (s.approval_status || '').startsWith('approved') || s.approval_status === 'in_production';
+        // One approval covers the whole episode group (approved on the longform),
+        // so shortforms / TV pieces sharing an approved episode number count too.
+        const epKey = (v) => String(v == null ? '' : v).trim().replace(/^E/i, '');
+        const approvedEps = new Set(rows.filter(isApproved).map((s) => epKey(s.episode_number)).filter(Boolean));
+        setApprovedScripts(rows.filter((s) => s.status !== 'archived' && (isApproved(s) || approvedEps.has(epKey(s.episode_number)))));
       })
       .catch(() => setApprovedScripts([]));
   }, [activeClientId]);
@@ -1230,7 +1235,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
       setErr('');
       try {
         const title = (episodeRequest.title || 'New episode').slice(0, 120);
-        const e = await ep.create(cid, title);
+        const e = await ep.create(cid, title, episodeRequest.topic || undefined, episodeRequest.jobNumber || undefined, episodeRequest.scriptId ?? null);
         if (episodeRequest.kind === 'video' && episodeRequest.videoUrl) {
           await ep.useVideo(cid, e.id, 'body', episodeRequest.videoUrl);
         } else if (episodeRequest.kind === 'recording' && episodeRequest.recordingId) {
@@ -1500,4 +1505,4 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   );
 }
 
-export { EpisodesView };
+export { EpisodesView, scriptEpLabel };

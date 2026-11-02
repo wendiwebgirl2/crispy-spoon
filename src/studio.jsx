@@ -5,9 +5,9 @@
 
 import React from 'react'
 import { api, generateVideo, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, castBoostedVideoBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
-import { clientToken, voice } from './dashboard-api.js'
-import { fmtStamp, AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, ApprovalMethodModal, buildMotionPrompt, uploadMany } from './shared.jsx'
-import { EpisodesView } from './episodes.jsx'
+import { clientToken, voice, ep } from './dashboard-api.js'
+import { fmtStamp, AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, buildMotionPrompt, uploadMany } from './shared.jsx'
+import { EpisodesView, scriptEpLabel } from './episodes.jsx'
 import { LookPicker, AssetsSection } from './brief.jsx'
 import { NewLookPanel } from './talent.jsx'
 
@@ -72,7 +72,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   // between renders and blank the page.
   const [buildingTwin, setBuildingTwin] = React.useState(false);
   const [cloningVoice, setCloningVoice] = React.useState(false);
-  const [askApproveCast, setAskApproveCast] = React.useState(null);   // must live above the early returns below (React #310)
+  const [stitchRequest, setStitchRequest] = React.useState(null);     // cast handed to Episode assembly (same rule)
 
   // Approval state lives in voicecast, keyed on the Railway video id.
   // These hooks must stay above the `if (!clientId) return` early return below:
@@ -90,8 +90,6 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
 
   React.useEffect(() => { refreshCastMeta(); }, [refreshCastMeta]);
   const [castType, setCastType] = React.useState('video');   // 'video' (HeyGen) | 'audio' (ElevenLabs)
-  const [sendCast, setSendCast] = React.useState(null);      // cast being sent for review (opens the modal)
-  const [sendingCast, setSendingCast] = React.useState(false);
   const [editCast, setEditCast] = React.useState(null);
   const [editCastTitle, setEditCastTitle] = React.useState('');
   const [editCastScript, setEditCastScript] = React.useState('');
@@ -641,50 +639,40 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     try { const v = await listVideos(token); setQueue(v.videos || []); } catch { /* ignore */ }
     refreshCastMeta();
   };
-  const approveCast = (v) => setAskApproveCast(v);
-  const doApproveCast = async (v, extra) => {
+  // Casts aren't sent for approval (the episode group was approved on its
+  // script) - they go straight to stitching. Opens Episode assembly with the
+  // cast as the body, linked to its script so it groups under the episode #.
+  const stitchCast = async (v) => {
+    const m = castMeta[v.id] || {};
+    let s = null;
+    if (m.script_id) {
+      try {
+        const r = await api.listScripts(clientId);
+        const rows = Array.isArray(r) ? r : (r && r.scripts ? r.scripts : []);
+        s = rows.find((x) => x.id === m.script_id) || null;
+      } catch { /* fall back to the cast title */ }
+    }
     try {
-      await api.setCastApproval(clientId, v.id, 'approved', v.title || null, extra);
-      await refreshCastMeta();
-    } catch (e) { window.alert('Could not approve: ' + e.message); }
-  };
-
-  const verifyCastChanges = async (v) => {
-    try {
-      await api.setCastApproval(clientId, v.id, 'changes_completed', v.title || null);
-      await refreshCastMeta();
-    } catch (e) { window.alert('Could not mark changes verified: ' + e.message); }
-  };
-
-  // Opens the send-for-review modal (email + note) for this cast.
-  const sendCastForReview = (v) => setSendCast(v);
-  // Called by the modal's Send with the entered email + note.
-  const doSendCast = async (email, note) => {
-    if (!sendCast) return;
-    setSendingCast(true);
-    try {
-      const r = await api.sendCastForReview(clientId, sendCast.id, sendCast.title || null, email || undefined, note || undefined);
-      setSendCast(null);
-      if (r && r.email && r.email.sent) {
-        window.alert('Review link sent.');
-      } else {
-        window.alert('Marked pending, but the email did not send: '
-          + ((r && r.email && r.email.error) || 'unknown')
-          + (r && r.review_link ? '\n\nLink: ' + r.review_link : ''));
+      const eps = await ep.list(clientId);
+      const list = Array.isArray(eps) ? eps : (eps && eps.episodes) || [];
+      const existing = s && list.find((e) => e.script_id === s.id);
+      if (existing) {
+        if (window.confirm(`"${existing.title}" already exists for this script. Use this cast as its body?\n\nOK = replace the body with this cast. Cancel = just open it.`)) {
+          await ep.useVideo(clientId, existing.id, 'body', v.url, v.title || undefined);
+        }
+        setStitchRequest({ openId: existing.id });
+        setRenderMode('assembly');
+        return;
       }
-      await refreshCastMeta();
-    } catch (e) { window.alert('Could not send: ' + e.message); }
-    finally { setSendingCast(false); }
-  };
-
-  const addCastToPlanner = async (v) => {
-    const when = window.prompt('Schedule for which date? (YYYY-MM-DD, or leave blank to add as a draft)', '');
-    if (when === null) return;
-    try {
-      await api.addCastToPlanner(clientId, v.id, v.title || null, when.trim() || undefined);
-      window.alert(when.trim() ? 'Added to the Planner for ' + when.trim() + '.' : 'Added to the Planner as a draft.');
-      await refreshCastMeta();
-    } catch (e) { window.alert('Could not add to planner: ' + e.message); }
+    } catch { /* if the lookup fails, start a new episode below */ }
+    setStitchRequest({
+      kind: 'video', videoUrl: v.url,
+      title: s ? scriptEpLabel(s) : (v.title || 'Episode'),
+      topic: (s && s.topic && s.topic.trim()) || undefined,
+      jobNumber: (s && s.job_number) || m.job_number || undefined,
+      scriptId: s ? s.id : null,
+    });
+    setRenderMode('assembly');
   };
 
   // Build a twin from a recording that does not have one yet.
@@ -933,7 +921,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       </div>
 
       {renderMode === 'assembly'
-        ? <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}><EpisodesView activeClientId={clientId} /></div>
+        ? <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}><EpisodesView activeClientId={clientId} episodeRequest={stitchRequest} onEpisodeRequestConsumed={() => setStitchRequest(null)} /></div>
         : (
           <div className="rail-320" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', flex: 1, minHeight: 0 }}>
             {/* —— center: script editor + queue —— */}
@@ -1073,14 +1061,12 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                       onRename={() => renameCast(v)} onEdit={() => openEditCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} onWaveform={() => downloadWaveform(v)}
                       // onBoost disabled for now — see the Volume dropdown comment above.
                       // onBoost={() => downloadBoosted(v)}
-                      onApprove={() => approveCast(v)} onVerifyChanges={() => verifyCastChanges(v)} onSend={() => sendCastForReview(v)} onPlanner={() => addCastToPlanner(v)} />
+                      onStitch={() => stitchCast(v)} />
                   ))}
                 </div>
               )}
             </div>
 
-            <ApprovalMethodModal open={!!askApproveCast} title={askApproveCast ? (askApproveCast.title || '') : ''} onClose={() => setAskApproveCast(null)} onConfirm={async (x) => { const v = askApproveCast; setAskApproveCast(null); await doApproveCast(v, x); }} />
-            <SendReviewModal open={!!sendCast} title={sendCast ? (sendCast.title || '') : ''} busy={sendingCast} onSend={doSendCast} onClose={() => setSendCast(null)} />
 
             {editCast && (
               <div onClick={() => setEditCast(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
@@ -1730,7 +1716,7 @@ const Crumb = ({ label, onClick }) => (
   </button>
 );
 
-const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDownloadAudio, onWaveform, onBoost, onApprove, onVerifyChanges, onSend, onPlanner }) => {
+const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDownloadAudio, onWaveform, onBoost, onStitch }) => {
   const avatar = (avatars || []).find(a => a.id === video.avatarId) || { id: video.avatarId || 'na', contact: video.title || 'Avatar' };
   const ready = video.status === 'ready' && video.url;
   return (
@@ -1803,14 +1789,7 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
         </div>
         {ready && (
           <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-            {onVerifyChanges && (meta || {}).approval_status === 'changes_requested' && (
-              <button className="btn sm" onClick={onVerifyChanges} style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}><Icon name="check" size={12} /> Changes verified</button>
-            )}
-            {onApprove && !['approved', 'approved_with_changes'].includes((meta || {}).approval_status) && (
-              <button className="btn sm" onClick={onApprove}><Icon name="check" size={12} /> Approve</button>
-            )}
-            {onSend && <button className="btn sm" onClick={onSend}><Icon name="send" size={12} /> {(meta || {}).approval_sent_at ? 'Resend for review' : 'Send for review'}</button>}
-            {onPlanner && <button className="btn sm" onClick={onPlanner}><Icon name="history" size={12} /> Add to planner</button>}
+            {onStitch && <button className="btn sm primary" onClick={onStitch}><Icon name="studio" size={12} /> Stitch an episode</button>}
           </div>
         )}
       </div>
