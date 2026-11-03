@@ -398,6 +398,8 @@ export const api = {
   talentStock: (pageToken) => vcReq(`/talent/stock${pageToken ? `?token=${encodeURIComponent(pageToken)}` : ''}`),
   talentStockLooks: (groupId) => vcReq(`/talent/stock/${encodeURIComponent(groupId)}/looks`),
   talentCreate: (payload) => vcReq(`/talent`, { method: "POST", body: JSON.stringify(payload) }),
+  // Multipart (video file): headers {} drops the JSON content type so the browser sets the boundary.
+  talentFromVideo: (formData) => vcReq(`/talent/from-video`, { method: "POST", body: formData, headers: {} }),
   talentUpdate: (id, payload) => vcReq(`/talent/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(payload) }),
   talentDelete: (id) => vcReq(`/talent/${encodeURIComponent(id)}`, { method: "DELETE" }),
   talentLooks: (groupId) => vcReq(`/talent/looks?group_id=${encodeURIComponent(groupId)}`),

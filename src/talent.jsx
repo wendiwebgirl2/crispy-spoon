@@ -5,7 +5,8 @@ import { api } from './api.js'
 
 // Talent Library — agency-wide generic AI avatars for announcers and
 // voiceovers (no digital twin), castable for any client in Studio. Add from
-// HeyGen stock, from one photo, or from a text description; voice is always an
+// HeyGen stock, from one photo, from a video (frame + cloned voice, like a
+// client recording), or from a text description; voice is always an
 // ElevenLabs voice. Looks (new outfits/sets) are generated here too, so the
 // HeyGen dashboard is only needed for its subscription-only features.
 
@@ -378,7 +379,9 @@ function StockBrowser({ onPickLook }) {
 }
 
 function AddTalent({ voices, onAdded }) {
-  const [source, setSource] = useState('stock');
+  // Describe is the default so the page doesn't load HeyGen's stock catalog
+  // until someone actually opens that option.
+  const [source, setSource] = useState('prompt');
   const [name, setName] = useState('');
   const [look, setLook] = useState(null);      // stock pick
   const [photo, setPhoto] = useState(null);
@@ -386,12 +389,40 @@ function AddTalent({ voices, onAdded }) {
   const [refs, setRefs] = useState([null, null, null]);
   const [aspect, setAspect] = useState('16:9');
   const [voice, setVoice] = useState(null);
+  const [video, setVideo] = useState(null);    // { file, url }
+  const [frameTime, setFrameTime] = useState(3);
+  const [cloneVoice, setCloneVoice] = useState(true);
+  const videoRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const ready = name.trim() && (source === 'stock' ? look : source === 'photo' ? photo : prompt.trim());
+  const [note, setNote] = useState('');
+  const ready = name.trim() && (source === 'stock' ? look : source === 'photo' ? photo : source === 'video' ? video : prompt.trim());
+  const pickVideo = (file) => {
+    if (video) URL.revokeObjectURL(video.url);
+    if (!file) { setVideo(null); return; }
+    if (!/^video\//.test(file.type)) { setErr('Please choose a video file'); return; }
+    if (file.size > 500 * 1024 * 1024) { setErr('Video is too large (500 MB max)'); return; }
+    setErr(''); setFrameTime(3);
+    setVideo({ file, url: URL.createObjectURL(file) });
+    if (!name.trim()) setName(file.name.replace(/\.[^.]+$/, ''));
+  };
+  const fmtT = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
   const submit = async () => {
-    setErr(''); setBusy(true);
+    setErr(''); setNote(''); setBusy(true);
     try {
+      if (source === 'video') {
+        const fd = new FormData();
+        fd.append('name', name.trim());
+        fd.append('frame_time', String(frameTime));
+        fd.append('clone_voice', cloneVoice ? '1' : '0');
+        if (!cloneVoice && voice) { fd.append('voice_id', voice.voice_id); fd.append('voice_name', voice.name); }
+        fd.append('video', video.file);
+        const r = await api.talentFromVideo(fd);
+        if (r && r.voice_error) setNote(r.voice_error);
+        pickVideo(null); setName(''); setVoice(null);
+        if (onAdded) onAdded();
+        return;
+      }
       const body = { name: name.trim(), source, voice_id: voice && voice.voice_id, voice_name: voice && voice.name };
       if (source === 'stock') body.look_id = look.id;
       if (source === 'photo') Object.assign(body, { image_base64: photo.base64, image_mime: photo.mime });
@@ -406,7 +437,7 @@ function AddTalent({ voices, onAdded }) {
     <div className="card card-pad" style={{ marginBottom: 16 }}>
       <div className="label" style={{ marginBottom: 10 }}>ADD TALENT</div>
       <div className="row" style={{ gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-        {[['stock', 'HeyGen stock avatar'], ['photo', 'From a photo'], ['prompt', 'Describe a person']].map(([k, l]) => (
+        {[['prompt', 'Describe a person'], ['video', 'From a video'], ['photo', 'From a photo'], ['stock', 'HeyGen stock avatar']].map(([k, l]) => (
           <button key={k} className="btn sm" onClick={() => setSource(k)} style={{ borderColor: source === k ? 'var(--accent)' : undefined }}>{l}</button>
         ))}
       </div>
@@ -422,6 +453,32 @@ function AddTalent({ voices, onAdded }) {
           <ImagePick label="Choose photo" value={photo} onChange={setPhoto} />
           <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 6 }}>
             One clear, front-facing portrait. Only use a photo of someone who has agreed to be an AI avatar (or a properly licensed stock photo).
+          </div>
+        </div>
+      )}
+      {source === 'video' && (
+        <div style={{ marginBottom: 10 }}>
+          <input key={video ? 'picked' : 'empty'} type="file" accept="video/*" onChange={(e) => pickVideo(e.target.files[0])} style={{ fontSize: 12, marginBottom: 8 }} />
+          {video && (
+            <>
+              <video ref={videoRef} src={video.url} controls preload="metadata"
+                onLoadedMetadata={(e) => { const d = e.currentTarget.duration; if (d && d < 3) setFrameTime(0); }}
+                style={{ width: '100%', maxHeight: 320, background: '#0a0a0a', borderRadius: 'var(--r-sm)', display: 'block', marginBottom: 6 }} />
+              <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button className="btn sm" onClick={() => videoRef.current && setFrameTime(Math.round(videoRef.current.currentTime * 10) / 10)}>Use this frame</button>
+                <span className="mono" style={{ fontSize: 12 }}>Avatar frame: {fmtT(frameTime)}</span>
+              </div>
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', margin: '6px 0' }}>
+                Pause on a clear, front-facing moment (eyes open, mouth relaxed), then press Use this frame.
+              </div>
+            </>
+          )}
+          <label className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={cloneVoice} onChange={(e) => setCloneVoice(e.target.checked)} />
+            <span>Clone the voice from this video (uses one ElevenLabs voice slot)</span>
+          </label>
+          <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 6 }}>
+            Only use video of someone who has agreed to be an AI avatar and voice. A minute or more of clean speech gives the best voice.
           </div>
         </div>
       )}
@@ -441,15 +498,20 @@ function AddTalent({ voices, onAdded }) {
           </select>
         </div>
       )}
-      <div className="label" style={{ margin: '6px 0 6px' }}>VOICE (ELEVENLABS){voice ? ` — ${voice.name}` : ''}</div>
-      <VoicePicker voices={voices} value={voice && voice.voice_id} onPick={setVoice} />
+      {!(source === 'video' && cloneVoice) && (
+        <>
+          <div className="label" style={{ margin: '6px 0 6px' }}>VOICE (ELEVENLABS){voice ? ` — ${voice.name}` : ''}</div>
+          <VoicePicker voices={voices} value={voice && voice.voice_id} onPick={setVoice} />
+        </>
+      )}
       <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 12 }}>
         <button className="btn primary sm" disabled={!ready || busy} onClick={submit} style={{ opacity: !ready || busy ? 0.6 : 1 }}>
-          <Icon name="plus" size={12} /> {busy ? 'Adding…' : 'Add to talent library'}
+          <Icon name="plus" size={12} /> {busy ? (source === 'video' ? 'Uploading and building…' : 'Adding…') : 'Add to talent library'}
         </button>
         {source !== 'stock' && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Uses HeyGen API credits.</span>}
       </div>
       {err && <div className="mono" style={{ marginTop: 8, fontSize: 12, color: 'var(--accent)' }}>{err}</div>}
+      {note && <div className="mono" style={{ marginTop: 8, fontSize: 12, color: 'var(--warn)' }}>Added, but: {note}</div>}
     </div>
   );
 }
@@ -473,7 +535,7 @@ function TalentCard({ t, voices, onChanged }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600 }}>{t.name}</div>
           <div className="mono" style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-            {{ stock: 'HeyGen stock', photo: 'from photo', prompt: 'described' }[t.source] || t.source}
+            {{ stock: 'HeyGen stock', photo: 'from photo', video: 'from video', prompt: 'described' }[t.source] || t.source}
             {' · '}<span style={{ color: stColor }}>{st}</span>
             {t.voice_name ? ` · voice: ${t.voice_name} (${VOICE_MODELS.find(([k]) => k === voiceModelOf(t.voice_v3))[1]})` : ''}
           </div>
