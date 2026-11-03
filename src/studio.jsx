@@ -6,7 +6,7 @@
 import React from 'react'
 import { api, generateVideo, previewCastAudio, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, castBoostedVideoBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
 import { clientToken, voice, ep } from './dashboard-api.js'
-import { fmtStamp, AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, buildMotionPrompt, uploadMany } from './shared.jsx'
+import { fmtStamp, AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, buildMotionPrompt, uploadMany } from './shared.jsx'
 import { EpisodesView, scriptEpLabel } from './episodes.jsx'
 import { LookPicker, AssetsSection } from './brief.jsx'
 import { NewLookPanel } from './talent.jsx'
@@ -72,6 +72,8 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   // between renders and blank the page.
   const [buildingTwin, setBuildingTwin] = React.useState(false);
   const [cloningVoice, setCloningVoice] = React.useState(false);
+  const [sendCast, setSendCast] = React.useState(null);      // cast being sent to the client for preview (opens the modal)
+  const [sendingCast, setSendingCast] = React.useState(false);
   const [stitchRequest, setStitchRequest] = React.useState(null);     // cast handed to Episode assembly (same rule)
 
   // Approval state lives in voicecast, keyed on the Railway video id.
@@ -646,6 +648,25 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     try { const v = await listVideos(token); setQueue(v.videos || []); } catch { /* ignore */ }
     refreshCastMeta();
   };
+  // Send a cast to the client to preview: emails them the cast review link.
+  // Called by the modal's Send with the entered email + note.
+  const doSendCast = async (email, note) => {
+    if (!sendCast) return;
+    setSendingCast(true);
+    try {
+      const r = await api.sendCastForReview(clientId, sendCast.id, sendCast.title || null, email || undefined, note || undefined);
+      setSendCast(null);
+      if (r && r.email && r.email.sent) {
+        window.alert('Preview link sent.');
+      } else {
+        window.alert('Saved, but the email did not send: '
+          + ((r && r.email && r.email.error) || 'unknown')
+          + (r && r.review_link ? '\n\nLink: ' + r.review_link : ''));
+      }
+      await refreshCastMeta();
+    } catch (e) { window.alert('Could not send: ' + e.message); }
+    finally { setSendingCast(false); }
+  };
   // Casts aren't sent for approval (the episode group was approved on its
   // script) - they go straight to stitching. Opens Episode assembly with the
   // cast as the body, linked to its script so it groups under the episode #.
@@ -1095,11 +1116,12 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                       onRename={() => renameCast(v)} onEdit={() => openEditCast(v)} onDelete={() => deleteCast(v)} onDownloadAudio={() => downloadAudio(v)} onWaveform={() => downloadWaveform(v)}
                       // onBoost disabled for now — see the Volume dropdown comment above.
                       // onBoost={() => downloadBoosted(v)}
-                      onStitch={() => stitchCast(v)} />
+                      onStitch={() => stitchCast(v)} onSend={() => setSendCast(v)} />
                   ))}
                 </div>
               )}
             </div>
+            <SendReviewModal open={!!sendCast} title={sendCast ? (sendCast.title || '') : ''} busy={sendingCast} onSend={doSendCast} onClose={() => setSendCast(null)} />
 
 
             {editCast && (
@@ -1833,7 +1855,7 @@ const Crumb = ({ label, onClick }) => (
   </button>
 );
 
-const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDownloadAudio, onWaveform, onBoost, onStitch }) => {
+const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDownloadAudio, onWaveform, onBoost, onStitch, onSend }) => {
   const avatar = (avatars || []).find(a => a.id === video.avatarId) || { id: video.avatarId || 'na', contact: video.title || 'Avatar' };
   const ready = video.status === 'ready' && video.url;
   return (
@@ -1907,6 +1929,7 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
         {ready && (
           <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
             {onStitch && <button className="btn sm primary" onClick={onStitch}><Icon name="studio" size={12} /> Stitch an episode</button>}
+            {onSend && <button className="btn sm" onClick={onSend}><Icon name="send" size={12} /> {(meta || {}).approval_sent_at ? 'Resend for preview' : 'Send for preview'}</button>}
           </div>
         )}
       </div>
