@@ -217,10 +217,10 @@ const AiCheckView = ({ activeClientId, onSelectClient }) => {
         <div className="row" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           {clientPicker}
           {ov.engines.map((e) => (
-            <label key={e.id} className="row mono" title={e.configured ? `model ${e.model}` : `Add ${e.keyName} to the server env file to turn this on`}
+            <label key={e.id} className="row mono" title={e.configured ? `model ${e.model}${e.via ? ` via ${e.via}` : ''}` : `Add ${e.keyName} to the server env file to turn this on`}
               style={{ gap: 6, alignItems: 'center', fontSize: 12, opacity: e.configured ? 1 : 0.45, cursor: e.configured ? 'pointer' : 'not-allowed', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '6px 9px' }}>
               <input type="checkbox" disabled={!e.configured || isRunning} checked={!!(e.configured && pick[e.id])} onChange={(ev) => setPick((p) => ({ ...p, [e.id]: ev.target.checked }))} />
-              <Dot engine={e.id} /> {e.label}{!e.configured && ' (not set up)'}
+              <Dot engine={e.id} /> {e.label}{e.via && <span style={{ color: 'var(--text-4)' }}> · via {e.via}</span>}{!e.configured && ' (not set up)'}
             </label>
           ))}
         </div>
