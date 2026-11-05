@@ -19,14 +19,17 @@ const fmtWhen = (s) => {
   const d = new Date(String(s).replace(' ', 'T') + (String(s).includes('Z') ? '' : 'Z'));
   return isNaN(d.getTime()) ? String(s) : d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 };
+const dlt = (now, base) => (now == null || base == null ? null : now - base);
+const dltS = (v) => (v == null ? null : v === 0 ? 'no change vs baseline' : `${v > 0 ? '+' : ''}${v} pts vs baseline`);
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 
-function Tile({ label, value, sub }) {
+function Tile({ label, value, sub, delta }) {
   return (
     <div className="card card-pad" style={{ flex: '1 1 150px', minWidth: 140 }}>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 26, lineHeight: 1.1 }}>{value}</div>
       <div className="label" style={{ marginTop: 6 }}>{label}</div>
       {sub && <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 4 }}>{sub}</div>}
+      {delta != null && <div className="mono" style={{ fontSize: 11, marginTop: 4, color: delta > 0 ? 'var(--ok)' : delta < 0 ? 'var(--warn)' : 'var(--text-4)' }}>{dltS(delta)}</div>}
     </div>
   );
 }
@@ -112,6 +115,9 @@ const AiCheckView = ({ activeClientId, onSelectClient }) => {
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const poll = useRef(null);
+  const [mailOpen, setMailOpen] = useState(false);
+  const [mailTo, setMailTo] = useState('');
+  const [mailNote, setMailNote] = useState('');
 
   useEffect(() => { api.listClients().then((cs) => setClientList(Array.isArray(cs) ? cs : (cs.clients || []))).catch(() => setClientList([])); }, []);
 
@@ -178,6 +184,14 @@ const AiCheckView = ({ activeClientId, onSelectClient }) => {
   const s = view && view.check.summary;
   const o = s && s.overall;
   const isRunning = view && view.check.status === 'running';
+  const baseCheck = ov.checks.find((c) => c.id === ov.baselineId);
+  const bo = baseCheck && baseCheck.summary && view && view.check.id !== baseCheck.id && view.check.status === 'done' ? baseCheck.summary.overall : null;
+  const reportCheckId = view && view.check.status === 'done' ? view.check.id : null;
+  const sendReport = () => act('mail', async () => {
+    const r = await api.emailAiReport(cid, { checkId: reportCheckId, email: mailTo.trim() || undefined, note: mailNote.trim() || undefined });
+    setMailOpen(false); setMailNote(''); setMsg(`Report emailed to ${r.sent_to}.`);
+  });
+  const makeBaseline = () => act('base', async () => apply(await api.setAiBaseline(cid, view.check.id)), 'Baseline updated — reports now compare against this check.');
 
   const run = () => act('run', async () => {
     const r = await api.runAiCheck(cid, { engines: chosen });
@@ -279,11 +293,11 @@ const AiCheckView = ({ activeClientId, onSelectClient }) => {
       {o && (
         <>
           <div className="row" style={{ gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-            <Tile label="AI visibility" value={pct(o.visibility)} sub={`${o.answers} answers${isRunning ? ' so far' : ''}`} />
-            <Tile label="Mentioned" value={pct(o.mentionRate)} sub={`${o.mentioned} of ${o.answers} answers name the client`} />
-            <Tile label="Cited as a source" value={pct(o.citeRate)} sub={`${o.cited} of ${o.answers} link the client's sites`} />
+            <Tile label="AI visibility" value={pct(o.visibility)} sub={`${o.answers} answers${isRunning ? ' so far' : ''}`} delta={bo && dlt(o.visibility, bo.visibility)} />
+            <Tile label="Mentioned" value={pct(o.mentionRate)} sub={`${o.mentioned} of ${o.answers} answers name the client`} delta={bo && dlt(o.mentionRate, bo.mentionRate)} />
+            <Tile label="Cited as a source" value={pct(o.citeRate)} sub={`${o.cited} of ${o.answers} link the client's sites`} delta={bo && dlt(o.citeRate, bo.citeRate)} />
             <Tile label="Avg source position" value={o.avgRank == null ? '—' : `#${o.avgRank}`} sub="when cited (1 = top source)" />
-            <Tile label="Share of voice" value={pct(o.shareOfVoice)} sub="client vs listed competitors" />
+            <Tile label="Share of voice" value={pct(o.shareOfVoice)} sub="client vs listed competitors" delta={bo && dlt(o.shareOfVoice, bo.shareOfVoice)} />
           </div>
 
           <div className="row" style={{ gap: 16, flexWrap: 'wrap', alignItems: 'stretch', marginBottom: 16 }}>
@@ -338,6 +352,35 @@ const AiCheckView = ({ activeClientId, onSelectClient }) => {
         </>
       )}
 
+      {/* client report */}
+      {reportCheckId && (
+        <div className="card card-pad" style={{ marginBottom: 16 }}>
+          <div className="label" style={{ marginBottom: 6 }}>CLIENT REPORT</div>
+          <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>
+            {baseCheck
+              ? (view.check.id === baseCheck.id
+                ? `This check is the baseline (${fmtWhen(baseCheck.startedAt)}). The report shows it as the client's starting point.`
+                : `Compares this check (${fmtWhen(view.check.startedAt)}) with the baseline (${fmtWhen(baseCheck.startedAt)}).`)
+              : 'No baseline yet — the first finished check becomes the baseline.'}
+          </div>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <a className="btn primary sm" href={api.aiReportUrl(cid, reportCheckId)}><Icon name="download" size={12} /> Download PDF</a>
+            <button className="btn sm" onClick={() => setMailOpen((v) => !v)}><Icon name="send" size={12} /> Email to client</button>
+            {baseCheck && view.check.id !== baseCheck.id && <button className="btn sm" disabled={!!busy} onClick={makeBaseline}><Icon name="history" size={12} /> Make this the baseline</button>}
+          </div>
+          {mailOpen && (
+            <div className="col" style={{ gap: 8, marginTop: 12, maxWidth: 520 }}>
+              <input value={mailTo} onChange={(e) => setMailTo(e.target.value)} placeholder="Client email (leave blank to use the Brief email)" style={{ ...inputStyle, width: '100%', height: 38 }} />
+              <textarea className="textarea" value={mailNote} onChange={(e) => setMailNote(e.target.value)} placeholder="Optional note to include in the email" style={{ minHeight: 70, fontSize: 13 }} />
+              <div className="row" style={{ gap: 8 }}>
+                <button className="btn primary sm" disabled={!!busy} onClick={sendReport}><Icon name="send" size={12} /> {busy === 'mail' ? 'Sending…' : 'Send report'}</button>
+                <button className="btn sm" onClick={() => setMailOpen(false)}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* questions */}
       <div className="card card-pad" style={{ marginBottom: 16 }}>
         <div className="label" style={{ marginBottom: 10 }}>QUESTIONS <span style={{ color: 'var(--text-4)' }}>· what customers ask an AI — don't include the client's name</span></div>
@@ -378,13 +421,13 @@ const AiCheckView = ({ activeClientId, onSelectClient }) => {
       {view && (
         <div className="card card-pad" style={{ marginBottom: 16 }}>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
-            <div className="label">ANSWERS · {fmtWhen(view.check.startedAt)}{view.check.startedBy ? ` · by ${view.check.startedBy}` : ''}
+            <div className="label">ANSWERS · {fmtWhen(view.check.startedAt)}{view.check.startedBy ? ` · by ${view.check.startedBy}` : ''}{view.check.isBaseline && <span style={{ color: 'var(--accent-2, #fbb033)' }}> · BASELINE</span>}
               {view.check.status === 'interrupted' && <span style={{ color: 'var(--warn)' }}> · interrupted (server restarted)</span>}
               {view.check.status === 'failed' && <span style={{ color: 'var(--warn)' }}> · failed: {view.check.error}</span>}
             </div>
             {ov.checks.length > 1 && (
               <select value={view.check.id} onChange={(e) => act('v', async () => setView(await api.aiCheckResult(cid, Number(e.target.value))))} style={{ ...inputStyle, height: 32, fontSize: 12 }}>
-                {ov.checks.map((c) => <option key={c.id} value={c.id}>{fmtWhen(c.startedAt)} · {c.status === 'done' && c.summary ? `${c.summary.overall.visibility ?? 0}% visible` : c.status}</option>)}
+                {ov.checks.map((c) => <option key={c.id} value={c.id}>{fmtWhen(c.startedAt)} · {c.status === 'done' && c.summary ? `${c.summary.overall.visibility ?? 0}% visible` : c.status}{c.isBaseline ? ' · baseline' : ''}</option>)}
               </select>
             )}
           </div>
