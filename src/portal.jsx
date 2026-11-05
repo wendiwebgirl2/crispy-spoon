@@ -78,7 +78,8 @@ function NeedsApproval({ onChanged }) {
                     <strong style={{ fontSize: 15 }}>{item.title}</strong>
                     {item.channel && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginLeft: 8 }}>{item.channel}</span>}
                   </div>
-                  <div className="row" style={{ gap: 6 }}>
+                  <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                    {item.approveUrl && <a className="btn sm" style={{ textDecoration: 'none' }} href={item.approveUrl} target="_blank" rel="noreferrer" title="Open the full script review page — read it, approve it or mark changes"><Icon name="doc" size={12} /> Open review page</a>}
                     <button className="btn sm primary" disabled={busy === key} onClick={() => decide(item, 'approved')}><Icon name="check" size={12} /> Approve</button>
                     <button className="btn sm" disabled={busy === key} onClick={() => { setChangeFor(changeFor === key ? null : key); setNote(''); }}>Request changes</button>
                   </div>
@@ -123,17 +124,36 @@ function InProduction() {
   const [err, setErr] = React.useState('');
   React.useEffect(() => { api.portalInProduction().then(setData).catch((e) => setErr(e.message)); }, []);
   const items = data ? data.items : [];
+  // One card per episode number; anything without a number gets its own card.
+  const groups = [];
+  for (const it of items) {
+    const k = it.episode != null ? `e${it.episode}` : `${it.type}:${it.id}`;
+    let g = groups.find((x) => x.k === k);
+    if (!g) { g = { k, num: it.episode, title: it.episode != null ? (it.episodeTitle || '') : it.title, items: [] }; groups.push(g); }
+    g.items.push(it);
+  }
   return (
     <div className="fade-in">
-      <SectionHead title="In production" sub="Approved and on our workbench — you'll see finished pieces under Past Episodes." />
+      <SectionHead title="In production" sub="What we're working on now, episode by episode — you'll see finished pieces under Past Episodes." />
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
       {!data ? <Empty>Loading…</Empty>
         : items.length === 0 ? <Empty>Nothing in production right now.</Empty>
-        : <div className="col" style={{ gap: 8 }}>
-          {items.map((it) => (
-            <div key={`${it.type}:${it.id}`} className="row" style={{ ...card, justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <strong style={{ fontSize: 14 }}>{it.title}</strong>
-              <span className="mono" style={{ color: 'var(--text-3)', fontSize: 12 }}>{it.stage}</span>
+        : <div className="col" style={{ gap: 12 }}>
+          {groups.map((g) => (
+            <div key={g.k} style={card}>
+              <strong style={{ fontSize: 15 }}>{g.num != null ? `E${g.num}` : ''}{g.num != null && g.title ? ' — ' : ''}{g.title}</strong>
+              {g.num != null ? (
+                <div className="col" style={{ gap: 6, marginTop: 8 }}>
+                  {g.items.map((it) => (
+                    <div key={`${it.type}:${it.id}`} className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{it.piece}{it.pieceTitle ? ` — ${it.pieceTitle}` : ''}</span>
+                      <span className="mono" style={{ color: 'var(--text-3)', fontSize: 12 }}>{it.stage}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mono" style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 6 }}>{g.items[0].stage}</div>
+              )}
             </div>
           ))}
         </div>}
@@ -146,29 +166,36 @@ function PastEpisodes() {
   const [data, setData] = React.useState(null);
   const [err, setErr] = React.useState('');
   React.useEffect(() => { api.portalEpisodes().then(setData).catch((e) => setErr(e.message)); }, []);
-  const eps = data ? data.episodes : [];
+  const groups = data ? (data.posted || []) : [];
+  const linkBtn = { textDecoration: 'none' };
   return (
     <div className="fade-in">
-      <SectionHead title="Past episodes" sub="Your finished pieces — play or download any of them." />
+      <SectionHead title="Past episodes" sub="Everything we've finished for you, with links to where each piece is posted." />
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
       {!data ? <Empty>Loading…</Empty>
-        : eps.length === 0 ? <Empty>No finished episodes yet.</Empty>
+        : groups.length === 0 ? <Empty>No finished episodes yet.</Empty>
         : <div className="col" style={{ gap: 12 }}>
-          {eps.map((e) => (
-            <div key={e.id} style={card}>
-              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <div>
-                  <strong style={{ fontSize: 15 }}>{e.title}</strong>
-                  {e.created_at && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginLeft: 8 }}>{String(e.created_at).slice(0, 10)}</span>}
-                </div>
-                <div className="row" style={{ gap: 6 }}>
-                  {e.hasVideo && <a className="btn sm" href={api.portalEpisodeVideoUrl(e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Video</a>}
-                  {e.hasAudio && <a className="btn sm" href={api.portalEpisodeAudioUrl(e.id)} target="_blank" rel="noreferrer"><Icon name="download" size={12} /> Audio</a>}
-                </div>
+          {groups.map((g) => (
+            <div key={g.key} style={card}>
+              <div className="row" style={{ alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                <strong style={{ fontSize: 15 }}>{g.num != null ? `E${g.num}` : ''}{g.num != null && g.title ? ' — ' : ''}{g.title}</strong>
+                {g.airDate && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>aired {String(g.airDate).slice(0, 10)}</span>}
               </div>
-              {e.hasVideo
-                ? <video controls preload="none" style={{ width: '100%', marginTop: 10, borderRadius: 'var(--r-sm)', background: '#000' }} src={api.portalEpisodeVideoUrl(e.id)} />
-                : e.hasAudio ? <audio controls preload="none" style={{ width: '100%', marginTop: 10 }} src={api.portalEpisodeAudioUrl(e.id)} /> : null}
+              <div className="col" style={{ gap: 6 }}>
+                {g.pieces.map((p) => (
+                  <div key={p.key} className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{p.name}</span>
+                    <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                      {p.links.map((l) => (
+                        <a key={l.url} className="btn sm" style={linkBtn} href={l.url} target="_blank" rel="noreferrer"><Icon name="send" size={12} /> {l.label}</a>
+                      ))}
+                      {p.links.length === 0 && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>not posted yet</span>}
+                      {p.episodeId && p.hasVideo && <a className="btn sm ghost" style={linkBtn} href={api.portalEpisodeVideoUrl(p.episodeId)} target="_blank" rel="noreferrer" title="Download the video"><Icon name="download" size={12} /> Video</a>}
+                      {p.episodeId && p.hasAudio && <a className="btn sm ghost" style={linkBtn} href={api.portalEpisodeAudioUrl(p.episodeId)} target="_blank" rel="noreferrer" title="Download the audio"><Icon name="download" size={12} /> Audio</a>}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>}
