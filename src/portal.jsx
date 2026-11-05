@@ -11,12 +11,12 @@ import cuecastLogo from './assets/cuecast-logo.svg'
 
 const MENU = [
   { id: 'account', label: 'Account', icon: 'settings' },
-  { id: 'approve', label: 'Needs Approval', icon: 'check', badge: 'needsApproval' },
-  { id: 'onboarding', label: 'Onboarding', icon: 'check' },
-  { id: 'production', label: 'In Production', icon: 'studio', badge: 'inProduction' },
-  { id: 'episodes', label: 'Past Episodes', icon: 'history', badge: 'pastEpisodes' },
   { id: 'avatars', label: 'Avatars', icon: 'avatars' },
   { id: 'topics', label: 'Topic Suggestions', icon: 'sparkle' },
+  { id: 'production', label: 'In Production', icon: 'studio', badge: 'inProduction' },
+  { id: 'episodes', label: 'Past Episodes', icon: 'history', badge: 'pastEpisodes' },
+  { id: 'approve', label: 'Needs Approval', icon: 'check', badge: 'needsApproval' },
+  { id: 'onboarding', label: 'Onboarding', icon: 'check' },
   { id: 'contract', label: 'Agreement', icon: 'doc' },
   { id: 'help', label: 'Help', icon: 'chat' },
 ];
@@ -246,7 +246,6 @@ function Avatars({ onChanged }) {
     try { await api.portalRequest('avatar', note.trim()); setNote(''); setMsg('Request sent — your producer will follow up.'); onChanged && onChanged(); }
     catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
-  const casts = data ? data.casts : [];
   const avatars = data ? (data.avatars || []) : [];
   return (
     <div className="fade-in">
@@ -285,17 +284,6 @@ function Avatars({ onChanged }) {
           {msg && <span className="mono" style={{ color: 'var(--ok)', fontSize: 12 }}>{msg}</span>}
         </div>
       </div>
-      {!data ? null
-        : casts.length === 0 ? <Empty>No avatar renders yet.{data.recordings ? ` (${data.recordings} recording${data.recordings === 1 ? '' : 's'} captured.)` : ''}</Empty>
-        : <div className="col" style={{ gap: 8 }}>
-          <div className="label">RENDERS</div>
-          {casts.map((v) => (
-            <div key={v.id} className="row" style={{ ...card, justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <strong style={{ fontSize: 14 }}>{v.title}</strong>
-              <span className="mono" style={{ color: 'var(--text-3)', fontSize: 12 }}>{String(v.status).replace(/_/g, ' ')}</span>
-            </div>
-          ))}
-        </div>}
     </div>
   );
 }
@@ -659,7 +647,7 @@ function Help() {
         <p style={{ marginTop: 0 }}><strong>Needs Approval</strong> — anything we’ve sent for your sign-off. Approve it, or use <em>Request changes</em> to tell us what to adjust.</p>
         <p><strong>In Production</strong> — items you’ve approved that we’re now producing.</p>
         <p><strong>Past Episodes</strong> — your finished pieces, ready to play or download.</p>
-        <p><strong>Avatars</strong> — your digital-twin renders, plus a button to request a new or additional avatar.</p>
+        <p><strong>Avatars</strong> — your digital twins and their looks, plus a button to request a new or additional avatar.</p>
         <p><strong>Topic Suggestions</strong> — drop in ideas any time; they feed straight into our planning.</p>
         <p><strong>Account</strong> — your contact details, and a form to send us a question.</p>
         <p style={{ marginBottom: 0, color: 'var(--text-3)' }}>Questions we haven’t covered? Use the contact form on the Account page and we’ll get back to you.</p>
