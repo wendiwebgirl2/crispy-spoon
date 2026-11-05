@@ -19,6 +19,7 @@ import { ActivityLogView } from './activity.jsx'
 import { TaskStatusView } from './task-status.jsx'
 import { ProductionReportView } from './report.jsx'
 import { AnalyticsView } from './analytics.jsx'
+import { AiCheckView } from './ai-check.jsx'
 import { TalentView } from './talent.jsx'
 import { UserAccountView } from './account.jsx'
 import { MessagePopup } from './messages.jsx'
@@ -35,6 +36,7 @@ const NAV = [
   { id: 'report',        label: 'Production',     icon: 'chart', roles: ['admin', 'manager'] },
   { id: 'talent',        label: 'Talent',         icon: 'avatars' },
   { id: 'analytics',     label: 'Analytics',      icon: 'chart' },
+  { id: 'aicheck',       label: 'AI Visibility',  icon: 'sparkle' },
   { id: 'ads',           label: 'Ads',            icon: 'megaphone' },
   { id: 'billing',       label: 'Billing',        icon: 'sliders' },
 ];
@@ -56,6 +58,7 @@ const HEADER_TITLES = {
   messages:        { title: 'Messages',        sub: 'private messages to and from you' },
   talent:          { title: 'Talent library',  sub: 'generic AI announcers + voiceovers — castable for any client' },
   analytics:       { title: 'Analytics',       sub: 'YouTube + Facebook results — PDF overview for clients' },
+  aicheck:         { title: 'AI Visibility',   sub: 'do ChatGPT, Claude, Perplexity, Gemini + Grok mention and cite the client?' },
   ads:             { title: 'Ads',             sub: 'Meta + Google ads for every client — draft to wrap' },
   report:          { title: 'Production report', sub: 'all production in a date range — printable' },
   'publish-status': { title: 'Publish status', sub: 'what is on air now and what is in production, per client' },
@@ -609,6 +612,7 @@ function App() {
           {view === 'talent' && <TalentView />}
           {view === 'analytics' && <AnalyticsView activeClientId={activeClientId} onSelectClient={setActiveClientId} />}
           {view === 'billing' && <BillingView />}
+          {view === 'aicheck' && <AiCheckView activeClientId={activeClientId} onSelectClient={setActiveClientId} />}
           {view === 'ads' && <AdsView />}
         </section>
       </main>
