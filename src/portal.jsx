@@ -10,6 +10,7 @@ import cuecastLogo from './assets/cuecast-logo.svg'
 // is scoped server-side to the one client the account belongs to (/api/portal/*).
 
 const MENU = [
+  { id: 'account', label: 'Account', icon: 'settings' },
   { id: 'approve', label: 'Needs Approval', icon: 'check', badge: 'needsApproval' },
   { id: 'onboarding', label: 'Onboarding', icon: 'check' },
   { id: 'production', label: 'In Production', icon: 'studio', badge: 'inProduction' },
@@ -17,7 +18,6 @@ const MENU = [
   { id: 'avatars', label: 'Avatars', icon: 'avatars' },
   { id: 'topics', label: 'Topic Suggestions', icon: 'sparkle' },
   { id: 'contract', label: 'Agreement', icon: 'doc' },
-  { id: 'account', label: 'Account', icon: 'settings' },
   { id: 'help', label: 'Help', icon: 'chat' },
 ];
 
