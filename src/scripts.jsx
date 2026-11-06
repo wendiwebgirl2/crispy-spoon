@@ -195,6 +195,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [castEngine, setCastEngine] = useState('auto');     // 'auto' | 'avatar_v' | 'avatar_iv' | 'avatar_iii'
   const [castExpr, setCastExpr] = useState('low');          // 'low' | 'medium' | 'high'
   const [castDelivery, setCastDelivery] = useState('calm');
+  const [castCustom, setCastCustom] = useState('');         // custom delivery/expression text — overrides the preset (same as Studio)
   const [castProgress, setCastProgress] = useState(null);   // { done, total, failed: [] }
 
   // manual entry
@@ -483,15 +484,20 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     const failed = [];
     let done = 0;
     setCastProgress({ done: 0, total: items.length, failed });
+    const deliveryText = castCustom.trim() || DELIVERY_PROMPTS[castDelivery];
     for (const h of items) {
-      const aspect = castAspect !== 'auto' ? castAspect : (h.channel === 'shortform' ? '9:16' : '16:9');
+      // Avatar V has no 1:1 — fall back to 16:9 (Studio does the same).
+      const picked = castAspect !== 'auto' ? castAspect : (h.channel === 'shortform' ? '9:16' : '16:9');
+      const aspect = (picked === '1:1' && castEngine === 'avatar_v') ? '16:9' : picked;
       try {
         const beforeRes = await listVideos(avatar._token).catch(() => ({ videos: [] }));
         const before = new Set((beforeRes.videos || []).map((v) => v.id));
         await generateVideo(h.body, {
           token: avatar._token, avatarId: avatar.id, title: castTitleFor(h),
           aspectRatio: aspect, engine: castEngine, expressiveness: castExpr,
-          motionPrompt: buildMotionPrompt(DELIVERY_PROMPTS[castDelivery]),
+          motionPrompt: buildMotionPrompt(deliveryText),
+          deliveryLabel: castCustom.trim() ? 'Custom' : (castDelivery[0].toUpperCase() + castDelivery.slice(1)),
+          deliveryPrompt: deliveryText || null,
         });
         const afterRes = await listVideos(avatar._token).catch(() => ({ videos: [] }));
         const fresh = (afterRes.videos || []).find((v) => !before.has(v.id));
@@ -1151,6 +1157,57 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
               )}
             </label>
 
+            {/* Render engine, expressiveness and delivery — same choices as Studio's single cast. */}
+            {(() => {
+              const pill = (on, disabled) => ({ flex: 1, justifyContent: 'center', opacity: disabled ? 0.4 : 1,
+                background: on ? 'var(--surface-2)' : 'transparent', borderColor: on ? 'var(--accent)' : 'var(--border)', color: on ? 'var(--text)' : 'var(--text-2)' });
+              const noExpr = castEngine === 'avatar_v' || castEngine === 'avatar_iii';
+              const noDelivery = castEngine === 'avatar_iii';
+              return (
+                <div className="col" style={{ gap: 10 }}>
+                  <div className="col" style={{ gap: 4 }}>
+                    <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Render engine</span>
+                    <div className="row" style={{ gap: 4 }}>
+                      {[{ k: 'auto', t: 'Auto' }, { k: 'avatar_v', t: 'Avatar V' }, { k: 'avatar_iv', t: 'Avatar IV' }, { k: 'avatar_iii', t: 'Avatar III' }].map((o) => (
+                        <button key={o.k} className="btn sm" style={pill(castEngine === o.k)}
+                          onClick={() => { setCastEngine(o.k); if (o.k === 'avatar_v' && castAspect === '1:1') setCastAspect('auto'); }}>{o.t}</button>
+                      ))}
+                    </div>
+                    <span className="mono" style={{ color: 'var(--text-4)', fontSize: 10, lineHeight: 1.5 }}>
+                      {castEngine === 'avatar_v' ? 'Avatar V - preserves the photo\u2019s teeth/structure; minimal expression. No 1:1.'
+                        : castEngine === 'avatar_iv' ? 'Avatar IV - more expressive delivery, but photo twins can show the wide-smile glitch.'
+                        : castEngine === 'avatar_iii' ? 'Avatar III - steadiest render: jewelry and accessories stay put. Ignores Expressiveness and Delivery.'
+                        : 'Auto - Avatar V for photo twins (falls back to IV), Avatar IV for stock avatars.'}
+                    </span>
+                  </div>
+                  <div className="col" style={{ gap: 4 }}>
+                    <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Expressiveness</span>
+                    <div className="row" style={{ gap: 4 }}>
+                      {['low', 'medium', 'high'].map((k) => (
+                        <button key={k} className="btn sm" disabled={noExpr} style={pill(castExpr === k, noExpr)} onClick={() => setCastExpr(k)}>{k[0].toUpperCase() + k.slice(1)}</button>
+                      ))}
+                    </div>
+                    {noExpr && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 10 }}>{castEngine === 'avatar_v' ? 'Avatar V ignores expressiveness — use Delivery below, or switch to Avatar IV.' : 'Avatar III ignores expressiveness.'}</span>}
+                  </div>
+                  <div className="col" style={{ gap: 4 }}>
+                    <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Delivery</span>
+                    <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
+                      {['calm', 'warm', 'energetic', 'laughing', 'serious'].map((d) => (
+                        <button key={d} className="btn sm" disabled={noDelivery} style={{ ...pill(!castCustom.trim() && castDelivery === d, noDelivery), flex: 'none' }}
+                          onClick={() => { setCastDelivery(d); setCastCustom(''); }}>{d[0].toUpperCase() + d.slice(1)}</button>
+                      ))}
+                    </div>
+                    <input value={castCustom} onChange={(e) => setCastCustom(e.target.value)} disabled={noDelivery}
+                      placeholder="Custom expression, overrides the preset - e.g. laughs, then leans in warmly"
+                      style={{ ...inputStyle, width: '100%', fontSize: 12, opacity: noDelivery ? 0.5 : 1 }} />
+                    <span className="mono" style={{ color: 'var(--text-4)', fontSize: 10, lineHeight: 1.5 }}>
+                      {noDelivery ? 'Avatar III ignores Delivery - it renders a steady, neutral read. ' : ''}Applies to every script in this batch. Drives gestures + expression on Avatar IV and V.
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
             {(() => {
               const av = castAvatars.find((a) => a.id === castAvatarId);
               if (!av || !av.heygen_group_id) return null;
@@ -1178,40 +1235,15 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Aspect</span>
                 <div className="row" style={{ gap: 6 }}>
                   {['auto', '16:9', '9:16', '1:1'].map((a) => (
-                    <button key={a} className={'btn sm' + (castAspect === a ? ' primary' : '')} onClick={() => setCastAspect(a)}>{a === 'auto' ? 'Auto' : a}</button>
+                    <button key={a} className={'btn sm' + (castAspect === a ? ' primary' : '')} onClick={() => setCastAspect(a)}
+                      disabled={a === '1:1' && castEngine === 'avatar_v'} title={a === '1:1' && castEngine === 'avatar_v' ? 'Avatar V has no 1:1' : undefined} style={a === '1:1' && castEngine === 'avatar_v' ? { opacity: 0.4 } : undefined}>{a === 'auto' ? 'Auto' : a}</button>
                   ))}
                 </div>
                 {castAspect === 'auto' && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 10 }}>Shortform → 9:16, others → 16:9</span>}
               </label>
             </div>
 
-            <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
-              <label className="col" style={{ gap: 4 }}>
-                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Engine</span>
-                <select value={castEngine} onChange={(e) => setCastEngine(e.target.value)} style={{ ...inputStyle, width: 150 }}>
-                  <option value="auto">Auto</option>
-                  <option value="avatar_v">Avatar V</option>
-                  <option value="avatar_iv">Avatar IV</option>
-                  <option value="avatar_iii">Avatar III (steady)</option>
-                </select>
-              </label>
-              <label className="col" style={{ gap: 4 }}>
-                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Expressiveness</span>
-                <select value={castExpr} onChange={(e) => setCastExpr(e.target.value)} disabled={castEngine === 'avatar_iii'} title={castEngine === 'avatar_iii' ? 'Avatar III ignores this setting' : undefined} style={{ ...inputStyle, width: 130 }}>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </label>
-              <label className="col" style={{ gap: 4 }}>
-                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Delivery</span>
-                <select value={castDelivery} onChange={(e) => setCastDelivery(e.target.value)} disabled={castEngine === 'avatar_iii'} title={castEngine === 'avatar_iii' ? 'Avatar III ignores this setting' : undefined} style={{ ...inputStyle, width: 140 }}>
-                  {['calm', 'warm', 'energetic', 'laughing', 'serious'].map((d) => <option key={d} value={d}>{d[0].toUpperCase() + d.slice(1)}</option>)}
-                </select>
-              </label>
-            </div>
-
-            {castProgress && (
+{castProgress && (
               <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>
                 {batchBusy ? `Casting ${castProgress.done + 1} of ${castProgress.total}…` : `Queued ${castProgress.done} of ${castProgress.total}.`}
                 {castProgress.failed.length > 0 && (
