@@ -1265,7 +1265,7 @@ function EpisodeAssetsPanel({ cid, epNum, items, assets, onChanged }) {
                 <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>{slot.label} <span className="mono" style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-4)' }}>{slot.shape}</span></div>
                 <div><span className="mono" style={chip(s.ready)}>{s.ready ? '✓ READY' : 'NEEDED'}</span></div>
                 <div className="mono" style={{ fontSize: 10, color: 'var(--text-4)' }}>
-                  {s.stage}
+                  {s.stage}{slot.short && <span title="Shortform thumbnails also go in that piece's Intro image (1s), so they're the first frame on YouTube Shorts"> · intro image</span>}
                   {tpl && <> · <a href={tplLink(tpl)} target="_blank" rel="noreferrer" {...(tpl.link ? {} : { download: tpl.filename })} style={{ color: 'var(--accent-2)' }}>template{tpl.link ? ' ↗' : ''}</a></>}
                 </div>
               </div>
