@@ -449,7 +449,7 @@ export const TEMPLATE_SHAPES = [
 ];
 // Episode-level kinds are managed elsewhere (templates above, montage
 // images in each episode's panel), so the general grid leaves them out.
-const isEpisodeKind = (a) => /^template_/.test(a.kind || '') || a.kind === 'montage';
+const isEpisodeKind = (a) => /^template_/.test(a.kind || '') || a.kind === 'montage' || a.kind === 'thumb';
 
 function ThumbnailTemplates({ clientId, assets, reload }) {
   const [err, setErr] = useState('');

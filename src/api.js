@@ -428,6 +428,18 @@ export const api = {
   setOnboardingBookingUrl: (id, url) => vcReq(`/clients/${id}/onboarding/settings/booking-url`, { method: "PUT", body: JSON.stringify({ url }) }),
   listAssets: (id) => vcReq(`/clients/${id}/assets`),
   deleteAsset: (id, assetId) => vcReq(`/clients/${id}/assets/${assetId}`, { method: "DELETE" }),
+  // Episode thumbnail by episode number + slot (lf|pod|sf1|sf2|sf3) — works
+  // before the piece exists; the server also sets the piece's image if it does.
+  uploadThumb: async (id, episodeNumber, slot, file) => {
+    const fd = new FormData();
+    fd.append("episode_number", String(episodeNumber));
+    fd.append("slot", slot);
+    fd.append("file", file);
+    const res = await fetch(`${VC_BASE}/clients/${id}/assets/thumb`, { method: "POST", credentials: "same-origin", body: fd });
+    if (!res.ok) { let e; try { e = (await res.json()).error; } catch { /* ignore */ } throw new Error(e || `Upload failed (${res.status})`); }
+    return res.json();
+  },
+  deleteThumb: (id, episodeNumber, slot) => vcReq(`/clients/${id}/assets/thumb?episode_number=${encodeURIComponent(episodeNumber)}&slot=${encodeURIComponent(slot)}`, { method: "DELETE" }),
   addAssetLink: (id, kind, link, name) => vcReq(`/clients/${id}/assets/link`, { method: "POST", body: JSON.stringify({ kind, link, name }) }),
   assetFileUrl: (id, assetId) => `${VC_BASE}/clients/${id}/assets/${assetId}/file`,
   renderMontage: (id, payload) => vcReq(`/clients/${id}/montage/render`, { method: "POST", body: JSON.stringify(payload) }),

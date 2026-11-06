@@ -2030,7 +2030,7 @@ function MontageBuilder({ clientId }) {
     .sort((a, b) => (Number(b) || 0) - (Number(a) || 0));
   const [epFilter, setEpFilter] = React.useState(null);
   const epSel = epFilter ?? (epNums[0] || 'all');
-  const imageAssets = assets.filter(isImage).filter((a) => !/^template_/.test(a.kind || ''))
+  const imageAssets = assets.filter(isImage).filter((a) => !/^template_/.test(a.kind || '') && a.kind !== 'thumb')
     .filter((a) => epSel === 'all' || String(a.episode_number || '') === epSel);
   const musicAssets = assets.filter(isAudio);
 
