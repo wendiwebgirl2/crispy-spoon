@@ -1783,7 +1783,7 @@ const EpisodeAssembly = ({ avatar, clientName }) => {
         <div className="mono" style={{ marginBottom: 14 }}>{order || 'add a body recording to begin'}</div>
         <button className="btn primary lg" onClick={stitch} disabled={!hasBody || stitching}
           style={{ justifyContent: 'center', opacity: (!hasBody || stitching) ? 0.5 : 1 }}>
-          {stitching ? <>Stitching…</> : <><Icon name="sparkle" size={14} /> Stitch into finished episode</>}
+          {stitching ? <>Stitching…</> : <><Icon name="sparkle" size={14} /> STITCH DA BITCH</>}
         </button>
         {!hasBody && <div className="mono" style={{ marginTop: 8, color: 'var(--text-4)' }}>Body is required (* ) before stitching.</div>}
       </div>

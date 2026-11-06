@@ -929,7 +929,7 @@ function EpisodeEditor({ cid, epId, onChange, assetsBump }) {
           <Icon name="play" size={13} /> Preview finished episode
         </a>
         <button className="btn primary" onClick={stitch} disabled={stitchJob.status === 'pending' || !full.body_path}>
-          <Icon name="sparkle" size={13} /> {stitchJob.status === 'pending' ? 'Stitching… (can take a few minutes for a long episode)' : 'Stitch into finished episode'}
+          <Icon name="sparkle" size={13} /> {stitchJob.status === 'pending' ? 'Stitching… (can take a few minutes for a long episode)' : 'STITCH DA BITCH'}
         </button>
       </div>
       {stitchJob.status === 'error' && <div className="mono" style={{ color: 'var(--accent)', marginTop: 6 }}>{stitchJob.error || 'Stitch failed.'}</div>}
