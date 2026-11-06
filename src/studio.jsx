@@ -2024,7 +2024,14 @@ function MontageBuilder({ clientId }) {
 
   const isImage = (a) => (a.mime || '').startsWith('image/') || ['logo', 'background'].includes(a.kind);
   const isAudio = (a) => (a.mime || '').startsWith('audio/') || ['music', 'audio'].includes(a.kind);
-  const imageAssets = assets.filter(isImage);
+  // Montage images uploaded from an episode's Episode assets panel carry its
+  // episode number; the library can narrow to one episode (newest by default).
+  const epNums = [...new Set(assets.filter((a) => a.kind === 'montage' && a.episode_number).map((a) => String(a.episode_number)))]
+    .sort((a, b) => (Number(b) || 0) - (Number(a) || 0));
+  const [epFilter, setEpFilter] = React.useState(null);
+  const epSel = epFilter ?? (epNums[0] || 'all');
+  const imageAssets = assets.filter(isImage).filter((a) => !/^template_/.test(a.kind || ''))
+    .filter((a) => epSel === 'all' || String(a.episode_number || '') === epSel);
   const musicAssets = assets.filter(isAudio);
 
   const addAsset = (a) => setItems((x) => [...x, { type: 'asset', assetId: a.id, name: a.filename }]);
@@ -2109,7 +2116,15 @@ function MontageBuilder({ clientId }) {
         {/* From library */}
         <div className="card card-pad">
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <div className="label">FROM LIBRARY</div>
+            <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+              <div className="label">FROM LIBRARY</div>
+              {epNums.length > 0 && (
+                <select value={epSel} onChange={(e) => setEpFilter(e.target.value)} style={{ ...fld, height: 28, fontSize: 12 }}>
+                  {epNums.map((n) => <option key={n} value={n}>E{n} montage images</option>)}
+                  <option value="all">All images</option>
+                </select>
+              )}
+            </div>
             <label className="btn sm" style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
               <Icon name="upload" size={13} /> {uploading ? (uploadProg && uploadProg.total > 1 ? `Uploading ${Math.min(uploadProg.done + 1, uploadProg.total)} of ${uploadProg.total}…` : 'Uploading…') : 'Upload images'}
               <input type="file" accept="image/*" multiple onChange={onUpload} disabled={uploading} style={{ display: 'none' }} />

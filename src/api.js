@@ -428,11 +428,16 @@ export const api = {
   setOnboardingBookingUrl: (id, url) => vcReq(`/clients/${id}/onboarding/settings/booking-url`, { method: "PUT", body: JSON.stringify({ url }) }),
   listAssets: (id) => vcReq(`/clients/${id}/assets`),
   deleteAsset: (id, assetId) => vcReq(`/clients/${id}/assets/${assetId}`, { method: "DELETE" }),
+  addAssetLink: (id, kind, link, name) => vcReq(`/clients/${id}/assets/link`, { method: "POST", body: JSON.stringify({ kind, link, name }) }),
   assetFileUrl: (id, assetId) => `${VC_BASE}/clients/${id}/assets/${assetId}/file`,
   renderMontage: (id, payload) => vcReq(`/clients/${id}/montage/render`, { method: "POST", body: JSON.stringify(payload) }),
-  uploadAsset: async (id, kind, file) => {
+  // extra: { episode_number, link } — montage images belong to one episode;
+  // a template can carry a link (e.g. Canva) alongside its file.
+  uploadAsset: async (id, kind, file, extra = {}) => {
     const fd = new FormData();
     fd.append("kind", kind);
+    if (extra.episode_number) fd.append("episode_number", String(extra.episode_number));
+    if (extra.link) fd.append("link", extra.link);
     fd.append("file", file);
     const res = await fetch(`${VC_BASE}/clients/${id}/assets`, { method: "POST", credentials: "same-origin", body: fd });
     if (!res.ok) { let e; try { e = (await res.json()).error; } catch { /* ignore */ } throw new Error(e || `Upload failed (${res.status})`); }

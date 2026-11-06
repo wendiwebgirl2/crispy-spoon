@@ -414,7 +414,7 @@ function YourAvatars({ cid }) {
   );
 }
 
-function EpisodeEditor({ cid, epId, onChange }) {
+function EpisodeEditor({ cid, epId, onChange, assetsBump }) {
   const [full, setFull] = useState(null);
   const [outs, setOuts] = useState([]);
   const [recordings, setRecordings] = useState([]);
@@ -552,7 +552,7 @@ function EpisodeEditor({ cid, epId, onChange }) {
     setErr('');
     refresh();
     ep.voiceOutputs(cid).then((o) => setOuts(Array.isArray(o) ? o : (o.outputs || []))).catch(() => setOuts([]));
-    api.listAssets(cid).then((r) => setAssets(Array.isArray(r) ? r : (r && r.assets ? r.assets : []))).catch(() => setAssets([]));
+    api.listAssets(cid).then((r) => setAssets((Array.isArray(r) ? r : (r && r.assets ? r.assets : [])).filter((a) => a.hasFile !== false))).catch(() => setAssets([]));
     clientToken(cid).then((t) => {
       setRecToken(t);
       if (t) {
@@ -563,6 +563,8 @@ function EpisodeEditor({ cid, epId, onChange }) {
     episodeWaveformStatus(cid, epId).then(setWaveform).catch(() => {});
     ep.stitchStatus(cid, epId).then(setStitchJob).catch(() => {});
   }, [cid, epId]);
+  // A thumbnail changed from the Episode assets panel: re-read the covers.
+  useEffect(() => { if (assetsBump) { setBust(Date.now()); refresh(); } }, [assetsBump]);
 
   // Poll while a waveform render is in progress — this can take a while for a
   // long episode, so it runs as a background job rather than blocking a
@@ -1073,10 +1075,233 @@ function EpRow({ cid, e, active, onOpen, onRemove, onArchive, onBundle }) {
   );
 }
 
+// ── Episode assets ────────────────────────────────────────────────────────
+// The five thumbnails an episode number needs, in one place: 16:9 longform
+// cover, 1:1 podcast art, and a 9:16 cover per shortform. Each slot reads and
+// writes the SAME field the stitcher uses (longform cover_path /
+// podcast_image_path, each shortform's cover_path), so the two stay in sync.
+// Plus this episode's own montage images (client_assets kind 'montage').
+const THUMB_SLOTS = [
+  { key: 'lf', label: 'Longform', shape: '16:9', ratio: 16 / 9, w: 96, h: 54, tpl: 'template_16x9', minW: 1280 },
+  { key: 'pod', label: 'Podcast', shape: '1:1', ratio: 1, w: 54, h: 54, tpl: 'template_1x1', minW: 1400 },
+  { key: 'sf1', label: 'SF1', shape: '9:16', ratio: 9 / 16, w: 36, h: 64, tpl: 'template_9x16', minW: 1080 },
+  { key: 'sf2', label: 'SF2', shape: '9:16', ratio: 9 / 16, w: 36, h: 64, tpl: 'template_9x16', minW: 1080 },
+  { key: 'sf3', label: 'SF3', shape: '9:16', ratio: 9 / 16, w: 36, h: 64, tpl: 'template_9x16', minW: 1080 },
+];
+
+// Which piece each slot lives on. An untagged-variant "SF:" counts as SF1.
+function thumbTargets(items) {
+  const lf = items.find((e) => pieceKind(e).order === 0) || null;
+  const sf = (n) => items.find((e) => { const k = pieceKind(e); return k.order === 1 && (k.variant || 1) === n; }) || null;
+  return { lf, pod: lf, sf1: sf(1), sf2: sf(2), sf3: sf(3) };
+}
+const slotIsSet = (key, piece) => !!piece && (key === 'pod' ? piece.hasPodcastImage : piece.hasCover);
+const thumbCount = (items) => { const t = thumbTargets(items); return THUMB_SLOTS.filter((s) => slotIsSet(s.key, t[s.key])).length; };
+
+// Read an image file's pixel size in the browser (no upload needed).
+const imageSize = (file) => new Promise((resolve) => {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => { resolve({ w: img.naturalWidth, h: img.naturalHeight }); URL.revokeObjectURL(url); };
+  img.onerror = () => { resolve(null); URL.revokeObjectURL(url); };
+  img.src = url;
+});
+const shapeOf = ({ w, h }) => { const r = w / h; return r > 1.3 ? '16:9' : r > 0.8 ? '1:1' : '9:16'; };
+// A filename like "E14_SF2.png" or "podcast.jpg" picks its slot directly.
+const slotFromName = (name) => {
+  const n = String(name || '').toLowerCase();
+  const sf = n.match(/sf\s*[-_]?\s*([123])/); if (sf) return 'sf' + sf[1];
+  if (/podcast|square|1x1/.test(n)) return 'pod';
+  if (/\blf\b|longform|16x9|youtube/.test(n)) return 'lf';
+  return null;
+};
+
+function EpisodeAssetsPanel({ cid, epNum, items, onChanged }) {
+  const [assets, setAssets] = useState([]);
+  const [busy, setBusy] = useState('');
+  const [msgs, setMsgs] = useState([]);     // [{ tone: 'ok'|'warn', text }]
+  const [drag, setDrag] = useState(false);
+  const [bust, setBust] = useState(Date.now());
+  const [zoom, setZoom] = useState(null);
+  const targets = thumbTargets(items);
+  const num = String(epNum);
+
+  const loadAssets = () => api.listAssets(cid).then((r) => setAssets(Array.isArray(r) ? r : [])).catch(() => setAssets([]));
+  useEffect(() => { loadAssets(); }, [cid]);
+  const templateFor = (kind) => assets.find((a) => a.kind === kind) || null;
+  const montage = assets.filter((a) => a.kind === 'montage' && String(a.episode_number || '') === num);
+
+  const urlFor = (key) => { const p = targets[key]; return key === 'pod' ? ep.podcastImageUrl(cid, p.id) : ep.coverUrl(cid, p.id); };
+  const putSlot = (key, file) => { const p = targets[key]; return key === 'pod' ? ep.uploadPodcastImage(cid, p.id, file) : ep.upload(cid, p.id, 'cover', file); };
+  // Size/shape check against the slot. Returns a warning string or ''.
+  const checkFit = (slot, dims) => {
+    if (!dims) return '';
+    const off = Math.abs(dims.w / dims.h - slot.ratio) / slot.ratio;
+    if (off > 0.03) return `${slot.label}: image is ${dims.w}×${dims.h}, not ${slot.shape} — it will be cropped to fit.`;
+    if (dims.w < slot.minW) return `${slot.label}: only ${dims.w}px wide (aim for ${slot.minW}px or more).`;
+    return '';
+  };
+
+  const finish = async (notes) => { setMsgs(notes); setBust(Date.now()); await onChanged(); };
+
+  const uploadTo = async (key, file) => {
+    if (!file) return;
+    const slot = THUMB_SLOTS.find((s) => s.key === key);
+    if (!targets[key]) return;
+    setBusy(key); const notes = [];
+    try {
+      const w = checkFit(slot, await imageSize(file)); if (w) notes.push({ tone: 'warn', text: w });
+      await putSlot(key, file);
+      notes.push({ tone: 'ok', text: `${slot.label} saved.` });
+    } catch (ex) { notes.push({ tone: 'warn', text: `${slot.label}: ${ex.message || 'upload failed'}` }); }
+    setBusy(''); await finish(notes);
+  };
+
+  const clearSlot = async (key) => {
+    const slot = THUMB_SLOTS.find((s) => s.key === key);
+    if (!window.confirm(`Remove the ${slot.label} thumbnail? (The stitcher uses this same image.)`)) return;
+    const p = targets[key];
+    setBusy(key);
+    try { if (key === 'pod') await ep.clearPodcastImage(cid, p.id); else await ep.clearSlot(cid, p.id, 'cover'); }
+    catch (ex) { setMsgs([{ tone: 'warn', text: ex.message || 'Could not remove' }]); }
+    setBusy(''); await finish([]);
+  };
+
+  // Drop many images: a filename tag (SF2, podcast…) wins; otherwise the
+  // image's shape decides. Tall images fill the first open SF slot in order.
+  const dropAll = async (fileList) => {
+    const files = Array.from(fileList || []).filter((f) => (f.type || '').startsWith('image/'));
+    if (!files.length) return;
+    setBusy('drop'); const notes = []; const taken = new Set();
+    const plan = [];
+    for (const f of files) {
+      const dims = await imageSize(f);
+      let key = slotFromName(f.name);
+      if (!key && dims) {
+        const shape = shapeOf(dims);
+        if (shape === '16:9') key = 'lf';
+        else if (shape === '1:1') key = 'pod';
+        else key = ['sf1', 'sf2', 'sf3'].find((k) => targets[k] && !taken.has(k) && !slotIsSet(k, targets[k]))
+          || ['sf1', 'sf2', 'sf3'].find((k) => targets[k] && !taken.has(k)) || null;
+      }
+      if (!key || taken.has(key)) { notes.push({ tone: 'warn', text: `${f.name}: no open slot for it — drop it on a slot directly.` }); continue; }
+      if (!targets[key]) { notes.push({ tone: 'warn', text: `${f.name}: this episode has no ${THUMB_SLOTS.find((s) => s.key === key).label} piece yet.` }); continue; }
+      taken.add(key); plan.push({ key, f, dims });
+    }
+    for (const { key, f, dims } of plan) {
+      const slot = THUMB_SLOTS.find((s) => s.key === key);
+      try {
+        const w = checkFit(slot, dims); if (w) notes.push({ tone: 'warn', text: w });
+        await putSlot(key, f);
+        notes.push({ tone: 'ok', text: `${f.name} → ${slot.label}` });
+      } catch (ex) { notes.push({ tone: 'warn', text: `${f.name}: ${ex.message || 'upload failed'}` }); }
+    }
+    setBusy(''); await finish(notes);
+  };
+
+  const addMontage = async (fileList) => {
+    const files = Array.from(fileList || []).filter((f) => (f.type || '').startsWith('image/'));
+    if (!files.length) return;
+    setBusy('montage'); const notes = [];
+    for (const f of files) {
+      try { await api.uploadAsset(cid, 'montage', f, { episode_number: num }); }
+      catch (ex) { notes.push({ tone: 'warn', text: `${f.name}: ${ex.message || 'upload failed'}` }); }
+    }
+    await loadAssets(); setBusy(''); setMsgs(notes);
+  };
+  const removeMontage = async (a) => {
+    if (!window.confirm(`Delete "${a.filename}" from this episode's montage images?`)) return;
+    try { await api.deleteAsset(cid, a.id); await loadAssets(); } catch (ex) { setMsgs([{ tone: 'warn', text: ex.message }]); }
+  };
+
+  const count = thumbCount(items);
+  const tplLink = (a) => a ? (a.link || api.assetFileUrl(cid, a.id)) : null;
+
+  return (
+    <div className="card" style={{ padding: 10, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontWeight: 600, fontSize: 13 }}>Episode assets</div>
+        <span className="badge" style={{ color: count === 5 ? 'var(--ok)' : 'var(--accent-2)', whiteSpace: 'nowrap' }}>{count} of 5</span>
+      </div>
+      <label
+        onDragOver={(e) => { e.preventDefault(); if (!drag) setDrag(true); }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={(e) => { e.preventDefault(); setDrag(false); dropAll(e.dataTransfer.files); }}
+        style={{ display: 'block', border: '1px dashed ' + (drag ? 'var(--accent-2)' : 'var(--border)'), borderRadius: 8, padding: 10, textAlign: 'center', cursor: busy ? 'wait' : 'pointer', marginBottom: 10 }}>
+        <span className="mono" style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+          <Icon name="upload" size={12} /> {busy === 'drop' ? 'Sorting and uploading…' : 'Drop all thumbnails here, or click'}
+        </span>
+        <input type="file" accept="image/*" multiple disabled={!!busy} onChange={(e) => { const f = e.target.files; dropAll(f); e.target.value = ''; }} style={{ display: 'none' }} />
+        <div className="mono" style={{ fontSize: 10, color: 'var(--text-4)', marginTop: 2 }}>Sorted by shape. Put SF1 / SF2 / SF3 in a file name to pick the shortform.</div>
+      </label>
+
+      <div className="row" style={{ gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        {THUMB_SLOTS.map((slot) => {
+          const piece = targets[slot.key];
+          const set = slotIsSet(slot.key, piece);
+          const tpl = templateFor(slot.tpl);
+          return (
+            <div key={slot.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, width: Math.max(slot.w, 54) }}>
+              <label title={piece ? (set ? 'Click to replace, or drop an image' : 'Click or drop an image') : `No ${slot.label} piece in this episode yet`}
+                onDragOver={(e) => { if (piece) e.preventDefault(); }}
+                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); if (piece) uploadTo(slot.key, e.dataTransfer.files[0]); }}
+                style={{ width: slot.w, height: slot.h, borderRadius: 6, overflow: 'hidden', display: 'grid', placeItems: 'center', cursor: piece ? 'pointer' : 'not-allowed', background: 'var(--surface-2)',
+                  border: set ? '1px solid var(--ok)' : '1px dashed var(--border)', opacity: piece ? 1 : 0.45 }}>
+                {set
+                  ? <img src={urlFor(slot.key) + '?b=' + bust} alt={slot.label} onClick={(e) => { e.preventDefault(); setZoom(urlFor(slot.key) + '?b=' + bust); }} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} />
+                  : <span className="mono" style={{ fontSize: 10, color: 'var(--text-4)' }}>{busy === slot.key ? '…' : slot.shape}</span>}
+                {piece && <input type="file" accept="image/*" disabled={!!busy} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; uploadTo(slot.key, f); }} style={{ display: 'none' }} />}
+              </label>
+              <div className="mono" style={{ fontSize: 11, fontWeight: 600 }}>{slot.label}</div>
+              {!piece && <div className="mono" style={{ fontSize: 9.5, color: 'var(--text-4)' }}>no piece yet</div>}
+              {piece && set && <button className="btn sm" style={{ fontSize: 10, padding: '0 6px', height: 20 }} onClick={() => clearSlot(slot.key)}>Remove</button>}
+              {tpl && <a href={tplLink(tpl)} target="_blank" rel="noreferrer" {...(tpl.link ? {} : { download: tpl.filename })} className="mono" style={{ fontSize: 10, color: 'var(--accent-2)' }}>Template{tpl.link ? ' ↗' : ''}</a>}
+            </div>
+          );
+        })}
+      </div>
+      {!THUMB_SLOTS.some((s) => templateFor(s.tpl)) && (
+        <div className="mono" style={{ fontSize: 10.5, color: 'var(--text-4)', marginTop: 6 }}>Tip: add this show's templates in Brief → Assets → Thumbnail templates and they'll link from each slot.</div>
+      )}
+
+      <div style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 8 }}>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontWeight: 600, fontSize: 12.5 }} title="Studio → Montage lists these first">Montage images <span className="mono" style={{ fontWeight: 400, color: 'var(--text-4)', fontSize: 11 }}>· {montage.length}</span></div>
+          <label className="btn sm" style={{ cursor: busy ? 'not-allowed' : 'pointer' }}>
+            <Icon name="plus" size={12} /> {busy === 'montage' ? 'Uploading…' : 'Add images'}
+            <input type="file" accept="image/*" multiple disabled={!!busy} onChange={(e) => { const f = e.target.files; addMontage(f); e.target.value = ''; }} style={{ display: 'none' }} />
+          </label>
+        </div>
+        <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addMontage(e.dataTransfer.files); }}
+          style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, minHeight: 44 }}>
+          {montage.length === 0 && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)', alignSelf: 'center' }}>Drop this episode's montage images here.</span>}
+          {montage.map((a) => (
+            <div key={a.id} style={{ position: 'relative', width: 64, height: 44, borderRadius: 4, overflow: 'hidden', border: '1px solid var(--border)' }} title={a.filename}>
+              <img src={api.assetFileUrl(cid, a.id)} alt={a.filename} onClick={() => setZoom(api.assetFileUrl(cid, a.id))} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} />
+              <button className="icon-btn" title="Delete" onClick={() => removeMontage(a)} style={{ position: 'absolute', top: 1, right: 1, width: 16, height: 16, padding: 0, background: 'rgba(0,0,0,0.6)' }}><Icon name="close" size={9} /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {msgs.length > 0 && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {msgs.map((m, i) => <div key={i} className="mono" style={{ fontSize: 11, color: m.tone === 'ok' ? 'var(--ok)' : 'var(--accent-2)' }}>{m.tone === 'ok' ? '✓ ' : '⚠ '}{m.text}</div>)}
+        </div>
+      )}
+      {zoom && (
+        <div onClick={() => setZoom(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'grid', placeItems: 'center', padding: 16, cursor: 'zoom-out' }}>
+          <img src={zoom} alt="full size" style={{ maxWidth: '92vw', maxHeight: '92vh', borderRadius: 10, border: '1px solid var(--border)' }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // One collapsible card per episode NUMBER: collapsed shows the number + title;
 // open reveals every piece (longform, shortforms, TV/radio, blog) that shares
 // that number. Pieces with no number each get their own single-piece card.
-function EpGroupCard({ cid, group, open, onToggle, openId, setOpenId, onRemove, onArchive, onBundle }) {
+function EpGroupCard({ cid, group, open, onToggle, openId, setOpenId, onRemove, onArchive, onBundle, onChanged }) {
   const { epNum, items } = group;
   const lead = items.find((e) => pieceKind(e).order === 0) || items[0]; // prefer longform for cover/title
   const title = baseSubject(lead);
@@ -1108,6 +1333,7 @@ function EpGroupCard({ cid, group, open, onToggle, openId, setOpenId, onRemove, 
           </div>
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
             {items.length} {items.length === 1 ? 'piece' : 'pieces'}{epNum ? '' : ' · no episode #'}
+            {epNum ? (() => { const n = thumbCount(items); return <span style={{ color: n === 5 ? 'var(--ok)' : 'var(--accent-2)' }}> · thumbnails {n}/5</span>; })() : null}
           </div>
         </div>
         <Icon name="arrow-r" size={14} style={{ color: 'var(--text-4)', flex: 'none', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
@@ -1124,6 +1350,7 @@ function EpGroupCard({ cid, group, open, onToggle, openId, setOpenId, onRemove, 
                 title="Preview whether this episode qualifies for auto-archive — no changes made">Check auto-archive</button>
             </div>
           )}
+          {epNum && <EpisodeAssetsPanel cid={cid} epNum={epNum} items={items} onChanged={onChanged || (() => {})} />}
           {items.map((e) => (
             <PieceRow key={e.id} cid={cid} e={e} active={openId === e.id}
               onOpen={() => setOpenId(openId === e.id ? null : e.id)}
@@ -1219,6 +1446,10 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
     ])
       .catch((e) => setErr(e.message || 'Could not load episodes.')).finally(() => setLoading(false));
   };
+  // Refresh the list without the loading state (keeps open cards open) —
+  // used after a thumbnail upload from the Episode assets panel.
+  const [assetsBump, setAssetsBump] = useState(0);
+  const reloadQuiet = () => (cid == null ? Promise.resolve() : (setAssetsBump((n) => n + 1), ep.list(cid)).then((r) => setList(Array.isArray(r) ? r : (r.episodes || []))).catch(() => {}));
   const loadArchiveLog = () => {
     if (cid == null) { setArchiveLog([]); return; }
     ep.archiveLog(cid).then((r) => setArchiveLog(Array.isArray(r) ? r : (r.log || []))).catch(() => setArchiveLog([]));
@@ -1286,14 +1517,20 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
         scripts = rows.filter((s) => String(s.episode_number || '').trim().replace(/^E/i, '') === num);
       } catch { /* scripts are best-effort */ }
       const files = [];
-      let cover = null;
       for (const x of eps) {
         const base = (x.title || ('episode-' + x.id)).replace(/[^\w-]+/g, '_');
         if (x.hasVideo) files.push({ url: ep.videoFileUrl(cid, x.id), name: `${base}.mp4` });
         else if (x.hasOutput) files.push({ url: ep.fileUrl(cid, x.id), name: `${base}.mp3` });
-        if (!cover && x.hasCover) cover = { url: ep.coverUrl(cid, x.id), name: 'thumbnail.jpg' };
       }
-      if (cover) files.push(cover);
+      // All five thumbnails, named by slot: E14-LF-16x9.jpg, E14-POD-1x1.jpg,
+      // E14-SF2-9x16.jpg … (in a thumbnails/ folder).
+      const tg = thumbTargets(eps);
+      const tname = { lf: 'LF-16x9', pod: 'POD-1x1', sf1: 'SF1-9x16', sf2: 'SF2-9x16', sf3: 'SF3-9x16' };
+      for (const sl of THUMB_SLOTS) {
+        const p = tg[sl.key];
+        if (!slotIsSet(sl.key, p)) continue;
+        files.push({ url: sl.key === 'pod' ? ep.podcastImageUrl(cid, p.id) : ep.coverUrl(cid, p.id), name: `thumbnails/E${num}-${tname[sl.key]}.jpg`, autoExt: true });
+      }
       const texts = scripts.map((s) => ({
         name: `script-${(s.channel || 'script')}${s.variant ? '-v' + s.variant : ''}-${(s.title || s.topic || ('id' + s.id)).replace(/[^\w-]+/g, '_')}.txt`,
         content: s.body || '',
@@ -1429,7 +1666,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
 
       {openId != null ? (
-        <EpisodeEditor cid={cid} epId={openId} onChange={load} />
+        <EpisodeEditor cid={cid} epId={openId} onChange={load} assetsBump={assetsBump} />
       ) : (
         <div className="card card-pad" style={{ borderStyle: 'dashed' }}>
           <div className="mono" style={{ color: 'var(--text-3)' }}>Select an episode from the list on the right to open it here — or create a new one above.</div>
@@ -1452,7 +1689,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
               <EpGroupCard key={g.key} cid={cid} group={g}
                 open={openGroups.has(g.key)} onToggle={() => toggleGroup(g.key)}
                 openId={openId} setOpenId={setOpenId}
-                onRemove={remove} onArchive={archive} onBundle={downloadBundle} />
+                onRemove={remove} onArchive={archive} onBundle={downloadBundle} onChanged={reloadQuiet} />
             ))}
           </div>
         )}

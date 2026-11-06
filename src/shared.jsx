@@ -478,7 +478,13 @@ async function buildArchiveZip({ zipName, files = [], texts = [], manifest }) {
     if (!f || !f.url) continue;
     try {
       const r = await fetch(f.url, { credentials: 'same-origin' });
-      if (r.ok) { zip.file(f.name, await r.blob()); written += 1; }
+      if (r.ok) {
+        const blob = await r.blob();
+        // autoExt: name the file by what the server actually sent (a PNG
+        // cover stays .png instead of being mislabelled .jpg).
+        const ext = f.autoExt && ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' })[(blob.type || '').split(';')[0]];
+        zip.file(ext ? f.name.replace(/\.[^./]+$/, '.' + ext) : f.name, blob); written += 1;
+      }
     } catch { /* skip a file that won't fetch rather than fail the whole zip */ }
   }
   for (const t of texts) { if (t && t.name) { zip.file(t.name, t.content || ''); written += 1; } }

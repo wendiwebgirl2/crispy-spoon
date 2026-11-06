@@ -439,6 +439,83 @@ const ASSET_KINDS = [
   { id: 'other', label: 'Other' },
 ];
 
+// Thumbnail templates: one per shape, unique to the client's show theme. Each
+// can be a file (the blank/master design), a link (e.g. the Canva design), or
+// both. The Episode assets panel links each thumbnail slot to its template.
+export const TEMPLATE_SHAPES = [
+  { kind: 'template_16x9', label: 'Longform 16:9', w: 128, h: 72 },
+  { kind: 'template_1x1', label: 'Podcast 1:1', w: 72, h: 72 },
+  { kind: 'template_9x16', label: 'Shortform 9:16', w: 41, h: 72 },
+];
+// Episode-level kinds are managed elsewhere (templates above, montage
+// images in each episode's panel), so the general grid leaves them out.
+const isEpisodeKind = (a) => /^template_/.test(a.kind || '') || a.kind === 'montage';
+
+function ThumbnailTemplates({ clientId, assets, reload }) {
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState('');
+  const upload = async (kind, file) => {
+    if (!file) return;
+    setBusy(kind); setErr('');
+    try { await api.uploadAsset(clientId, kind, file); await reload(); }
+    catch (ex) { setErr(ex.message || 'Upload failed'); }
+    finally { setBusy(''); }
+  };
+  const addLink = async (kind) => {
+    const link = window.prompt('Paste the template link (for example the Canva design URL):');
+    if (!link) return;
+    setBusy(kind); setErr('');
+    try { await api.addAssetLink(clientId, kind, link.trim(), 'Template link'); await reload(); }
+    catch (ex) { setErr(ex.message || 'Could not save the link'); }
+    finally { setBusy(''); }
+  };
+  const remove = async (a) => {
+    if (!window.confirm(`Remove ${a.hasFile ? '"' + a.filename + '"' : 'this template link'}?`)) return;
+    try { await api.deleteAsset(clientId, a.id); await reload(); } catch (ex) { setErr(ex.message); }
+  };
+  return (
+    <div className="card card-pad" style={{ marginBottom: 16 }}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontWeight: 600, fontSize: 13 }}>Thumbnail templates</div>
+        <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>The show's design for each shape. Each episode's thumbnail slots link back here.</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+        {TEMPLATE_SHAPES.map((t) => {
+          const rows = assets.filter((a) => a.kind === t.kind);
+          return (
+            <div key={t.kind} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 600 }}>{t.label}</div>
+              {rows.length === 0 && (
+                <div style={{ width: t.w, height: t.h, border: '1px dashed var(--border)', borderRadius: 6, display: 'grid', placeItems: 'center', color: 'var(--text-4)' }}><Icon name="plus" size={14} /></div>
+              )}
+              {rows.map((a) => (
+                <div key={a.id} className="row" style={{ gap: 8, alignItems: 'center' }}>
+                  {a.hasFile && (a.mime || '').startsWith('image/')
+                    ? <img src={api.assetFileUrl(clientId, a.id)} alt={a.filename} style={{ width: t.w, height: t.h, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', flex: 'none' }} />
+                    : <div style={{ width: t.w, height: t.h, borderRadius: 6, border: '1px solid var(--border)', display: 'grid', placeItems: 'center', flex: 'none', color: 'var(--text-3)' }}><Icon name={a.hasFile ? 'doc' : 'globe'} size={14} /></div>}
+                  <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {a.hasFile && <a href={api.assetFileUrl(clientId, a.id)} download={a.filename} className="mono" style={{ fontSize: 11, wordBreak: 'break-word', color: 'var(--accent-2)' }}>{a.filename}</a>}
+                    {a.link && <a href={a.link} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 11, color: 'var(--accent-2)' }}>Open link ↗</a>}
+                  </div>
+                  <button className="icon-btn" title="Remove" onClick={() => remove(a)}><Icon name="close" size={12} /></button>
+                </div>
+              ))}
+              <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                <label className="btn sm" style={{ cursor: busy ? 'not-allowed' : 'pointer' }}>
+                  <Icon name="upload" size={12} /> {busy === t.kind ? 'Saving…' : 'Upload file'}
+                  <input type="file" onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; upload(t.kind, f); }} disabled={!!busy} style={{ display: 'none' }} />
+                </label>
+                <button className="btn sm" onClick={() => addLink(t.kind)} disabled={!!busy}>Add link</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {err && <div className="mono" style={{ color: 'var(--accent)', marginTop: 8 }}>{err}</div>}
+    </div>
+  );
+}
+
 function AssetsSection({ clientId }) {
   const [assets, setAssets] = useState([]);
   const [kind, setKind] = useState('logo');
@@ -480,6 +557,7 @@ function AssetsSection({ clientId }) {
   return (
     <div style={{ marginTop: 28 }}>
       <div className="label" style={{ marginBottom: 12 }}>ASSETS · logo, backgrounds, music, fonts</div>
+      <ThumbnailTemplates clientId={clientId} assets={assets} reload={load} />
       <div className="card card-pad"
         onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
@@ -496,11 +574,11 @@ function AssetsSection({ clientId }) {
           <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Pick several at once, or drop files here — saved as the type chosen on the left.</span>
           {err && <span className="mono" style={{ color: 'var(--accent)' }}>{err}</span>}
         </div>
-        {assets.length === 0 ? (
+        {assets.filter((a) => !isEpisodeKind(a)).length === 0 ? (
           <div className="mono" style={{ color: 'var(--text-4)' }}>No assets yet.</div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 12 }}>
-            {assets.map((a) => (
+            {assets.filter((a) => !isEpisodeKind(a)).map((a) => (
               <div key={a.id} className="card" style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ height: 80, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', display: 'grid', placeItems: 'center' }}>
                   {isImage(a)
