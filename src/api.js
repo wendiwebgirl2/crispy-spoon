@@ -470,6 +470,7 @@ export const api = {
   generate: (id, payload) => vcReq(`/clients/${id}/scripts/generate`, { method: "POST", body: JSON.stringify(payload) }),
   manual: (id, payload) => vcReq(`/clients/${id}/scripts/manual`, { method: "POST", body: JSON.stringify(payload) }),
   updateScript: (id, sid, payload) => vcReq(`/clients/${id}/scripts/${sid}`, { method: "PUT", body: JSON.stringify(payload) }),
+  swapEpisodes: (id, a, b, preview) => vcReq(`/clients/${id}/scripts/swap-episodes`, { method: "POST", body: JSON.stringify({ a, b, preview: !!preview }) }),
   scriptNoteHistory: (cid, sid) => vcReq(`/clients/${cid}/scripts/${sid}/note-history`),
   teamNotes: (cid, { episodeId, scriptId }) => vcReq(`/clients/${cid}/notes?` + (episodeId ? `episodeId=${episodeId}` : `scriptId=${scriptId}`)),
   addTeamNote: (cid, payload) => vcReq(`/clients/${cid}/notes`, { method: "POST", body: JSON.stringify(payload) }),

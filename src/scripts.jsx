@@ -100,6 +100,12 @@ const typePrefix = (channel, variant) => {
   return (channel || '—').slice(0, 2).toUpperCase();
 };
 // Skipped when the title already starts with "E{n} -" so it never doubles up.
+const FOLLOW_NOTE = {
+  recast: 'Updated from the longform. The video still has the old wording, so recast it.',
+  edited: "The longform changed, but this shortform doesn't match its text, so it wasn't updated. Check it.",
+  removed: 'Its passage was cut or rewritten in the longform, so it was not updated. Choose new text.',
+  too_long: 'The updated passage is over the shortform limit, so it was not changed. Trim it.',
+};
 const epPrefix = (s) => { const n = String(s.episode_number || '').trim().replace(/^E/i, ''); return n && !/^E\d+\s*[-–]/i.test(String(s.title || '').trim()) ? `E${n} - ` : ''; };
 const castTitleFor = (s) => `${epPrefix(s)}${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || 'Untitled'}`;
 
@@ -188,6 +194,12 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   // Batch-cast modal: format options applied to every selected script, then a
   // client-side queue submits one render at a time (same path as single-cast).
   const [castOpen, setCastOpen] = useState(false);
+  const [swapOpen, setSwapOpen] = useState(false);
+  const [swapA, setSwapA] = useState('');
+  const [swapB, setSwapB] = useState('');
+  const [swapPreview, setSwapPreview] = useState(null);
+  const [swapBusy, setSwapBusy] = useState(false);
+  const [swapErr, setSwapErr] = useState('');
   const [castAvatars, setCastAvatars] = useState([]);       // [{ id, name, _token }]
   const [castAvatarId, setCastAvatarId] = useState(null);
   const [castLoadingAv, setCastLoadingAv] = useState(false);
@@ -599,6 +611,26 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     openEdit(n.target);
   };
   const toggleNoteDone = (id) => setDoneNotes((cur) => { const nx = new Set(cur); if (nx.has(id)) nx.delete(id); else nx.add(id); return nx; });
+  const swapChoices = React.useMemo(() => {
+    const nums = new Set(history.filter((h) => h.status !== 'archived').map((h) => String(h.episode_number || '').trim().replace(/^E/i, '')).filter(Boolean));
+    return [...nums].sort((x, y) => Number(x) - Number(y));
+  }, [history]);
+  useEffect(() => {
+    setSwapPreview(null); setSwapErr('');
+    if (!swapOpen || !swapA || !swapB || swapA === swapB) return undefined;
+    let live = true;
+    api.swapEpisodes(clientId, swapA, swapB, true).then((r) => { if (live) setSwapPreview(r); }).catch((e) => { if (live) setSwapErr(e.message); });
+    return () => { live = false; };
+  }, [swapOpen, swapA, swapB, clientId]);
+  const runSwap = async () => {
+    setSwapBusy(true); setSwapErr('');
+    try {
+      const r = await api.swapEpisodes(clientId, swapA, swapB);
+      await refreshHistory();
+      setSwapOpen(false); setSwapA(''); setSwapB('');
+      setBatchMsg(`Swapped E${swapA} and E${swapB}.${r.unpaired && r.unpaired.length ? ' Some pieces had no match on the other episode and kept their air dates.' : ''}`);
+    } catch (e) { setSwapErr(e.message); } finally { setSwapBusy(false); }
+  };
   const saveEdit = async () => {
     try {
       const payload = { body: editBody, title: editTitle, description: editDesc, hashtags: editHashtags.trim() || null, job_number: editJob.trim() || null, episode_number: editEpisode.trim() || null };
@@ -618,8 +650,15 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         payload.status = 'draft';
         payload.approval_by = '';
       }
-      await api.updateScript(clientId, editing.id, payload);
+      const saved = await api.updateScript(clientId, editing.id, payload);
       setEditing(null); await refreshHistory();
+      const msg = [];
+      if (saved && saved.renumbered) msg.push(`Moved E${saved.renumbered.from} to E${saved.renumbered.to} across every format.${saved.renumbered.publishedKeepsOldNumber ? ' Anything already published keeps its old number on YouTube and podcast apps.' : ''}`);
+      if (saved && saved.follow) {
+        if (saved.follow.updated.length) msg.push(`${saved.follow.updated.length} shortform${saved.follow.updated.length === 1 ? '' : 's'} updated from the longform.`);
+        if (saved.follow.flagged.length) msg.push(`${saved.follow.flagged.length} need${saved.follow.flagged.length === 1 ? 's' : ''} review.`);
+      }
+      setBatchMsg(msg.join(' '));
     } catch (e) { setErr(e.message); }
   };
   const reviseWithClaude = async () => {
@@ -860,6 +899,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 <button className="btn sm" disabled={batchBusy} onClick={() => setSelected(new Set())}>Clear</button>
               </>
             )}
+            {swapChoices.length > 1 && <button className="btn sm" onClick={() => setSwapOpen(true)}>Swap episodes</button>}
             <span className="mono">{history.length} on file</span>
           </div>
         </div>
@@ -923,6 +963,12 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   )}
                   {h.model === 'manual' && <span className="mono">manual</span>}
                 </div>
+                {h.channel === 'shortform' && h.follow_note && FOLLOW_NOTE[h.follow_note] && (
+                  <div className="row" style={{ gap: 8, marginTop: 6, alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: 12, color: 'var(--warn)' }}>{FOLLOW_NOTE[h.follow_note]}</span>
+                    <button className="btn sm" title="Dismiss" onClick={async () => { try { await api.updateScript(clientId, h.id, { follow_note: null }); await refreshHistory(); } catch (e) { setErr(e.message); } }}>×</button>
+                  </div>
+                )}
                 <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                   <strong>{epPrefix(h)}{typePrefix(h.channel, h.variant)}: {(h.title && h.title.trim()) || (h.topic && h.topic.trim()) || 'Untitled'} · </strong>{h.body}
                 </div>
@@ -1134,6 +1180,46 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
 
       {/* Batch-cast options modal: one set of format options applied to every
           selected script, then a client-side queue submits the renders. */}
+      {swapOpen && (
+        <div onClick={() => { if (!swapBusy) setSwapOpen(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
+          <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(520px, 96vw)', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="label">Swap episodes</div>
+            <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+              <select className="input" value={swapA} onChange={(e) => setSwapA(e.target.value)} style={{ flex: 1 }}>
+                <option value="">Episode…</option>
+                {swapChoices.map((n) => <option key={n} value={n} disabled={n === swapB}>E{n}</option>)}
+              </select>
+              <span aria-hidden="true">⇄</span>
+              <select className="input" value={swapB} onChange={(e) => setSwapB(e.target.value)} style={{ flex: 1 }}>
+                <option value="">Episode…</option>
+                {swapChoices.map((n) => <option key={n} value={n} disabled={n === swapA}>E{n}</option>)}
+              </select>
+            </div>
+            {swapPreview && [swapPreview.a, swapPreview.b].map((p, i) => {
+              const other = i === 0 ? swapPreview.b : swapPreview.a;
+              return (
+                <div key={p.number} style={{ fontSize: 13 }}>
+                  <strong>E{p.number} becomes E{other.number}</strong>{p.topic ? `: ${p.topic}` : ''}
+                  <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                    {p.scripts} scripts · {p.pieces} stitcher pieces · {p.casts} casts · {p.planner} planner rows · {p.images} images
+                  </div>
+                </div>
+              );
+            })}
+            {swapPreview && !swapPreview.blockers.length && (
+              <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+                Scripts, videos, images, approvals and job numbers stay with their content and take the new number. Air dates stay with the episode number. Check any thumbnails with the number printed on them.
+              </div>
+            )}
+            {swapPreview && swapPreview.blockers.map((b) => <div key={b} className="mono" style={{ color: 'var(--err)', fontSize: 12 }}>{b}</div>)}
+            {swapErr && <div className="mono" style={{ color: 'var(--err)', fontSize: 12 }}>{swapErr}</div>}
+            <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn sm" disabled={swapBusy} onClick={() => setSwapOpen(false)}>Cancel</button>
+              <button className="btn primary sm" disabled={swapBusy || !swapPreview || swapPreview.blockers.length > 0} onClick={runSwap}>{swapBusy ? 'Swapping…' : 'Swap'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {castOpen && (
         <div onClick={() => { if (!batchBusy) setCastOpen(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 200 }}>
           <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(520px, 96vw)', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
