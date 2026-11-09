@@ -1671,7 +1671,9 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
     }
     const groups = [...map.values(), ...solo];
     for (const g of groups) g.items.sort((a, b) => (pieceKind(a).order - pieceKind(b).order) || (pieceKind(a).variant - pieceKind(b).variant));
-    groups.sort((a, b) => String(b.recent).localeCompare(String(a.recent)));
+    // Numbered episodes ascending; pieces with no number after them, newest first.
+    const num = (g) => { const n = parseInt(g.epNum, 10); return Number.isNaN(n) ? Infinity : n; };
+    groups.sort((a, b) => (num(a) - num(b)) || (a.epNum ? 0 : String(b.recent).localeCompare(String(a.recent))));
     return groups;
   }, [activeList]);
   // "Up next": episode numbers with scripts but no pieces yet, newer than the

@@ -738,7 +738,9 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       // into another episode's card).
       g.canRename = g.topics.length === 1 && history.every((x) => (x.topic || '').trim().toLowerCase() !== g.topics[0].toLowerCase() || g.items.includes(x));
     }
-    return [...groups.values()].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    // Numbered episodes ascending (E1, E2, E10); anything with no number after them, newest first.
+    const epNum = (g) => { const n = parseInt(g.ep, 10); return Number.isNaN(n) ? Infinity : n; };
+    return [...groups.values()].sort((a, b) => (epNum(a) - epNum(b)) || (a.ep ? 0 : (b.date || '').localeCompare(a.date || '')));
   }, [history]);
 
   if (loading) {
