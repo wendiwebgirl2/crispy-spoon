@@ -1617,43 +1617,24 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
     } catch (err) { setErr('Archive failed — nothing was deleted: ' + (err.message || err)); }
   };
 
-  // An episode is "past" once every schedule row planned for it (it can have
-  // more than one — e.g. one per distribution channel) has a scheduled_for in
-  // the past. No schedule rows at all, or any row still in the future or
-  // undated, means it isn't past yet.
-  const now = Date.now();
-  const isEpisodePast = (epId) => {
-    const rows = schedule.filter((s) => s.episode_id === epId);
-    if (!rows.length) return false;
-    return rows.every((s) => s.scheduled_for && new Date(s.scheduled_for).getTime() <= now);
-  };
-
-  // Group by topic. Episodes with no topic (started from a raw clip, or a
-  // manually-typed title with no script picked) never auto-archive — there's
-  // no topic to retire them under.
+  // Aired episodes move to the archive section on their own (the server decides,
+  // see airedEpisodes). Nothing is deleted, and a later date brings one back.
   const { activeList, archivedGroups } = React.useMemo(() => {
     const groups = new Map();
-    const untouched = [];
+    const active = [];
+    const numOf = (e) => { const n = parseInt(String(e.episode_number || '').trim().replace(/^E/i, ''), 10); return Number.isNaN(n) ? -1 : n; };
     for (const e of list) {
-      const t = (e.topic && e.topic.trim()) || '';
-      if (!t) { untouched.push(e); continue; }
+      if (!e.aired) { active.push(e); continue; }
+      const t = (e.topic && e.topic.trim()) || (e.title && e.title.trim()) || 'Untitled';
       const key = t.toLowerCase();
-      if (!groups.has(key)) groups.set(key, { topic: t, items: [] });
-      groups.get(key).items.push(e);
-    }
-    const active = [...untouched];
-    const archived = [];
-    for (const g of groups.values()) {
-      if (g.items.length > 0 && g.items.every((e) => isEpisodePast(e.id))) {
-        archived.push(g);
-      } else {
-        active.push(...g.items);
-      }
+      if (!groups.has(key)) groups.set(key, { topic: t, items: [], num: -1 });
+      const g = groups.get(key);
+      g.items.push(e);
+      g.num = Math.max(g.num, numOf(e));
     }
     active.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
-    return { activeList: active, archivedGroups: archived };
-    // eslint-disable-next-line
-  }, [list, schedule]);
+    return { activeList: active, archivedGroups: [...groups.values()].sort((a, b) => b.num - a.num) };
+  }, [list]);
 
   // Group the active list by episode NUMBER so every piece that shares a number
   // (longform + shortforms + TV/radio + blog) collapses into one card. Pieces
@@ -1671,9 +1652,9 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
     }
     const groups = [...map.values(), ...solo];
     for (const g of groups) g.items.sort((a, b) => (pieceKind(a).order - pieceKind(b).order) || (pieceKind(a).variant - pieceKind(b).variant));
-    // Numbered episodes ascending; pieces with no number after them, newest first.
-    const num = (g) => { const n = parseInt(g.epNum, 10); return Number.isNaN(n) ? Infinity : n; };
-    groups.sort((a, b) => (num(a) - num(b)) || (a.epNum ? 0 : String(b.recent).localeCompare(String(a.recent))));
+    // Numbered episodes highest first; pieces with no number after them, newest first.
+    const num = (g) => { const n = parseInt(g.epNum, 10); return Number.isNaN(n) ? -1 : n; };
+    groups.sort((a, b) => (num(b) - num(a)) || (a.epNum ? 0 : String(b.recent).localeCompare(String(a.recent))));
     return groups;
   }, [activeList]);
   // "Up next": episode numbers with scripts but no pieces yet, newer than the

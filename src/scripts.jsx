@@ -194,6 +194,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   // Batch-cast modal: format options applied to every selected script, then a
   // client-side queue submits one render at a time (same path as single-cast).
   const [castOpen, setCastOpen] = useState(false);
+  const [showAired, setShowAired] = useState(false);
   const [swapOpen, setSwapOpen] = useState(false);
   const [swapA, setSwapA] = useState('');
   const [swapB, setSwapB] = useState('');
@@ -612,7 +613,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   };
   const toggleNoteDone = (id) => setDoneNotes((cur) => { const nx = new Set(cur); if (nx.has(id)) nx.delete(id); else nx.add(id); return nx; });
   const swapChoices = React.useMemo(() => {
-    const nums = new Set(history.filter((h) => h.status !== 'archived').map((h) => String(h.episode_number || '').trim().replace(/^E/i, '')).filter(Boolean));
+    const nums = new Set(history.filter((h) => h.status !== 'archived' && !h.aired).map((h) => String(h.episode_number || '').trim().replace(/^E/i, '')).filter(Boolean));
     return [...nums].sort((x, y) => Number(x) - Number(y));
   }, [history]);
   useEffect(() => {
@@ -738,10 +739,15 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       // into another episode's card).
       g.canRename = g.topics.length === 1 && history.every((x) => (x.topic || '').trim().toLowerCase() !== g.topics[0].toLowerCase() || g.items.includes(x));
     }
-    // Numbered episodes ascending (E1, E2, E10); anything with no number after them, newest first.
-    const epNum = (g) => { const n = parseInt(g.ep, 10); return Number.isNaN(n) ? Infinity : n; };
-    return [...groups.values()].sort((a, b) => (epNum(a) - epNum(b)) || (a.ep ? 0 : (b.date || '').localeCompare(a.date || '')));
+    // Numbered episodes highest first (E10, E2, E1); anything with no number after them, newest first.
+    const epNum = (g) => { const n = parseInt(g.ep, 10); return Number.isNaN(n) ? -1 : n; };
+    return [...groups.values()].sort((a, b) => (epNum(b) - epNum(a)) || (a.ep ? 0 : (b.date || '').localeCompare(a.date || '')));
   }, [history]);
+  // Aired episodes drop into the archive section at the bottom; a card only
+  // counts once it has a number, so unnumbered one-off scripts stay put.
+  const airedCard = (g) => !!g.ep && g.items.some((h) => h.aired);
+  const airedCount = groupedHistory.filter(airedCard).length;
+  const shownGroups = groupedHistory.filter((g) => !airedCard(g));
 
   if (loading) {
     return <div className="v-pad fade-in"><div className="mono">Loading clients from the API…</div></div>;
@@ -906,7 +912,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
           </div>
         </div>
         <div className="col" style={{ gap: 20 }}>
-          {groupedHistory.map(g => {
+          {[...shownGroups, ...(showAired ? groupedHistory.filter(airedCard) : [])].map(g => {
             const open = expandedTopic === g.key;
             return (
             <div key={g.key} className="card" style={{ overflow: 'hidden' }}>
@@ -1026,6 +1032,11 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
             </div>
             );
           })}
+          {airedCount > 0 && (
+            <button className="btn sm" onClick={() => setShowAired((v) => !v)} style={{ width: '100%', justifyContent: 'space-between' }}>
+              <span>{showAired ? 'Hide' : 'Show'} archive / aired episodes ({airedCount})</span>
+            </button>
+          )}
           {history.length === 0 && <div className="mono" style={{ color: 'var(--text-4)' }}>No scripts yet for this client.</div>}
         </div>
       </div>
