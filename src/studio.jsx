@@ -118,6 +118,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [castTitle, setCastTitle] = React.useState('');
   const [castJobNumber, setCastJobNumber] = React.useState('');
   const [castScriptId, setCastScriptId] = React.useState(null);
+  // Channel of the script sent over from Scripts ('shortform', 'longform', ...).
+  // A shortform is locked to 9:16 so it can't be cast (and paid for) horizontal.
+  const [castChannel, setCastChannel] = React.useState(null);
+  const lockVertical = castChannel === 'shortform';
   const [scene, setScene] = React.useState('studio');
   const [language, setLanguage] = React.useState('EN');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
@@ -386,6 +390,8 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     if (castRequest.title != null) setCastTitle(castRequest.title);
     setCastJobNumber(castRequest.jobNumber || '');
     setCastScriptId(castRequest.scriptId || null);
+    setCastChannel(castRequest.channel || null);
+    if (castRequest.channel === 'shortform') setAspectRatio('9:16');
     if (onCastConsumed) onCastConsumed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [castRequest]);
@@ -411,7 +417,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   };
   const chooseType = (t) => {
     setContentType(t.id);
-    setAspectRatio(t.ar);
+    setAspectRatio(lockVertical ? '9:16' : t.ar);
     // podcast episodes open straight into assembly; everything else into video
     setRenderMode(t.id === 'episode' || destination === 'podcast' ? 'assembly' : 'video');
     const readyHere = clientAvatars.filter(a => a.status === 'ready');
@@ -859,7 +865,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       await generateVideo(script, {
         token, title: castTitle.trim() || script.slice(0, 60), avatarId, caption,
         background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null,
-        aspectRatio, backgroundAssetId, engine, expressiveness,
+        aspectRatio: lockVertical ? '9:16' : aspectRatio, backgroundAssetId, engine, expressiveness,
         motionPrompt: buildMotionPrompt(deliveryPromptText),
         deliveryLabel: customMotion.trim() ? 'Custom' : (DELIVERY_LABELS[delivery] || delivery),
         deliveryPrompt: deliveryPromptText || null,
@@ -947,7 +953,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     const opt = outputOptions.find((o) => o.key === key);
     if (!opt) return;
     setOutputKey(key);
-    setAspectRatio(opt.ar);
+    setAspectRatio(lockVertical ? '9:16' : opt.ar);
     setRenderMode(opt.assembly ? 'assembly' : 'video');
   };
 
@@ -1426,10 +1432,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
               <div className="label" style={{ marginBottom: 10 }}>ASPECT RATIO</div>
               <div className="row" style={{ gap: 4, marginBottom: 22 }}>
                 {['16:9', '9:16', '1:1'].map(r => {
-                  const disabled = r === '1:1' && engine === 'avatar_v';
+                  const disabled = (r === '1:1' && engine === 'avatar_v') || (lockVertical && r !== '9:16');
                   return (
                   <button key={r} disabled={disabled} onClick={() => setAspectRatio(r)} className="btn sm"
-                    title={disabled ? 'Avatar V does not support square (1:1) - use Auto or Avatar IV' : undefined}
+                    title={lockVertical && r !== '9:16' ? 'Shortforms always cast 9:16' : (disabled ? 'Avatar V does not support square (1:1) - use Auto or Avatar IV' : undefined)}
                     style={{
                       flex: 1, justifyContent: 'center',
                       opacity: disabled ? 0.4 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
@@ -1440,6 +1446,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   );
                 })}
               </div>
+              {lockVertical && <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: -16, marginBottom: 18 }}>Shortform script: always cast 9:16.</div>}
               <div className="label" style={{ marginBottom: 10 }}>CAPTIONS</div>
               <button onClick={() => setCaption((v) => !v)} className="row"
                 style={{ width: '100%', justifyContent: 'space-between', padding: 8, marginBottom: 22, borderRadius: 'var(--r-sm)',

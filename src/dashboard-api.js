@@ -77,6 +77,7 @@ export const sched = {
   advance: (cid, sid, status) => put(`/api/clients/${cid}/schedule/${sid}`, { status }),
   update: (cid, sid, body) => put(`/api/clients/${cid}/schedule/${sid}`, body),
   del: (cid, sid) => del(`/api/clients/${cid}/schedule/${sid}`),
+  activeTimes: (cid) => get(`/api/clients/${cid}/schedule/active-times`),
   channels: () => get(`/api/clients/0/scripts/channels`),
   approvedScripts: (cid) => get(`/api/clients/${cid}/scripts`),
 };

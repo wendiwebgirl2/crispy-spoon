@@ -59,13 +59,14 @@ function AiringRow({ a }) {
 function CadenceCard({ client, onSaved }) {
   const [startDate, setStartDate] = useState(client.startDate || '');
   const [blogDay, setBlogDay] = useState(client.blogDay || '');
+  const [postTime, setPostTime] = useState(client.postTime || '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  useEffect(() => { setStartDate(client.startDate || ''); setBlogDay(client.blogDay || ''); }, [client.id, client.startDate, client.blogDay]);
-  const dirty = startDate !== (client.startDate || '') || blogDay !== (client.blogDay || '');
+  useEffect(() => { setStartDate(client.startDate || ''); setBlogDay(client.blogDay || ''); setPostTime(client.postTime || ''); }, [client.id, client.startDate, client.blogDay, client.postTime]);
+  const dirty = startDate !== (client.startDate || '') || blogDay !== (client.blogDay || '') || postTime !== (client.postTime || '');
   const save = async () => {
     setBusy(true); setErr('');
-    try { await api.updateClientCadence(client.id, { startDate: startDate || null, blogDay: blogDay || null }); onSaved(); }
+    try { await api.updateClientCadence(client.id, { startDate: startDate || null, blogDay: blogDay || null, postTime: postTime || null }); onSaved(); }
     catch (e) { setErr(e.message || 'Could not save.'); }
     finally { setBusy(false); }
   };
@@ -84,10 +85,14 @@ function CadenceCard({ client, onSaved }) {
             {WEEKDAYS.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
+        <div>
+          <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 4 }}>Post time (Central)</div>
+          <input type="time" value={postTime} onChange={(e) => setPostTime(e.target.value)} style={{ ...inputStyle, minWidth: 120 }} />
+        </div>
         {dirty && <button className="btn sm primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>}
       </div>
       <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 8 }}>
-        LF airs everywhere on D0 (the week's start date + 7×(week−1)); SF1/2/3 post D+1/+2/+3; the blog is written and emailed to the client on the fixed weekday above, same week.
+        LF airs everywhere on D0 (the week's start date + 7×(week−1)); SF1/2/3 post D+1/+2/+3; the blog is written and emailed to the client on the fixed weekday above, same week. Posts go out at the post time; the Planner fills in these days and the time when you schedule.
       </div>
       {err && <div className="mono" style={{ color: 'var(--warn)', fontSize: 12, marginTop: 8 }}>{err}</div>}
     </div>

@@ -28,6 +28,17 @@ const inputStyle = { background: 'var(--surface-2)', color: 'var(--text)', borde
 const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 };
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Cadence (set per client on the Episode Log): the longform airs on D0 = the
+// weekday of the week-1 start date, SF1/2/3 on D+1/+2/+3, the blog on its own
+// weekday, all at the client's post time. Used to pre-fill scheduling.
+const cadenceD0 = (c) => { if (!c || !c.startDate) return null; const d = new Date(String(c.startDate).slice(0, 10) + 'T00:00:00'); return isNaN(d.getTime()) ? null : d.getDay(); };
+const sfNumber = (title) => { const m = String(title || '').match(/\bSF\s*(\d)\b/i); return m ? Number(m[1]) : 0; };
+// Weekday this episode should go out on, or null if the client has no cadence.
+const cadenceWeekday = (c, title) => { const d0 = cadenceD0(c); return d0 == null ? null : (d0 + sfNumber(title)) % 7; };
+// Next date (today counts) that falls on the given weekday.
+const nextOnWeekday = (wd) => { const d = midnight(); while (d.getDay() !== wd) d.setDate(d.getDate() + 1); return d; };
 const pad2 = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const midnight = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
@@ -69,6 +80,63 @@ function DayChip({ item, onClick }) {
       {!!item.rerun && <span title="Republish">↻</span>}
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: col, flex: 'none', display: delivered ? 'block' : 'none' }} />
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{timeOf(item) ? fmt12(timeOf(item)).replace(':00', '') + ' ' : ''}{item.title || '•'}</span>
+    </div>
+  );
+}
+
+// Active times: how this client's own past posts did by hour, for the weekday
+// of the date being scheduled (Central time), plus the best 3 slots overall.
+// Bars: height = score vs the client's average post (1.0 = average); faint =
+// no posts at that hour yet. Click a bar or a "best" chip to use that time.
+function ActiveTimes({ data, date, onPick }) {
+  if (!data) return null;
+  const sel = date ? new Date(date + 'T00:00:00') : null;
+  const dow = sel && !isNaN(sel.getTime()) ? sel.getDay() : null;
+  const slots = data.slots || [];
+  const best = slots.filter((s) => s.posts >= 2).sort((a, b) => b.score - a.score).slice(0, 3);
+  const hours = Array.from({ length: 17 }, (_, i) => i + 6); // 6 AM – 10 PM
+  const day = new Map(slots.filter((s) => s.dow === dow).map((s) => [s.hour, s]));
+  const max = Math.max(1.5, ...slots.map((s) => s.score));
+  const h12 = (h) => `${h % 12 || 12}${h < 12 ? 'a' : 'p'}`;
+  return (
+    <div className="col" style={{ gap: 6, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <span className="mono" style={{ color: 'var(--text-4)' }}>Active times{dow != null ? ` · ${WEEKDAY_NAMES[dow]}` : ''}</span>
+        <span className="mono" style={{ fontSize: 10, color: 'var(--text-4)' }}>from {data.posts} past post{data.posts === 1 ? '' : 's'} · Central</span>
+      </div>
+      {data.posts === 0 ? (
+        <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>No measured posts yet. Times show here once posts are 3+ days old.</div>
+      ) : (
+        <>
+          <div className="row" style={{ gap: 2, alignItems: 'flex-end', height: 54 }}>
+            {hours.map((h) => {
+              const s = day.get(h);
+              const pct = s ? Math.max(8, Math.min(100, (s.score / max) * 100)) : 8;
+              return (
+                <button key={h} type="button" onClick={() => onPick(null, `${pad2(h)}:00`)}
+                  title={s ? `${fmt12(pad2(h) + ':00')}: ${s.score}× your average post · ~${s.avgViews} views · ${s.posts} post${s.posts === 1 ? '' : 's'}` : `${fmt12(pad2(h) + ':00')}: no posts at this hour yet`}
+                  style={{ flex: 1, height: `${pct}%`, padding: 0, border: 'none', borderRadius: 2, cursor: 'pointer',
+                    background: s ? (s.score >= 1 ? 'var(--ok)' : 'var(--text-4)') : 'var(--border)', opacity: s ? 1 : 0.5 }} />
+              );
+            })}
+          </div>
+          <div className="row" style={{ gap: 2 }}>
+            {hours.map((h) => <span key={h} className="mono" style={{ flex: 1, fontSize: 9, color: 'var(--text-4)', textAlign: 'center' }}>{h % 3 === 0 ? h12(h) : ''}</span>)}
+          </div>
+          {best.length > 0 && (
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Best so far:</span>
+              {best.map((s) => (
+                <button key={`${s.dow}-${s.hour}`} type="button" className="btn sm" onClick={() => onPick(ymd(nextOnWeekday(s.dow)), `${pad2(s.hour)}:00`)}
+                  title={`${s.score}× your average post · ~${s.avgViews} views · ${s.posts} posts`}>
+                  {WEEKDAYS[s.dow]} {fmt12(pad2(s.hour) + ':00')}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="mono" style={{ fontSize: 10, color: 'var(--text-4)' }}>Based only on when this client's posts went out and how they did, not on when followers are online. Spreading posts across more times makes this more useful.</div>
+        </>
+      )}
     </div>
   );
 }
@@ -131,6 +199,18 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
   const [clientList, setClientList] = useState([]);   // for the client dropdown (top of the planner, or "pick a client")
   useEffect(() => { api.listClients().then((cs) => setClientList(Array.isArray(cs) ? cs : (cs && cs.clients) || [])).catch(() => setClientList([])); }, []);
   const [items, setItems] = useState([]);
+  const [activeTimes, setActiveTimes] = useState(null); // own-post performance by weekday/hour
+  useEffect(() => { if (cid == null) return; sched.activeTimes(cid).then(setActiveTimes).catch(() => setActiveTimes(null)); }, [cid]);
+  const [cadence, setCadence] = useState(null);   // { startDate, blogDay, postTime } from the Episode Log
+  useEffect(() => {
+    if (cid == null) return;   // no client = the "pick a client" screen, which never reads cadence
+    api.getClient(cid).then((c) => setCadence({ startDate: c.start_date || null, blogDay: c.blog_day || null, postTime: c.post_time || null })).catch(() => setCadence(null));
+  }, [cid]);
+  // Pre-filled date + time for scheduling an episode, from the cadence.
+  const cadenceWhen = (title) => {
+    const wd = cadenceWeekday(cadence, title);
+    return { d: wd == null ? ymd(midnight()) : ymd(nextOnWeekday(wd)), t: (cadence && cadence.postTime) || '09:00' };
+  };
   const [channels, setChannels] = useState([]);
   const [approved, setApproved] = useState([]);   // approved scripts (optional attach on manual posts)
   const [episodes, setEpisodes] = useState([]);   // finished episodes to distribute (approved, or added by hand)
@@ -238,7 +318,9 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
     setDistChannels(new Set(mine.map((i) => i.channel).filter((c) => SOCIAL_CHANNELS.some((s) => s.key === c))));
     setDistFeed(!!epi.feedInclude);
     const w = splitWhen(mine[0] && mine[0].scheduled_for);
-    setDistDate(w.d || ymd(midnight())); setDistTime(w.t || '09:00');
+    const cw = cadenceWhen(epi.title);
+    const has = !!(mine[0] && mine[0].scheduled_for);   // reuse an existing post's date/time, else the cadence's
+    setDistDate(has && w.d ? w.d : cw.d); setDistTime(has ? w.t : cw.t);
   };
   // Republish an episode that already aired: brand-new Planner rows (the
   // original delivered posts stay as history), each going out with this title.
@@ -247,7 +329,8 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
     setDist(epi); setDistRerun(true);
     setDistChannels(new Set());
     setDistTitle(`Encore: ${String(epi.title || '').replace(/^\s*encore:\s*/i, '')}`);
-    setDistDate(ymd(midnight())); setDistTime('09:00');
+    const cw = cadenceWhen(epi.title);
+    setDistDate(cw.d); setDistTime(cw.t);
   };
   const toggleDistChannel = (key) => setDistChannels((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   // Remove an episode from the Distribute list by marking it aired (today).
@@ -290,7 +373,7 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
   };
 
   // --- manual post from an empty day ---
-  const openNewPost = (day) => { setNewPost(true); setNpDate(ymd(day)); setNpTime('09:00'); setNpChannel(channels[0] ? channels[0].key : ''); setNpTitle(''); setNpScriptId(''); };
+  const openNewPost = (day) => { setNewPost(true); setNpDate(ymd(day)); setNpTime((cadence && cadence.postTime) || '09:00'); setNpChannel(channels[0] ? channels[0].key : ''); setNpTitle(''); setNpScriptId(''); };
   const saveNewPost = async () => {
     if (!npChannel) { setErr('Pick a channel.'); return; }
     const body = { channel: npChannel, title: npTitle };
@@ -338,6 +421,25 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
           {!clientList.some((c) => c.id === cid) && <option value={cid || ''}>Loading clients…</option>}
           {clientList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+      </div>
+
+      {/* Cadence (from the Episode Log) */}
+      <div className="card card-pad" style={{ marginBottom: 14, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className="label" style={{ margin: 0 }}>CADENCE</span>
+        {cadence && (cadence.startDate || cadence.blogDay || cadence.postTime) ? (() => {
+          const d0 = cadenceD0(cadence);
+          const parts = [];
+          if (d0 != null) {
+            parts.push(['Longform', WEEKDAY_NAMES[d0] + 's']);
+            parts.push(['SF1 / SF2 / SF3', [1, 2, 3].map((n) => WEEKDAYS[(d0 + n) % 7]).join(' / ')]);
+          }
+          if (cadence.blogDay) parts.push(['Blog', cadence.blogDay + 's']);
+          if (cadence.postTime) parts.push(['Post time', fmt12(cadence.postTime) + ' Central']);
+          return parts.map(([k, v]) => (
+            <span key={k} className="mono" style={{ fontSize: 12 }}><span style={{ color: 'var(--text-4)' }}>{k}</span> <span style={{ color: 'var(--text)', fontWeight: 600 }}>{v}</span></span>
+          ));
+        })() : <span className="mono" style={{ fontSize: 12, color: 'var(--text-4)' }}>Not set for this client.</span>}
+        <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginLeft: 'auto' }}>Edit in Episode Log → Cadence. Scheduling pre-fills these days and time.</span>
       </div>
 
       {/* Calendar */}
@@ -464,6 +566,7 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
               <label className="col" style={{ gap: 4, flex: 1 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Publish date</span><input type="date" value={distDate} onChange={(e) => setDistDate(e.target.value)} style={inputStyle} /></label>
               <label className="col" style={{ gap: 4, width: 120 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Time</span><input type="time" value={distTime} onChange={(e) => setDistTime(e.target.value)} style={inputStyle} /></label>
             </div>
+            <ActiveTimes data={activeTimes} date={distDate} onPick={(d, t) => { if (d) setDistDate(d); setDistTime(t); }} />
             <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{distRerun
               ? 'Each checked channel gets a new post with this title on that date; it goes out automatically at that time. Transistor gets a new episode (no episode number); the original stays in the feed.'
               : 'Each checked channel gets a scheduled post on that date. Publish it from its calendar chip when ready.'}</div>
@@ -533,9 +636,18 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
               <label className="col" style={{ gap: 4, flex: 1 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Publish date</span><input type="date" value={detailDate} onChange={(e) => setDetailDate(e.target.value)} style={inputStyle} /></label>
               <label className="col" style={{ gap: 4, width: 120 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Time</span><input type="time" value={detailTime} onChange={(e) => setDetailTime(e.target.value)} style={inputStyle} /></label>
             </div>
+            {detail.status !== 'delivered' && <ActiveTimes data={activeTimes} date={detailDate} onPick={(d, t) => { if (d) setDetailDate(d); setDetailTime(t); }} />}
             <div className="row" style={{ justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
               <button className="btn sm" onClick={cancelEvent} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Cancel event</button>
               <div className="row" style={{ gap: 8 }}>
+                {isEpisodeItem && detail.status === 'delivered' && (
+                  <button className="btn sm" title="Run this episode again on socials and the podcast as new posts"
+                    onClick={() => {
+                      const epi = [...airedEps, ...plannedEps, ...episodes].find((e) => e.id === detail.episode_id)
+                        || { id: detail.episode_id, title: detail.episode_title || detail.title || '' };
+                      setDetail(null); openRerun(epi);
+                    }}>↻ Republish</button>
+                )}
                 {isEpisodeItem && (
                   <button className="btn sm primary" disabled={publishing.has(detail.id) || mediaMissing} onClick={() => publishItem(detail)}>
                     {publishing.has(detail.id) ? 'Publishing…' : <><Icon name="check" size={12} /> Publish now</>}

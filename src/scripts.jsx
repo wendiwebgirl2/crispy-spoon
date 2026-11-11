@@ -499,8 +499,10 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     setCastProgress({ done: 0, total: items.length, failed });
     const deliveryText = castCustom.trim() || DELIVERY_PROMPTS[castDelivery];
     for (const h of items) {
-      // Avatar V has no 1:1 — fall back to 16:9 (Studio does the same).
-      const picked = castAspect !== 'auto' ? castAspect : (h.channel === 'shortform' ? '9:16' : '16:9');
+      // Shortforms are ALWAYS vertical, whatever the Aspect picker says — a
+      // 16:9 shortform is a wasted (paid) render. Avatar V has no 1:1 — fall
+      // back to 16:9 (Studio does the same).
+      const picked = h.channel === 'shortform' ? '9:16' : (castAspect !== 'auto' ? castAspect : '16:9');
       const aspect = (picked === '1:1' && castEngine === 'avatar_v') ? '16:9' : picked;
       try {
         const beforeRes = await listVideos(avatar._token).catch(() => ({ videos: [] }));
@@ -882,7 +884,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                   onDownload={() => download(s)}
                   onEdit={() => openEdit(s)}
                   onSend={() => sendApproval(s.id)}
-                  onCast={onCastScript ? () => onCastScript(clientId, s.body, castTitleFor(s), s.job_number, s.id) : null}
+                  onCast={onCastScript ? () => onCastScript(clientId, s.body, castTitleFor(s), s.job_number, s.id, s.channel) : null}
                   onDelete={() => {
                     if (window.confirm(`Delete this ${labelFor(s.channel)} script? This can’t be undone.`)) {
                       setResults((r) => r.filter((x) => x.id !== s.id));
@@ -1021,7 +1023,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 {ridesOnLongform(h)
                   ? <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }} title="Shortforms and the blog are cut from the longform, so the client approves the whole episode once, on the longform.">approval: with the longform</span>
                   : <button className="btn sm" onClick={() => sendApproval(h.id)}><Icon name="send" size={12} /> {h.approval_sent_at ? 'Resend for approval' : (h.language === 'es' ? 'Send Spanish set for approval' : (h.channel === 'longform' && h.batch_id ? 'Send episode for approval' : 'Send for approval'))}</button>}
-                {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body, castTitleFor(h), h.job_number, h.id)}><Icon name="sparkle" size={12} /> Cast</button>}
+                {onCastScript && <button className="btn sm" onClick={() => onCastScript(clientId, h.body, castTitleFor(h), h.job_number, h.id, h.channel)}><Icon name="sparkle" size={12} /> Cast</button>}
                 <button className="btn sm" onClick={() => archiveScript(h)} title="Download a .zip backup, then delete"><Icon name="download" size={12} /> Archive</button>
                 <button className="btn sm" onClick={() => { if (window.confirm(`Delete this ${labelFor(h.channel)} script${h.topic ? ` — “${h.topic}”` : ''}? This can’t be undone.`)) remove(h.id); }} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="close" size={12} /> Delete</button>
               </div>
@@ -1338,7 +1340,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                       disabled={a === '1:1' && castEngine === 'avatar_v'} title={a === '1:1' && castEngine === 'avatar_v' ? 'Avatar V has no 1:1' : undefined} style={a === '1:1' && castEngine === 'avatar_v' ? { opacity: 0.4 } : undefined}>{a === 'auto' ? 'Auto' : a}</button>
                   ))}
                 </div>
-                {castAspect === 'auto' && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 10 }}>Shortform → 9:16, others → 16:9</span>}
+                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 10 }}>Shortforms always cast 9:16.{castAspect === 'auto' ? ' Others → 16:9.' : ` Others → ${castAspect}.`}</span>
               </label>
             </div>
 
