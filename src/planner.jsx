@@ -66,6 +66,7 @@ function DayChip({ item, onClick }) {
       }}
     >
       {delivered && <Icon name="check" size={10} />}
+      {!!item.rerun && <span title="Republish">↻</span>}
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: col, flex: 'none', display: delivered ? 'block' : 'none' }} />
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{timeOf(item) ? fmt12(timeOf(item)).replace(':00', '') + ' ' : ''}{item.title || '•'}</span>
     </div>
@@ -154,6 +155,8 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
   const [distDate, setDistDate] = useState('');
   const [distTime, setDistTime] = useState('09:00');
   const [distBusy, setDistBusy] = useState(false);
+  const [distRerun, setDistRerun] = useState(false); // republishing an aired episode
+  const [distTitle, setDistTitle] = useState('');
 
   const [newPost, setNewPost] = useState(false);    // manual post (from an empty day)
   const [npChannel, setNpChannel] = useState('');
@@ -231,11 +234,20 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
   // --- distribute an approved+rendered episode ---
   const openDistribute = (epi) => {
     const mine = items.filter((i) => i.episode_id === epi.id);
-    setDist(epi);
+    setDist(epi); setDistRerun(false);
     setDistChannels(new Set(mine.map((i) => i.channel).filter((c) => SOCIAL_CHANNELS.some((s) => s.key === c))));
     setDistFeed(!!epi.feedInclude);
     const w = splitWhen(mine[0] && mine[0].scheduled_for);
     setDistDate(w.d || ymd(midnight())); setDistTime(w.t || '09:00');
+  };
+  // Republish an episode that already aired: brand-new Planner rows (the
+  // original delivered posts stay as history), each going out with this title.
+  // Transistor gets a fresh feed episode — it can't re-air the original one.
+  const openRerun = (epi) => {
+    setDist(epi); setDistRerun(true);
+    setDistChannels(new Set());
+    setDistTitle(`Encore: ${String(epi.title || '').replace(/^\s*encore:\s*/i, '')}`);
+    setDistDate(ymd(midnight())); setDistTime('09:00');
   };
   const toggleDistChannel = (key) => setDistChannels((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   // Remove an episode from the Distribute list by marking it aired (today).
@@ -249,6 +261,18 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
   };
   const saveDistribute = async () => {
     const chans = [...distChannels];
+    if (distRerun) {
+      if (!chans.length) { setErr('Pick at least one channel to republish to.'); return; }
+      if (!distDate) { setErr('Pick a date for the republish.'); return; }
+      if (!distTitle.trim()) { setErr('Give the republish a title.'); return; }
+      setDistBusy(true); setErr('');
+      try {
+        for (const ch of chans) await sched.add(cid, { channel: ch, title: distTitle.trim(), episodeId: dist.id, scheduledFor: `${distDate} ${distTime || '09:00'}`, rerun: true });
+        setDist(null); load();
+      } catch (e) { setErr(e.message); }
+      finally { setDistBusy(false); }
+      return;
+    }
     if (!chans.length && distFeed === !!dist.feedInclude) { setErr('Pick at least one channel, or change the podcast-feed setting.'); return; }
     if (chans.length && !distDate) { setErr('Pick a date to schedule the social posts.'); return; }
     const when = `${distDate} ${distTime || '09:00'}`;
@@ -393,13 +417,14 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
           <button className="btn sm" onClick={() => setShowAired(!showAired)}>{showAired ? '▾' : '▸'} Marked aired / removed ({airedEps.length})</button>
           {showAired && (
             <div className="col" style={{ gap: 6, marginTop: 10 }}>
-              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Episodes with an air date drop off “Distribute an episode”. Use “Put back” if one was removed by mistake, or “Schedule” to plan posts for it anyway.</div>
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Episodes with an air date drop off “Distribute an episode”. Use “Put back” if one was removed by mistake, “Schedule” to plan posts for it anyway, or “Republish” to run it again as new posts (the podcast gets a new encore episode).</div>
               {airedEps.map((epi) => (
                 <div key={epi.id} className="row" style={{ gap: 8, alignItems: 'center', padding: '6px 0', borderTop: '1px solid var(--border)' }}>
                   <div style={{ flex: 1, minWidth: 0, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{epi.title}</div>
                   <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>aired {epi.air_date}</span>
                   <button className="btn sm" onClick={() => putBack(epi)}>Put back</button>
                   <button className="btn sm" onClick={() => openDistribute(epi)}><Icon name="send" size={12} /> Schedule</button>
+                  <button className="btn primary sm" onClick={() => openRerun(epi)} title="Run it again on socials and the podcast as a new post">↻ Republish</button>
                 </div>
               ))}
             </div>
@@ -414,7 +439,11 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
       {dist && (
         <Portal><div onClick={() => setDist(null)} style={overlayStyle}>
           <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(480px, 96vw)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div className="label">SCHEDULE · {dist.title}</div>
+            <div className="label">{distRerun ? 'REPUBLISH' : 'SCHEDULE'} · {dist.title}</div>
+            {distRerun && (
+              <label className="col" style={{ gap: 4 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Title for the rerun</span>
+                <input value={distTitle} onChange={(e) => setDistTitle(e.target.value)} style={inputStyle} /></label>
+            )}
             <div className="col" style={{ gap: 6 }}>
               <span className="mono" style={{ color: 'var(--text-4)' }}>Social channels</span>
               {SOCIAL_CHANNELS.map((c) => (
@@ -425,18 +454,22 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
                 </label>
               ))}
             </div>
+            {!distRerun && (
             <label className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
               <input type="checkbox" checked={distFeed} onChange={(e) => setDistFeed(e.target.checked)} />
               <span>Also include in the podcast feed</span>
             </label>
+            )}
             <div className="row" style={{ gap: 8 }}>
               <label className="col" style={{ gap: 4, flex: 1 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Publish date</span><input type="date" value={distDate} onChange={(e) => setDistDate(e.target.value)} style={inputStyle} /></label>
               <label className="col" style={{ gap: 4, width: 120 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Time</span><input type="time" value={distTime} onChange={(e) => setDistTime(e.target.value)} style={inputStyle} /></label>
             </div>
-            <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Each checked channel gets a scheduled post on that date. Publish it from its calendar chip when ready.</div>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>{distRerun
+              ? 'Each checked channel gets a new post with this title on that date; it goes out automatically at that time. Transistor gets a new episode (no episode number); the original stays in the feed.'
+              : 'Each checked channel gets a scheduled post on that date. Publish it from its calendar chip when ready.'}</div>
             <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
               <button className="btn sm" onClick={() => setDist(null)}>Cancel</button>
-              <button className="btn primary sm" disabled={distBusy} onClick={saveDistribute}><Icon name="check" size={12} /> {distBusy ? 'Saving…' : 'Schedule'}</button>
+              <button className="btn primary sm" disabled={distBusy} onClick={saveDistribute}><Icon name="check" size={12} /> {distBusy ? 'Saving…' : (distRerun ? 'Schedule republish' : 'Schedule')}</button>
             </div>
           </div>
         </div></Portal>
