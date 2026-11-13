@@ -186,8 +186,12 @@ function PastEpisodes() {
                   <div key={p.key} className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
                     <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{p.name}</span>
                     <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                      {p.links.map((l) => (
-                        <a key={l.url} className="btn sm" style={linkBtn} href={l.url} target="_blank" rel="noreferrer"><Icon name="send" size={12} /> {l.label}</a>
+                      {p.links.map((l) => (l.removed
+                        // Posted, then taken down on the platform — kept as a record, no dead link.
+                        ? <span key={l.url} className="mono" title="This post was taken down on the platform after it went out." style={{ fontSize: 11, color: 'var(--text-4)', padding: '4px 8px', border: '1px dashed var(--border)', borderRadius: 'var(--r-sm)', whiteSpace: 'nowrap' }}>
+                            {l.label} · removed{l.removedAt ? ` ${new Date(String(l.removedAt).replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ''}
+                          </span>
+                        : <a key={l.url} className="btn sm" style={linkBtn} href={l.url} target="_blank" rel="noreferrer"><Icon name="send" size={12} /> {l.label}</a>
                       ))}
                       {p.links.length === 0 && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>not posted yet</span>}
                       {p.episodeId && p.hasVideo && <a className="btn sm ghost" style={linkBtn} href={api.portalEpisodeVideoUrl(p.episodeId)} target="_blank" rel="noreferrer" title="Download the video"><Icon name="download" size={12} /> Video</a>}

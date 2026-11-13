@@ -25,6 +25,20 @@ function parseSendLog(inv) {
   } catch { return []; }
 }
 
+// The link a client opens for an invite. Welcome invites land on the
+// step-by-step welcome page and onboarding-form invites on the company form,
+// both served by voicecast at this same origin (cast.cuecreative.com) — the
+// same pages the invite email links to.
+function welcomeUrl(kind, token) {
+  const t = encodeURIComponent(token);
+  const base = window.location.origin;
+  if (kind === 'onboarding') return `${base}/company.html?token=${t}`;
+  if (kind === 'twofa') return 'https://record.cuecreative.com/2fa-setup.html';
+  if (kind === 'youtube' || kind === 'social') return `${base}/api/invite/${t}/youtube-connect`;
+  if (kind === 'facebook') return `${base}/api/invite/${t}/meta-connect`;
+  return `${base}/welcome.html?token=${t}`;
+}
+
 const STATUS_TONE = {
   pending:   { fg: 'var(--text-2)' },
   recorded:  { fg: 'var(--ok)' },
@@ -98,8 +112,8 @@ const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter, on
   };
   useEffect(() => { load(); }, []);
 
-  const copyLink = async (token) => {
-    const url = 'https://record.cuecreative.com/record.html?token=' + encodeURIComponent(token);
+  const copyLink = async (token, kind) => {
+    const url = welcomeUrl(kind, token);
     try { await navigator.clipboard.writeText(url); setCopied(token); setTimeout(() => setCopied(null), 1500); }
     catch { setErr('Could not copy to clipboard.'); }
   };
@@ -194,7 +208,7 @@ const InvitationsList = ({ onCompose, focusId, onFocusConsumed, clientFilter, on
                 <span className="badge" style={{ color: (STATUS_TONE[inv.status] || {}).fg || 'var(--text-2)' }}>
                   {inv.status || 'pending'}
                 </span>
-                <button className="btn sm" onClick={() => copyLink(inv.token)}>
+                <button className="btn sm" onClick={() => copyLink(inv.token, inv.kind)}>
                   <Icon name="send" size={13} /> {copied === inv.token ? 'Copied' : 'Copy link'}
                 </button>
                 <button className="btn sm" title="Delete invitation" onClick={() => remove(inv)} style={{ color: 'var(--accent)' }}>
@@ -291,7 +305,7 @@ const ComposeView = ({ onClose, defaultClientId }) => {
         ? window.location.origin + '/api/invite/' + encodeURIComponent(created.token) + '/youtube-connect'
         : kind === 'channel'
         ? window.location.origin + '/api/invite/' + encodeURIComponent(created.token) + '/channel/' + channel + '/connect'
-        : 'https://record.cuecreative.com/record.html?token=' + encodeURIComponent(created.token))
+        : welcomeUrl(kind, created.token))
     : '';
   // 'social' carries TWO links in the one email — the copy-link box above only
   // has room for one, so surface the second explicitly rather than hide it.
@@ -339,7 +353,7 @@ const ComposeView = ({ onClose, defaultClientId }) => {
       <button className="btn sm" onClick={onClose} style={{ marginBottom: 16 }}>← Back to invitations</button>
       <div className="label" style={{ marginBottom: 6 }}>NEW INVITATION</div>
       <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 30, lineHeight: 1.1, margin: '0 0 16px' }}>
-        Send a <em>record-your-avatar</em> link.
+        {kind === 'record' ? <>Send a <em>Welcome to cue:cast</em> invite.</> : <>Send an <em>invitation</em>.</>}
       </h1>
 
       {err && (
@@ -368,7 +382,7 @@ const ComposeView = ({ onClose, defaultClientId }) => {
           <div style={{ width: 190 }}>
             <div className="label" style={{ marginBottom: 6 }}>SEND</div>
             <select value={kind} onChange={(e) => setKind(e.target.value)} style={inputStyle}>
-              <option value="record">Record digital twin</option>
+              <option value="record">Welcome to cue:cast</option>
               <option value="onboarding">Onboarding form</option>
               <option value="twofa">2FA verification</option>
               <option value="youtube">YouTube connect</option>

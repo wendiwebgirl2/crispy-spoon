@@ -408,6 +408,7 @@ export const api = {
   analytics: (id) => vcReq(`/clients/${id}/analytics`),
   analyticsRange: (id, from, to) => vcReq(`/clients/${id}/analytics/range?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   refreshAnalytics: (id) => vcReq(`/clients/${id}/analytics/refresh`, { method: "POST", body: "{}" }),
+  setPostRemoved: (id, postId, removed) => vcReq(`/clients/${id}/analytics/posts/${postId}/removed`, { method: "POST", body: JSON.stringify({ removed }) }),
   analyticsReportUrl: (id, from, to) => `${VC_BASE}/clients/${id}/analytics/report.pdf?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
   emailAnalyticsReport: (id, payload) => vcReq(`/clients/${id}/analytics/report/email`, { method: "POST", body: JSON.stringify(payload) }),
   aiCheck: (id) => vcReq(`/clients/${id}/ai-check`),

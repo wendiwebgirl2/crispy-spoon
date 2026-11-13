@@ -11,8 +11,10 @@ const inputStyle = {
   borderRadius: 'var(--r-sm)', fontFamily: 'var(--f-mono)', fontSize: 13, padding: '9px 11px',
   boxSizing: 'border-box', height: 38,
 };
-const PLABEL = { youtube: 'YouTube', facebook: 'Facebook' };
-const PCOLOR = { youtube: '#e0343a', facebook: '#4a90d6' };
+const PLABEL = { youtube: 'YouTube', facebook: 'Facebook', instagram: 'Instagram', transistor: 'Podcast (Transistor)' };
+const PCOLOR = { youtube: '#e0343a', facebook: '#4a90d6', instagram: '#c13584', transistor: '#7a5cc4' };
+// removed_at is SQLite UTC 'YYYY-MM-DD HH:MM:SS'.
+const fmtRemoved = (v) => { if (!v) return ''; const d = new Date(String(v).replace(' ', 'T') + 'Z'); return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
 const fmtN = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString());
 const fmtDate = (v) => {
   if (!v) return '—';
@@ -104,6 +106,15 @@ const AnalyticsView = ({ activeClientId, onSelectClient }) => {
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   };
+  // Posted, then taken down on the platform: keep it listed, stop counting it.
+  const toggleRemoved = async (p) => {
+    const removing = !p.removed;
+    if (removing && !window.confirm(`Mark "${p.title || p.topic || 'this post'}" on ${PLABEL[p.platform] || p.platform} as removed? It stays listed as posted, but analytics stops checking it and it no longer counts in the totals.`)) return;
+    setBusy(true); setMsg(''); setErr('');
+    try { await api.setPostRemoved(cid, p.id, removing); setMsg(removing ? 'Marked as removed.' : 'Restored — it will be checked and counted again.'); load(); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
   const sendEmail = async () => {
     setBusy(true); setMsg(''); setErr('');
     try {
@@ -142,7 +153,7 @@ const AnalyticsView = ({ activeClientId, onSelectClient }) => {
         <em style={{ color: 'var(--accent)' }}>Analytics</em>{clientName ? ` — ${clientName}` : ''}
       </h1>
       <div className="mono" style={{ color: 'var(--text-4)', marginBottom: 16 }}>
-        YouTube + Facebook posts published from the Planner. Numbers are for posts published in the range, as of the end date.
+        Posts published from the Planner. Numbers (YouTube + Facebook) are for posts published in the range, as of the end date; posts taken down after they went out are listed as removed and left out of the totals.
         {overall && overall.lastUpdated ? ` Last updated ${fmtDate(overall.lastUpdated)}.` : ''}
       </div>
 
@@ -183,7 +194,7 @@ const AnalyticsView = ({ activeClientId, onSelectClient }) => {
       {t && (
         <>
           <div className="row" style={{ gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-            <Tile label="Posts published" value={fmtN(t.posts)} sub={t.posts ? `${fmtN(t.measured)} with numbers` : null} />
+            <Tile label="Posts published" value={fmtN(t.posts)} sub={t.posts || t.removed ? `${fmtN(t.measured)} with numbers${t.removed ? ` · ${fmtN(t.removed)} removed` : ''}` : null} />
             <Tile label="Views" value={fmtN(t.views)} sub={data.gained ? `${fmtN(data.gained.views)} new views in period (all posts)` : null} />
             <Tile label="Likes" value={fmtN(t.likes)} />
             <Tile label="Comments" value={fmtN(t.comments)} />
@@ -228,20 +239,31 @@ const AnalyticsView = ({ activeClientId, onSelectClient }) => {
                 <thead>
                   <tr className="mono" style={{ fontSize: 11, color: 'var(--text-4)', textAlign: 'left' }}>
                     <th style={{ padding: '4px 8px 8px 0' }}>Date</th><th style={{ padding: '4px 8px 8px' }}>Platform</th><th style={{ padding: '4px 8px 8px' }}>Title</th>
-                    <th style={{ padding: '4px 8px 8px', textAlign: 'right' }}>Views</th><th style={{ padding: '4px 8px 8px', textAlign: 'right' }}>Likes</th><th style={{ padding: '4px 0 8px 8px', textAlign: 'right' }}>Comments</th>
+                    <th style={{ padding: '4px 8px 8px', textAlign: 'right' }}>Views</th><th style={{ padding: '4px 8px 8px', textAlign: 'right' }}>Likes</th><th style={{ padding: '4px 8px 8px', textAlign: 'right' }}>Comments</th><th style={{ padding: '4px 0 8px 8px' }} />
                   </tr>
                 </thead>
                 <tbody>
-                  {data.posts.map((p) => (
-                    <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
+                  {data.posts.map((p) => {
+                    const title = p.title || p.topic || 'Untitled';
+                    const nums = (v) => (p.tracked === false ? '' : fmtN(v));
+                    return (
+                    <tr key={p.id} style={{ borderTop: '1px solid var(--border)', opacity: p.removed ? 0.6 : 1 }}>
                       <td className="mono" style={{ padding: '7px 8px 7px 0', whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(p.published_at)}</td>
-                      <td style={{ padding: '7px 8px', whiteSpace: 'nowrap' }}><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: PCOLOR[p.platform], marginRight: 6 }} />{PLABEL[p.platform] || p.platform}</td>
-                      <td style={{ padding: '7px 8px' }}>{p.url ? <a href={p.url} target="_blank" rel="noreferrer" style={{ color: 'var(--text)' }}>{p.title || p.topic || 'Untitled'}</a> : (p.title || p.topic || 'Untitled')}</td>
-                      <td className="mono" style={{ padding: '7px 8px', textAlign: 'right' }}>{fmtN(p.views)}</td>
-                      <td className="mono" style={{ padding: '7px 8px', textAlign: 'right' }}>{fmtN(p.likes)}</td>
-                      <td className="mono" style={{ padding: '7px 0 7px 8px', textAlign: 'right' }}>{fmtN(p.comments)}</td>
+                      <td style={{ padding: '7px 8px', whiteSpace: 'nowrap' }}><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: PCOLOR[p.platform] || 'var(--text-4)', marginRight: 6 }} />{PLABEL[p.platform] || p.platform}</td>
+                      <td style={{ padding: '7px 8px' }}>
+                        {p.url && !p.removed ? <a href={p.url} target="_blank" rel="noreferrer" style={{ color: 'var(--text)' }}>{title}</a> : <span style={{ textDecoration: p.removed ? 'line-through' : 'none' }}>{title}</span>}
+                        {p.removed && <div className="mono" title={p.removed_reason || ''} style={{ fontSize: 11, color: 'var(--accent)', marginTop: 2 }}>Removed from {PLABEL[p.platform] || p.platform} · {fmtRemoved(p.removed_at)}{p.removed_reason ? ` — ${p.removed_reason}` : ''}</div>}
+                        {!p.removed && p.tracked === false && <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>posted · numbers not tracked for {PLABEL[p.platform] || p.platform}</div>}
+                      </td>
+                      <td className="mono" style={{ padding: '7px 8px', textAlign: 'right' }}>{nums(p.views)}</td>
+                      <td className="mono" style={{ padding: '7px 8px', textAlign: 'right' }}>{nums(p.likes)}</td>
+                      <td className="mono" style={{ padding: '7px 8px', textAlign: 'right' }}>{nums(p.comments)}</td>
+                      <td style={{ padding: '7px 0 7px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button className="btn sm ghost" disabled={busy} onClick={() => toggleRemoved(p)} title={p.removed ? 'Put it back in the totals and checks' : 'It was taken down on the platform'}>{p.removed ? 'Restore' : 'Mark removed'}</button>
+                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
