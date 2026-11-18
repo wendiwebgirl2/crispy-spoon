@@ -2338,18 +2338,28 @@ function MontageBuilder({ clientId }) {
 
   const isImage = (a) => (a.mime || '').startsWith('image/') || ['logo', 'background'].includes(a.kind);
   const isAudio = (a) => (a.mime || '').startsWith('audio/') || ['music', 'audio'].includes(a.kind);
+  const isVideo = (a) => (a.mime || '').startsWith('video/') || a.kind === 'video';
+  // Clip lengths (seconds) by asset id, read from the <video> previews.
+  const [durs, setDurs] = React.useState({});
+  const noteDur = (id) => (e) => { const d = e.currentTarget.duration; if (Number.isFinite(d)) setDurs((m) => (m[id] === d ? m : { ...m, [id]: d })); };
+  const fmtLen = (sec) => (sec == null ? '' : `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`);
+  // Library selection (checkboxes): asset ids in click order.
+  const [sel, setSel] = React.useState([]);
+  const toggleSel = (id) => setSel((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
   // Montage images uploaded from an episode's Episode assets panel carry its
   // episode number; the library can narrow to one episode (newest by default).
   const epNums = [...new Set(assets.filter((a) => a.kind === 'montage' && a.episode_number).map((a) => String(a.episode_number)))]
     .sort((a, b) => (Number(b) || 0) - (Number(a) || 0));
   const [epFilter, setEpFilter] = React.useState(null);
   const epSel = epFilter ?? (epNums[0] || 'all');
-  const imageAssets = assets.filter(isImage).filter((a) => !/^template_/.test(a.kind || '') && a.kind !== 'thumb')
+  const imageAssets = assets.filter((a) => isImage(a) || isVideo(a)).filter((a) => !/^template_/.test(a.kind || '') && a.kind !== 'thumb')
     .filter((a) => epSel === 'all' || String(a.episode_number || '') === epSel);
   const musicAssets = assets.filter(isAudio);
 
-  const addAsset = (a) => setItems((x) => [...x, { type: 'asset', assetId: a.id, name: a.filename }]);
-  const addAssets = (list) => setItems((x) => [...x, ...list.map((a) => ({ type: 'asset', assetId: a.id, name: a.filename }))]);
+  const toItem = (a) => ({ type: 'asset', assetId: a.id, name: a.filename, video: isVideo(a), startSec: '', maxSec: '' });
+  const addAssets = (list) => setItems((x) => [...x, ...list.map(toItem)]);
+  const setItem = (i, patch) => setItems((x) => x.map((it, k) => (k === i ? { ...it, ...patch } : it)));
+  const addSelected = () => { addAssets(sel.map((id) => assets.find((a) => a.id === id)).filter(Boolean)); setSel([]); };
   const inMontage = (id) => items.filter((it) => it.type === 'asset' && it.assetId === id).length;
   // Filename order, numbers compared as numbers (img2 before img10).
   const byName = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
@@ -2370,18 +2380,26 @@ function MontageBuilder({ clientId }) {
   // the music list instead.
   const addFiles = async (fileList) => {
     const isAudioFile = (f) => (f.type || '').startsWith('audio/');
+    const isVideoFile = (f) => (f.type || '').startsWith('video/');
+    const MAX = 50 * 1024 * 1024; // the asset upload limit
     const all = Array.from(fileList || []);
-    const files = all.filter((f) => (f.type || '').startsWith('image/') || isAudioFile(f)).sort((p, q) => byName(p.name, q.name));
-    const skipped = all.length - files.length;
-    if (!files.length) { if (skipped) setErr('Only image (or music) files can go in a montage.'); return; }
+    const usable = all.filter((f) => (f.type || '').startsWith('image/') || isVideoFile(f) || isAudioFile(f));
+    const tooBig = usable.filter((f) => f.size > MAX);
+    const files = usable.filter((f) => f.size <= MAX).sort((p, q) => byName(p.name, q.name));
+    const skipped = all.length - usable.length;
+    if (!files.length) {
+      setErr(tooBig.length ? `Over the 50 MB upload limit: ${tooBig.map((f) => f.name).join(', ')}.` : skipped ? 'Only images, video clips (or music) can go in a montage.' : '');
+      return;
+    }
     setUploading(true); setErr('');
-    const { ok, failed } = await uploadMany(files, (f) => api.uploadAsset(clientId, isAudioFile(f) ? 'music' : 'background', f), setUploadProg);
+    const { ok, failed } = await uploadMany(files, (f) => api.uploadAsset(clientId, isAudioFile(f) ? 'music' : isVideoFile(f) ? 'video' : 'background', f), setUploadProg);
     await load();
     addAssets(ok.filter(({ file, result }) => !isAudioFile(file) && result).map(({ result }) => result));
     setUploadProg(null);
     const notes = [];
     if (failed.length) notes.push(`${failed.length} of ${files.length} failed: ` + failed.map((f) => `${f.name} (${f.error})`).join('; '));
-    if (skipped) notes.push(`${skipped} file${skipped === 1 ? '' : 's'} skipped (not an image).`);
+    if (skipped) notes.push(`${skipped} file${skipped === 1 ? '' : 's'} skipped (not an image or video).`);
+    if (tooBig.length) notes.push(`Over the 50 MB upload limit, not added: ${tooBig.map((f) => f.name).join(', ')}.`);
     if (notes.length) setErr(notes.join(' '));
     setUploading(false);
   };
@@ -2393,20 +2411,34 @@ function MontageBuilder({ clientId }) {
   };
 
   const render = async () => {
-    if (!items.length) { setErr('Add at least one image.'); return; }
+    if (!items.length) { setErr('Add at least one image or clip.'); return; }
     setBusy(true); setErr(''); setResult(null);
     try {
       const r = await api.renderMontage(clientId, {
         title: title.trim() || undefined, aspect,
         perImageSec: Number(perImageSec), transitionSec: Number(transitionSec),
-        kenBurns, musicAssetId: musicAssetId || undefined, items,
+        kenBurns, musicAssetId: musicAssetId || undefined,
+        items: items.map((it) => (it.type === 'asset' && it.video
+          ? { type: 'asset', assetId: it.assetId, startSec: Number(it.startSec) || 0, maxSec: Number(it.maxSec) || undefined }
+          : it)),
       });
       setResult(r.asset); await load();
     } catch (ex) { setErr(ex.message || 'Render failed'); }
     finally { setBusy(false); }
   };
 
-  const est = items.length ? Math.max(0, items.length * Number(perImageSec) - Math.max(0, items.length - 1) * Number(transitionSec)) : 0;
+  // On-screen length of each piece: images perImageSec; clips their chosen
+  // part (from "start" for "secs", or to the end).
+  const pieceLen = (it) => {
+    if (!(it.type === 'asset' && it.video)) return Number(perImageSec);
+    const full = durs[it.assetId];
+    const st = Number(it.startSec) || 0;
+    const left = full != null ? Math.max(0, full - st) : null;
+    const want = Number(it.maxSec) > 0 ? Number(it.maxSec) : null;
+    return want != null ? (left != null ? Math.min(want, left) : want) : (left != null ? left : 0);
+  };
+  const est = items.length ? Math.max(0, items.reduce((t, it) => t + pieceLen(it), 0) - Math.max(0, items.length - 1) * Number(transitionSec)) : 0;
+  const clipCount = items.filter((it) => it.video).length;
   const fld = { height: 34, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 };
 
   return (
@@ -2416,11 +2448,11 @@ function MontageBuilder({ clientId }) {
         <div className="card card-pad" {...dropProps}
           style={{ outline: dragOver ? '2px dashed var(--accent)' : 'none', outlineOffset: -4, background: dragOver ? 'var(--surface-2)' : undefined }}>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
-            <div className="label">MONTAGE &middot; {items.length} {items.length === 1 ? 'image' : 'images'} &middot; ~{est.toFixed(1)}s</div>
+            <div className="label">MONTAGE &middot; {items.length - clipCount} {items.length - clipCount === 1 ? 'image' : 'images'}{clipCount ? ` · ${clipCount} ${clipCount === 1 ? 'clip' : 'clips'}` : ''} &middot; ~{est.toFixed(1)}s</div>
             <div className="row" style={{ gap: 6 }}>
               <label className="btn sm" style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
                 <Icon name="upload" size={13} /> {uploading ? (uploadProg && uploadProg.total > 1 ? `Uploading ${Math.min(uploadProg.done + 1, uploadProg.total)} of ${uploadProg.total}…` : 'Uploading…') : 'Upload images'}
-                <input type="file" accept="image/*,audio/*" multiple onChange={onUpload} disabled={uploading} style={{ display: 'none' }} />
+                <input type="file" accept="image/*,video/*,audio/*" multiple onChange={onUpload} disabled={uploading} style={{ display: 'none' }} />
               </label>
               {items.length > 1 && <button className="btn sm" onClick={sortItems} title="Put the images in filename order">Sort by name</button>}
               {items.length > 0 && <button className="btn sm" onClick={() => { if (window.confirm('Remove every image from this montage? (Uploaded files stay in the library.)')) setItems([]); }}>Clear</button>}
@@ -2429,8 +2461,8 @@ function MontageBuilder({ clientId }) {
           {items.length === 0 ? (
             <div style={{ border: '2px dashed var(--border)', borderRadius: 'var(--r-md)', padding: '28px 16px', textAlign: 'center' }}>
               <Icon name="upload" size={20} style={{ color: 'var(--text-4)' }} />
-              <div style={{ fontSize: 14, marginTop: 6 }}>{uploading ? 'Uploading…' : 'Drop all your images here'}</div>
-              <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 4 }}>As many as you like, in one go. They're added in filename order; drag to reorder. Or use the library / AI below.</div>
+              <div style={{ fontSize: 14, marginTop: 6 }}>{uploading ? 'Uploading…' : 'Drop all your images and video clips here'}</div>
+              <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 4 }}>As many as you like, in one go (up to 50 MB each). They're added in filename order; drag to reorder. Or tick items in the library below.</div>
             </div>
           ) : (
             <>
@@ -2444,16 +2476,29 @@ function MontageBuilder({ clientId }) {
                     title={(it.type === 'asset' ? it.name : 'AI: ' + it.prompt) + ' · drag to reorder'}
                     className="card" style={{ padding: 4, position: 'relative', cursor: 'grab', opacity: dragFrom === i ? 0.4 : 1 }}>
                     <div style={{ height: 66, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', display: 'grid', placeItems: 'center' }}>
-                      {it.type === 'asset'
-                        ? <img src={api.assetFileUrl(clientId, it.assetId)} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : <Icon name="sparkle" size={18} style={{ color: 'var(--accent)' }} />}
+                      {it.type === 'asset' && it.video
+                        ? <video src={api.assetFileUrl(clientId, it.assetId) + '#t=0.5'} muted preload="metadata" draggable={false} onLoadedMetadata={noteDur(it.assetId)} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+                        : it.type === 'asset'
+                          ? <img src={api.assetFileUrl(clientId, it.assetId)} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <Icon name="sparkle" size={18} style={{ color: 'var(--accent)' }} />}
                     </div>
+                    {it.video && <span className="badge" style={{ position: 'absolute', top: 52, left: 6, fontSize: 9, padding: '1px 4px', background: 'rgba(0,0,0,0.65)', color: '#fff' }}>▶ {fmtLen(pieceLen(it))}</span>}
                     <span className="badge" style={{ position: 'absolute', top: 6, left: 6, fontSize: 10, padding: '1px 5px', background: 'rgba(0,0,0,0.65)', color: '#fff' }}>{i + 1}</span>
                     <button className="icon-btn" title="Remove" onClick={() => removeItem(i)}
                       style={{ position: 'absolute', top: 6, right: 6, width: 18, height: 18, padding: 0, background: 'rgba(0,0,0,0.65)', color: '#fff' }}><Icon name="close" size={10} /></button>
                     <div className="mono" style={{ fontSize: 10, lineHeight: 1.3, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {it.type === 'asset' ? it.name : 'AI: ' + it.prompt}
                     </div>
+                    {it.video && (
+                      <div className="row" style={{ gap: 3, marginTop: 3 }} onMouseDown={(e) => e.stopPropagation()}>
+                        <input type="number" min="0" step="0.5" value={it.startSec} placeholder="from" title="Start this many seconds into the clip"
+                          onChange={(e) => setItem(i, { startSec: e.target.value })} draggable={false} onDragStart={(e) => e.preventDefault()}
+                          style={{ width: '50%', minWidth: 0, height: 20, fontSize: 10, padding: '0 3px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--surface)', color: 'var(--text)' }} />
+                        <input type="number" min="0.5" step="0.5" value={it.maxSec} placeholder="secs" title="Use this many seconds (blank = to the end)"
+                          onChange={(e) => setItem(i, { maxSec: e.target.value })} draggable={false} onDragStart={(e) => e.preventDefault()}
+                          style={{ width: '50%', minWidth: 0, height: 20, fontSize: 10, padding: '0 3px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--surface)', color: 'var(--text)' }} />
+                      </div>
+                    )}
                     <div className="row" style={{ gap: 2, justifyContent: 'center', marginTop: 2 }}>
                       <button className="icon-btn" title="Earlier" disabled={i === 0} onClick={() => move(i, -1)} style={{ width: 20, height: 18 }}><Icon name="arrow-l" size={10} /></button>
                       <button className="icon-btn" title="Later" disabled={i === items.length - 1} onClick={() => move(i, 1)} style={{ width: 20, height: 18 }}><Icon name="arrow-l" size={10} style={{ transform: 'rotate(180deg)' }} /></button>
@@ -2461,7 +2506,7 @@ function MontageBuilder({ clientId }) {
                   </div>
                 ))}
               </div>
-              <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 8 }}>Drag a tile to move it. Drop more images anywhere on this box to add them at the end.</div>
+              <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 8 }}>Drag a tile to move it. Drop more images or clips anywhere on this box to add them at the end.{clipCount ? ' Clips: "from" = start point, "secs" = how much to use (blank = to the end). Clips play without their own sound; the music bed (or silence) plays over the whole montage.' : ''}</div>
             </>
           )}
         </div>
@@ -2485,31 +2530,47 @@ function MontageBuilder({ clientId }) {
               {epNums.length > 0 && (
                 <select value={epSel} onChange={(e) => setEpFilter(e.target.value)} style={{ ...fld, height: 28, fontSize: 12 }}>
                   {epNums.map((n) => <option key={n} value={n}>E{n} montage images</option>)}
-                  <option value="all">All images</option>
+                  <option value="all">All images &amp; clips</option>
                 </select>
               )}
             </div>
             {imageAssets.length > 0 && (
-              <button className="btn sm" onClick={() => addAssets([...imageAssets].sort((p, q) => byName(p.filename, q.filename)))}
-                title="Add every image shown here, in filename order">
-                <Icon name="plus" size={12} /> Add all ({imageAssets.length})
-              </button>
+              <div className="row" style={{ gap: 6 }}>
+                {sel.length > 0 && <button className="btn sm" onClick={() => setSel([])}>Clear ticks</button>}
+                <button className="btn primary sm" disabled={!sel.length} onClick={addSelected} style={{ opacity: sel.length ? 1 : 0.5 }}
+                  title="Add the ticked items, in the order you ticked them">
+                  <Icon name="plus" size={12} /> Add selected{sel.length ? ` (${sel.length})` : ''}
+                </button>
+                <button className="btn sm" onClick={() => addAssets([...imageAssets].sort((p, q) => byName(p.filename, q.filename)))}
+                  title="Add everything shown here, in filename order">
+                  Add all ({imageAssets.length})
+                </button>
+              </div>
             )}
           </div>
           {imageAssets.length === 0
-            ? <div className="mono" style={{ color: 'var(--text-4)' }}>No image assets yet — drop images on the montage above.</div>
+            ? <div className="mono" style={{ color: 'var(--text-4)' }}>No images or clips yet — drop some on the montage above.</div>
             : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 10 }}>
-                {imageAssets.map((a) => (
-                  <button key={a.id} className="card" onClick={() => addAsset(a)} title={'Add ' + a.filename}
-                    style={{ padding: 6, cursor: 'pointer', color: 'inherit', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ height: 60, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', position: 'relative' }}>
-                      <img src={api.assetFileUrl(clientId, a.id)} alt={a.filename} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      {inMontage(a.id) > 0 && <span className="badge" style={{ position: 'absolute', top: 3, right: 3, fontSize: 9, padding: '1px 4px', background: 'var(--accent)', color: '#fff' }}>in ×{inMontage(a.id)}</span>}
-                    </div>
-                    <div className="mono" style={{ fontSize: 10, lineHeight: 1.3, wordBreak: 'break-word' }}>{a.filename}</div>
-                  </button>
-                ))}
+                {imageAssets.map((a) => {
+                  const on = sel.includes(a.id);
+                  const vid = isVideo(a);
+                  return (
+                    <button key={a.id} className="card" onClick={() => toggleSel(a.id)} title={(on ? 'Untick ' : 'Tick ') + a.filename}
+                      style={{ padding: 6, cursor: 'pointer', color: 'inherit', display: 'flex', flexDirection: 'column', gap: 4, borderColor: on ? 'var(--accent)' : undefined, boxShadow: on ? '0 0 0 1px var(--accent)' : undefined }}>
+                      <div style={{ height: 60, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', position: 'relative' }}>
+                        {vid
+                          ? <video src={api.assetFileUrl(clientId, a.id) + '#t=0.5'} muted preload="metadata" onLoadedMetadata={noteDur(a.id)} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+                          : <img src={api.assetFileUrl(clientId, a.id)} alt={a.filename} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                        <input type="checkbox" readOnly checked={on} tabIndex={-1} style={{ position: 'absolute', top: 3, left: 3, margin: 0, pointerEvents: 'none' }} />
+                        {on && <span className="badge" style={{ position: 'absolute', bottom: 3, left: 3, fontSize: 9, padding: '1px 4px', background: 'var(--accent)', color: '#fff' }}>#{sel.indexOf(a.id) + 1}</span>}
+                        {vid && <span className="badge" style={{ position: 'absolute', bottom: 3, right: 3, fontSize: 9, padding: '1px 4px', background: 'rgba(0,0,0,0.65)', color: '#fff' }}>▶ {fmtLen(durs[a.id])}</span>}
+                        {inMontage(a.id) > 0 && <span className="badge" style={{ position: 'absolute', top: 3, right: 3, fontSize: 9, padding: '1px 4px', background: 'var(--accent)', color: '#fff' }}>in ×{inMontage(a.id)}</span>}
+                      </div>
+                      <div className="mono" style={{ fontSize: 10, lineHeight: 1.3, wordBreak: 'break-word' }}>{a.filename}</div>
+                    </button>
+                  );
+                })}
               </div>
             )}
         </div>
