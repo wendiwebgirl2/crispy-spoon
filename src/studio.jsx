@@ -2349,6 +2349,15 @@ function MontageBuilder({ clientId }) {
   const musicAssets = assets.filter(isAudio);
 
   const addAsset = (a) => setItems((x) => [...x, { type: 'asset', assetId: a.id, name: a.filename }]);
+  const addAssets = (list) => setItems((x) => [...x, ...list.map((a) => ({ type: 'asset', assetId: a.id, name: a.filename }))]);
+  const inMontage = (id) => items.filter((it) => it.type === 'asset' && it.assetId === id).length;
+  // Filename order, numbers compared as numbers (img2 before img10).
+  const byName = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+  const sortItems = () => setItems((x) => [...x].sort((p, q) => byName(p.type === 'asset' ? p.name : 'zzz' + p.prompt, q.type === 'asset' ? q.name : 'zzz' + q.prompt)));
+  // Drag to reorder: dragFrom = index being dragged; dropping on a tile puts it there.
+  const [dragFrom, setDragFrom] = React.useState(null);
+  const [dragOver, setDragOver] = React.useState(false);   // files hovering over the drop zone
+  const moveTo = (from, to) => setItems((x) => { if (from === to || from == null) return x; const n = [...x]; const [m] = n.splice(from, 1); n.splice(to, 0, m); return n; });
   const addAi = () => { const p = aiPrompt.trim(); if (!p) return; setItems((x) => [...x, { type: 'ai', prompt: p }]); setAiPrompt(''); };
   const removeItem = (i) => setItems((x) => x.filter((_, k) => k !== i));
   const move = (i, d) => setItems((x) => { const n = [...x]; const j = i + d; if (j < 0 || j >= n.length) return n; [n[i], n[j]] = [n[j], n[i]]; return n; });
@@ -2356,17 +2365,31 @@ function MontageBuilder({ clientId }) {
   // Several images at once: uploaded one request at a time, then added to the
   // montage in the order they were chosen. A failed file is named in the error
   // and the rest still go in.
-  const onUpload = async (e) => {
-    const files = Array.from(e.target.files || []); e.target.value = '';
-    if (!files.length) return;
-    setUploading(true); setErr('');
+  // Used by the Upload button and by dropping files on the montage. Images are
+  // sorted by filename first (a drop has no reliable order); audio files go to
+  // the music list instead.
+  const addFiles = async (fileList) => {
     const isAudioFile = (f) => (f.type || '').startsWith('audio/');
+    const all = Array.from(fileList || []);
+    const files = all.filter((f) => (f.type || '').startsWith('image/') || isAudioFile(f)).sort((p, q) => byName(p.name, q.name));
+    const skipped = all.length - files.length;
+    if (!files.length) { if (skipped) setErr('Only image (or music) files can go in a montage.'); return; }
+    setUploading(true); setErr('');
     const { ok, failed } = await uploadMany(files, (f) => api.uploadAsset(clientId, isAudioFile(f) ? 'music' : 'background', f), setUploadProg);
     await load();
-    for (const { file, result } of ok) { if (!isAudioFile(file) && result) addAsset(result); }
+    addAssets(ok.filter(({ file, result }) => !isAudioFile(file) && result).map(({ result }) => result));
     setUploadProg(null);
-    if (failed.length) setErr(`${failed.length} of ${files.length} failed: ` + failed.map((f) => `${f.name} (${f.error})`).join('; '));
+    const notes = [];
+    if (failed.length) notes.push(`${failed.length} of ${files.length} failed: ` + failed.map((f) => `${f.name} (${f.error})`).join('; '));
+    if (skipped) notes.push(`${skipped} file${skipped === 1 ? '' : 's'} skipped (not an image).`);
+    if (notes.length) setErr(notes.join(' '));
     setUploading(false);
+  };
+  const onUpload = (e) => { const f = e.target.files; addFiles(f); e.target.value = ''; };
+  const dropProps = {
+    onDragOver: (e) => { if (Array.from(e.dataTransfer.types || []).includes('Files')) { e.preventDefault(); setDragOver(true); } },
+    onDragLeave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false); },
+    onDrop: (e) => { if (!e.dataTransfer.files || !e.dataTransfer.files.length) return; e.preventDefault(); setDragOver(false); if (!uploading) addFiles(e.dataTransfer.files); },
   };
 
   const render = async () => {
@@ -2390,30 +2413,57 @@ function MontageBuilder({ clientId }) {
     <div className="rail-320" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 'var(--gap)', marginTop: 20, alignItems: 'start' }}>
       {/* LEFT — the ordered montage + ways to add to it */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div className="card card-pad">
-          <div className="label" style={{ marginBottom: 10 }}>MONTAGE &middot; {items.length} {items.length === 1 ? 'image' : 'images'} &middot; ~{est.toFixed(1)}s</div>
-          {items.length === 0
-            ? <div className="mono" style={{ color: 'var(--text-4)' }}>Nothing added yet. Pick from the library, upload, or generate with AI below.</div>
-            : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="card card-pad" {...dropProps}
+          style={{ outline: dragOver ? '2px dashed var(--accent)' : 'none', outlineOffset: -4, background: dragOver ? 'var(--surface-2)' : undefined }}>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
+            <div className="label">MONTAGE &middot; {items.length} {items.length === 1 ? 'image' : 'images'} &middot; ~{est.toFixed(1)}s</div>
+            <div className="row" style={{ gap: 6 }}>
+              <label className="btn sm" style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
+                <Icon name="upload" size={13} /> {uploading ? (uploadProg && uploadProg.total > 1 ? `Uploading ${Math.min(uploadProg.done + 1, uploadProg.total)} of ${uploadProg.total}…` : 'Uploading…') : 'Upload images'}
+                <input type="file" accept="image/*,audio/*" multiple onChange={onUpload} disabled={uploading} style={{ display: 'none' }} />
+              </label>
+              {items.length > 1 && <button className="btn sm" onClick={sortItems} title="Put the images in filename order">Sort by name</button>}
+              {items.length > 0 && <button className="btn sm" onClick={() => { if (window.confirm('Remove every image from this montage? (Uploaded files stay in the library.)')) setItems([]); }}>Clear</button>}
+            </div>
+          </div>
+          {items.length === 0 ? (
+            <div style={{ border: '2px dashed var(--border)', borderRadius: 'var(--r-md)', padding: '28px 16px', textAlign: 'center' }}>
+              <Icon name="upload" size={20} style={{ color: 'var(--text-4)' }} />
+              <div style={{ fontSize: 14, marginTop: 6 }}>{uploading ? 'Uploading…' : 'Drop all your images here'}</div>
+              <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 4 }}>As many as you like, in one go. They're added in filename order; drag to reorder. Or use the library / AI below.</div>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8 }}>
                 {items.map((it, i) => (
-                  <div key={i} className="card" style={{ padding: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span className="badge">{i + 1}</span>
-                    <div style={{ width: 54, height: 40, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                  <div key={i} draggable
+                    onDragStart={(e) => { setDragFrom(i); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); }}
+                    onDragOver={(e) => { if (dragFrom != null) { e.preventDefault(); e.stopPropagation(); } }}
+                    onDrop={(e) => { if (dragFrom == null) return; e.preventDefault(); e.stopPropagation(); moveTo(dragFrom, i); setDragFrom(null); }}
+                    onDragEnd={() => setDragFrom(null)}
+                    title={(it.type === 'asset' ? it.name : 'AI: ' + it.prompt) + ' · drag to reorder'}
+                    className="card" style={{ padding: 4, position: 'relative', cursor: 'grab', opacity: dragFrom === i ? 0.4 : 1 }}>
+                    <div style={{ height: 66, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', display: 'grid', placeItems: 'center' }}>
                       {it.type === 'asset'
-                        ? <img src={api.assetFileUrl(clientId, it.assetId)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : <Icon name="sparkle" size={16} style={{ color: 'var(--accent)' }} />}
+                        ? <img src={api.assetFileUrl(clientId, it.assetId)} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <Icon name="sparkle" size={18} style={{ color: 'var(--accent)' }} />}
                     </div>
-                    <div className="mono" style={{ fontSize: 12, flex: 1, minWidth: 0, wordBreak: 'break-word' }}>
-                      {it.type === 'asset' ? it.name : <>AI: {it.prompt}</>}
+                    <span className="badge" style={{ position: 'absolute', top: 6, left: 6, fontSize: 10, padding: '1px 5px', background: 'rgba(0,0,0,0.65)', color: '#fff' }}>{i + 1}</span>
+                    <button className="icon-btn" title="Remove" onClick={() => removeItem(i)}
+                      style={{ position: 'absolute', top: 6, right: 6, width: 18, height: 18, padding: 0, background: 'rgba(0,0,0,0.65)', color: '#fff' }}><Icon name="close" size={10} /></button>
+                    <div className="mono" style={{ fontSize: 10, lineHeight: 1.3, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {it.type === 'asset' ? it.name : 'AI: ' + it.prompt}
                     </div>
-                    <button className="icon-btn" title="Up" disabled={i === 0} onClick={() => move(i, -1)}><Icon name="arrow-l" size={12} style={{ transform: 'rotate(90deg)' }} /></button>
-                    <button className="icon-btn" title="Down" disabled={i === items.length - 1} onClick={() => move(i, 1)}><Icon name="arrow-l" size={12} style={{ transform: 'rotate(-90deg)' }} /></button>
-                    <button className="icon-btn" title="Remove" onClick={() => removeItem(i)}><Icon name="close" size={12} /></button>
+                    <div className="row" style={{ gap: 2, justifyContent: 'center', marginTop: 2 }}>
+                      <button className="icon-btn" title="Earlier" disabled={i === 0} onClick={() => move(i, -1)} style={{ width: 20, height: 18 }}><Icon name="arrow-l" size={10} /></button>
+                      <button className="icon-btn" title="Later" disabled={i === items.length - 1} onClick={() => move(i, 1)} style={{ width: 20, height: 18 }}><Icon name="arrow-l" size={10} style={{ transform: 'rotate(180deg)' }} /></button>
+                    </div>
                   </div>
                 ))}
               </div>
-            )}
+              <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 8 }}>Drag a tile to move it. Drop more images anywhere on this box to add them at the end.</div>
+            </>
+          )}
         </div>
 
         {/* AI image */}
@@ -2439,20 +2489,23 @@ function MontageBuilder({ clientId }) {
                 </select>
               )}
             </div>
-            <label className="btn sm" style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
-              <Icon name="upload" size={13} /> {uploading ? (uploadProg && uploadProg.total > 1 ? `Uploading ${Math.min(uploadProg.done + 1, uploadProg.total)} of ${uploadProg.total}…` : 'Uploading…') : 'Upload images'}
-              <input type="file" accept="image/*" multiple onChange={onUpload} disabled={uploading} style={{ display: 'none' }} />
-            </label>
+            {imageAssets.length > 0 && (
+              <button className="btn sm" onClick={() => addAssets([...imageAssets].sort((p, q) => byName(p.filename, q.filename)))}
+                title="Add every image shown here, in filename order">
+                <Icon name="plus" size={12} /> Add all ({imageAssets.length})
+              </button>
+            )}
           </div>
           {imageAssets.length === 0
-            ? <div className="mono" style={{ color: 'var(--text-4)' }}>No image assets yet — upload above.</div>
+            ? <div className="mono" style={{ color: 'var(--text-4)' }}>No image assets yet — drop images on the montage above.</div>
             : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 10 }}>
                 {imageAssets.map((a) => (
                   <button key={a.id} className="card" onClick={() => addAsset(a)} title={'Add ' + a.filename}
                     style={{ padding: 6, cursor: 'pointer', color: 'inherit', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ height: 60, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)' }}>
+                    <div style={{ height: 60, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', position: 'relative' }}>
                       <img src={api.assetFileUrl(clientId, a.id)} alt={a.filename} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      {inMontage(a.id) > 0 && <span className="badge" style={{ position: 'absolute', top: 3, right: 3, fontSize: 9, padding: '1px 4px', background: 'var(--accent)', color: '#fff' }}>in ×{inMontage(a.id)}</span>}
                     </div>
                     <div className="mono" style={{ fontSize: 10, lineHeight: 1.3, wordBreak: 'break-word' }}>{a.filename}</div>
                   </button>
