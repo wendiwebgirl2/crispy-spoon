@@ -170,6 +170,21 @@ export async function createHedraAvatar(fields, photoFile) {
   return parse(await fetch(API_BASE + "/api/hedra/avatars", { method: "POST", body: fd }));
 }
 
+// Looks of a Hedra photo avatar: [{ id, name, url, width, height, shape, current }].
+const hedraLookPath = (token, id) => "/api/hedra/avatars/" + encodeURIComponent(token) + "/" + encodeURIComponent(id) + "/looks";
+export function hedraLooks(token, id) { return apiGet(hedraLookPath(token, id)); }
+// Add a look. fields: { name, recording_id, t, from_avatar_id, from_look_id, use }, photoFile: optional File.
+export async function addHedraLook(token, id, fields, photoFile) {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) if (v != null && v !== "") fd.append(k, v);
+  if (photoFile) fd.append("photo", photoFile);
+  return parse(await fetch(API_BASE + hedraLookPath(token, id), { method: "POST", body: fd }));
+}
+export function switchHedraLook(token, id, lookId) { return apiPutJson(hedraLookPath(token, id) + "/" + encodeURIComponent(lookId) + "/use", {}); }
+export async function deleteHedraLook(token, id, lookId) {
+  return parse(await fetch(API_BASE + hedraLookPath(token, id) + "/" + encodeURIComponent(lookId), { method: "DELETE" }));
+}
+
 // Hedra engine: { enabled, models: [{ id, label, longform, note }] }. A server
 // without the Hedra code (404) or with it switched off reads as disabled, and
 // the picker then simply doesn't show Hedra.

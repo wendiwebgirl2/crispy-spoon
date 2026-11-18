@@ -4,13 +4,14 @@
 // cast.cuecreative.com Episodes tab.
 
 import React from 'react'
-import { api, generateVideo, previewCastAudio, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, castBoostedVideoBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl, hedraModels, engineName, hedraBody, hedraPrepare, hedraAvatars, hedraVoices, hedraFrameUrl, createHedraAvatar } from './api.js'
+import { api, generateVideo, previewCastAudio, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, castBoostedVideoBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl, hedraModels, engineName, hedraBody, hedraPrepare, hedraAvatars } from './api.js'
 import { clientToken, voice, ep } from './dashboard-api.js'
 import { fmtStamp, AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, buildMotionPrompt, uploadMany } from './shared.jsx'
 import { EpisodesView, scriptEpLabel } from './episodes.jsx'
 import { LookPicker, AssetsSection, VoiceSettings } from './brief.jsx'
 import { NewLookPanel } from './talent.jsx'
 import { PromptLibrary } from './prompt-library.jsx'
+import { NewHedraAvatar, HedraLooks } from './hedra-avatars.jsx'
 
 const SCENES = [
   { id: 'plain',     label: 'Plain', desc: 'No background.' },
@@ -42,124 +43,6 @@ const fmtWhen = (v) => {
   if (isNaN(d.getTime())) return String(v);
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 };
-// Create a Hedra photo avatar: a photo (frame from a recording, an upload, or
-// an existing avatar's look) + a voice (one the client has, or cloned from a
-// recording). Hedra's API has no avatar object, so this is all it needs.
-function NewHedraAvatar({ token, avatars, selStyle, onCreated }) {
-  const [name, setName] = React.useState('');
-  const [src, setSrc] = React.useState('recording');
-  const [recs, setRecs] = React.useState([]);
-  const [recId, setRecId] = React.useState('');
-  const [t, setT] = React.useState(3);
-  const [dur, setDur] = React.useState(null);
-  const [frame, setFrame] = React.useState(null);
-  const [frameErr, setFrameErr] = React.useState('');
-  const [file, setFile] = React.useState(null);
-  const [fromAv, setFromAv] = React.useState('');
-  const [voices, setVoices] = React.useState([]);
-  const [voice, setVoice] = React.useState('');
-  const [cloneRec, setCloneRec] = React.useState('');
-  const [busy, setBusy] = React.useState(false);
-  const [err, setErr] = React.useState('');
-  const full = { ...selStyle, width: '100%', boxSizing: 'border-box', marginBottom: 8 };
-
-  React.useEffect(() => {
-    listRecordings(token).then((r) => {
-      const rows = Array.isArray(r) ? r : (r.recordings || []);
-      setRecs(rows); if (rows[0]) { setRecId(String(rows[0].id)); setCloneRec(String(rows[0].id)); }
-    }).catch(() => setRecs([]));
-    hedraVoices(token).then((r) => { const v = r.voices || []; setVoices(v); setVoice(v[0] ? v[0].voice_id : 'clone'); }).catch(() => setVoices([]));
-  }, [token]);
-
-  // Frame preview, fetched a moment after the slider stops moving.
-  React.useEffect(() => {
-    if (src !== 'recording' || !recId) return undefined;
-    const h = setTimeout(async () => {
-      setFrameErr('');
-      try {
-        const r = await fetch(hedraFrameUrl(token, recId, t));
-        if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || 'No frame'); }
-        const secs = Number(r.headers.get('X-Recording-Seconds')); if (secs) setDur(secs);
-        const url = URL.createObjectURL(await r.blob());
-        setFrame((old) => { if (old) URL.revokeObjectURL(old); return url; });
-      } catch (e) { setFrame(null); setFrameErr(e.message); }
-    }, 400);
-    return () => clearTimeout(h);
-  }, [src, recId, t, token]);
-
-  const lookAvatars = avatars.filter((a) => !a._talent && !a._unbuilt && (a.heygen_avatar_id || a._hedra));
-  const recLabel = (r) => (r.signed_name || r.title || 'Recording') + (r.uploaded_at || r.created_at ? ' · ' + String(r.uploaded_at || r.created_at).slice(0, 10) : '');
-  const canSave = !busy && name.trim() && (src === 'upload' ? file : src === 'recording' ? recId : fromAv) && (voice === 'clone' ? cloneRec : voice);
-
-  const save = async () => {
-    setBusy(true); setErr('');
-    try {
-      const r = await createHedraAvatar({
-        token, name: name.trim(),
-        recording_id: src === 'recording' ? recId : '', t: src === 'recording' ? t : '',
-        from_avatar_id: src === 'avatar' ? fromAv : '',
-        voice_id: voice !== 'clone' ? voice : '', clone_voice_recording_id: voice === 'clone' ? cloneRec : '',
-      }, src === 'upload' ? file : null);
-      onCreated && onCreated(r.avatar);
-    } catch (e) { setErr(e.message || 'Could not create the avatar.'); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <div style={{ marginTop: 10, padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface-2)' }}>
-      <div className="label" style={{ marginBottom: 6 }}>NAME</div>
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Jane - patio look" style={full} />
-
-      <div className="label" style={{ marginBottom: 6 }}>PHOTO</div>
-      <select value={src} onChange={(e) => setSrc(e.target.value)} style={full}>
-        <option value="recording">Frame from a recording</option>
-        <option value="upload">Upload a photo</option>
-        <option value="avatar">Use an existing avatar's look</option>
-      </select>
-      {src === 'recording' && (recs.length === 0
-        ? <div className="mono" style={{ fontSize: 11, marginBottom: 8 }}>No recordings for this client.</div>
-        : (
-          <>
-            <select value={recId} onChange={(e) => { setRecId(e.target.value); setT(3); setDur(null); }} style={full}>
-              {recs.map((r) => <option key={r.id} value={r.id}>{recLabel(r)}</option>)}
-            </select>
-            <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 8 }}>
-              <input type="range" min="0" max={Math.max(1, Math.floor((dur || 30) - 0.5))} step="0.5" value={t} onChange={(e) => setT(Number(e.target.value))} style={{ flex: 1 }} />
-              <span className="mono" style={{ fontSize: 11, minWidth: 54, textAlign: 'right' }}>{t.toFixed(1)}s{dur ? ' / ' + Math.floor(dur) + 's' : ''}</span>
-            </div>
-            {frame && <img src={frame} alt="frame" style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', marginBottom: 8 }} />}
-            {frameErr && <div className="mono" style={{ fontSize: 11, color: 'var(--accent)', marginBottom: 8 }}>{frameErr}</div>}
-          </>
-        ))}
-      {src === 'upload' && (
-        <>
-          <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files[0] || null)} style={{ fontSize: 12, marginBottom: 8 }} />
-          {file && <img src={URL.createObjectURL(file)} alt="upload" style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', marginBottom: 8 }} />}
-        </>
-      )}
-      {src === 'avatar' && (
-        <select value={fromAv} onChange={(e) => setFromAv(e.target.value)} style={full}>
-          <option value="">Choose an avatar…</option>
-          {lookAvatars.map((a) => <option key={a.id} value={a.id}>{a._invite || a.name || a.contact}{a._hedra ? ' (Hedra)' : ''}</option>)}
-        </select>
-      )}
-
-      <div className="label" style={{ marginBottom: 6 }}>VOICE</div>
-      <select value={voice} onChange={(e) => setVoice(e.target.value)} style={full}>
-        {voices.map((v) => <option key={v.voice_id} value={v.voice_id}>{v.name} ({v.source === 'heygen' ? 'HeyGen voice' : 'ElevenLabs'})</option>)}
-        <option value="clone">Clone a new voice from a recording (ElevenLabs)</option>
-      </select>
-      {voice === 'clone' && (recs.length
-        ? <select value={cloneRec} onChange={(e) => setCloneRec(e.target.value)} style={full}>{recs.map((r) => <option key={r.id} value={r.id}>{recLabel(r)}</option>)}</select>
-        : <div className="mono" style={{ fontSize: 11, marginBottom: 8 }}>No recordings to clone from.</div>)}
-
-      {err && <div className="mono" style={{ fontSize: 11, color: 'var(--accent)', marginBottom: 8 }}>{err}</div>}
-      <button className="btn primary sm" disabled={!canSave} onClick={save} style={{ opacity: canSave ? 1 : 0.5 }}>
-        {busy ? 'Creating…' : 'Create Hedra photo avatar'}
-      </button>
-    </div>
-  );
-}
 
 // One labelled setting in the Studio right column (module level so typing in
 // a field inside it never remounts the input).
@@ -813,6 +696,9 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   }
 
   const readyAvatars = clientAvatars;   // client-scoped; non-ready shown disabled
+  // Avatars whose photo can seed a Hedra photo avatar or a new Hedra look.
+  const hedraLookSources = readyAvatars.filter((a) => !a._talent && !a._unbuilt && (a.heygen_avatar_id || a._hedra))
+    .map((a) => ({ id: a.id, label: (a._invite || a.name || a.contact) + (a._hedra ? ' (Hedra)' : '') }));
   const wordCount = script.trim().split(/\s+/).filter(Boolean).length;
   const estSeconds = Math.max(5, Math.round(wordCount / 2.5));
   const estCost = (estSeconds * 0.04).toFixed(2);
@@ -1550,7 +1436,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                     <Icon name="sparkle" size={12} /> {newHedraOpen ? 'Close' : 'New Hedra photo avatar'}
                   </button>
                   {newHedraOpen && (
-                    <NewHedraAvatar token={token} avatars={readyAvatars} selStyle={selStyle}
+                    <NewHedraAvatar token={token} sources={hedraLookSources} selStyle={selStyle}
                       onCreated={async (a) => { setNewHedraOpen(false); await loadClient(clientId); if (a && a.id) { setAvatarId(a.id); if (!String(engine).startsWith('hedra:') && hedra.models[0]) setEngine('hedra:' + hedra.models[0].id); } }} />
                   )}
                 </div>
@@ -1608,6 +1494,19 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                       <div className="mono">{sel.created_at ? String(sel.created_at).slice(0, 10) : 'ready'}</div>
                     </div>
                   </div>
+                );
+              })()}
+              {avatarId && castType === 'video' && (() => {
+                const sel = readyAvatars.find((a) => a.id === avatarId);
+                if (!sel || !sel._hedra) return null;
+                return (
+                  <HedraLooks key={sel.id} token={sel._token || token} avatarId={sel.id} aspect={lockVertical ? '9:16' : aspectRatio}
+                    sources={hedraLookSources} selStyle={selStyle}
+                    onChanged={(look) => {
+                      // Show the look now in use and drop any price check made with the old photo.
+                      setAvatars((list) => list.map((a) => (a.id === sel.id ? { ...a, thumbnail_url: look.url } : a)));
+                      setHedraPrep(null);
+                    }} />
                 );
               })()}
               {avatarId && (() => {

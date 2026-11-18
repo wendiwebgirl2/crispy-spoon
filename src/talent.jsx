@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from './shared.jsx'
-import { api } from './api.js'
+import { api, hedraModels, hedraAvatars } from './api.js'
+import { clientToken } from './dashboard-api.js'
+import { VoiceSettings } from './brief.jsx'
+import { NewHedraAvatar, HedraLooks } from './hedra-avatars.jsx'
 
 // Talent Library — agency-wide generic AI avatars for announcers and
 // voiceovers (no digital twin), castable for any client in Studio. Add from
@@ -577,6 +580,106 @@ function TalentCard({ t, voices, onChanged }) {
   );
 }
 
+// Hedra photo avatars belong to one client (a photo + that client's voice), so
+// they're listed per client here. Same looks/voice controls as the cast window.
+function HedraAvatarCard({ a, sources, onChanged }) {
+  const [open, setOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [thumb, setThumb] = useState(a.thumbnail_url);
+  const n = (v, d) => (v == null ? d : Number(v));
+  const isEleven = a.voice_id && !/^[0-9a-f]{32}$/i.test(String(a.voice_id));
+  return (
+    <div className="card card-pad">
+      <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+        <Thumb url={thumb} caption={a.name} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{a.name}</div>
+          <div className="mono" style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+            Hedra photo avatar{a.created_at ? ' · ' + String(a.created_at).slice(0, 10) : ''}
+            {isEleven ? ` · voice ${Number(a.voice_v3) === 4 ? 'v4' : a.voice_v3 ? 'v3' : 'v2'} · stab ${n(a.voice_stability, 0.5).toFixed(2)}` : ' · HeyGen voice'}
+          </div>
+        </div>
+        <button className="btn sm" onClick={() => setOpen((v) => !v)}>{open ? 'Close' : 'Manage'}</button>
+      </div>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <HedraLooks token={a._token} avatarId={a.id} sources={sources} selStyle={inputStyle}
+            onChanged={(look) => setThumb(look.url)} />
+          {isEleven && <button className="btn sm" onClick={() => setVoiceOpen(true)}><Icon name="mic" size={12} /> Voice settings</button>}
+          {voiceOpen && <VoiceSettings avatar={{ ...a, _name: a.name }} onClose={() => setVoiceOpen(false)} onSaved={() => onChanged()} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HedraAvatarsSection() {
+  const [enabled, setEnabled] = useState(false);
+  const [clients, setClients] = useState([]);
+  const [clientId, setClientId] = useState('');
+  const [rows, setRows] = useState(null);
+  const [sources, setSources] = useState([]);
+  const [token, setToken] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [err, setErr] = useState('');
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    hedraModels().then((r) => setEnabled(!!r.enabled));
+    api.listClients().then((c) => setClients(Array.isArray(c) ? c : (c && c.clients) || [])).catch(() => setClients([]));
+  }, []);
+  useEffect(() => {
+    if (!clientId) return undefined;
+    let live = true;
+    (async () => {
+      try {
+        const inv = await api.listClientInvites(clientId).catch(() => []);
+        const list = Array.isArray(inv) ? inv : (inv && inv.invites) || [];
+        const tokens = list.map((r) => r.token).filter(Boolean);
+        if (!tokens.length) { const t = await clientToken(clientId); if (t) tokens.push(t); }
+        const seen = new Set(); const hedra = []; const src = [];
+        for (const t of tokens) {
+          const [h, g] = await Promise.all([
+            hedraAvatars(t).then((r) => r.avatars || []).catch(() => []),
+            api.listAvatars(t).then((r) => r.avatars || []).catch(() => []),
+          ]);
+          for (const a of h) if (!seen.has(a.id)) { seen.add(a.id); hedra.push({ ...a, _token: t }); src.push({ id: a.id, label: a.name + ' (Hedra)' }); }
+          for (const a of g) if (a.heygen_avatar_id && !seen.has(a.id)) { seen.add(a.id); src.push({ id: a.id, label: a.name || 'Avatar' }); }
+        }
+        if (live) { setRows(hedra); setSources(src); setToken(tokens[0] || null); }
+      } catch (e) { if (live) { setRows([]); setErr(e.message); } }
+    })();
+    return () => { live = false; };
+  }, [clientId, reload]);
+  if (!enabled) return null;
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div className="label" style={{ marginBottom: 6 }}>HEDRA PHOTO AVATARS (PER CLIENT)</div>
+      <div className="mono" style={{ color: 'var(--text-4)', marginBottom: 10 }}>
+        A client's photo + voice for Hedra casts. Add looks (e.g. a vertical photo for 9:16) here or in the cast window.
+      </div>
+      <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <select value={clientId} onChange={(e) => { setClientId(e.target.value); setCreating(false); setRows(null); setErr(''); }} style={{ ...inputStyle, minWidth: 240 }}>
+          <option value="">Choose a client…</option>
+          {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        {clientId && token && <button className="btn sm" onClick={() => setCreating((v) => !v)}><Icon name="plus" size={12} /> {creating ? 'Close' : 'New Hedra photo avatar'}</button>}
+      </div>
+      {creating && token && (
+        <div style={{ marginBottom: 12 }}>
+          <NewHedraAvatar token={token} sources={sources} selStyle={inputStyle}
+            onCreated={() => { setCreating(false); setReload((k) => k + 1); }} />
+        </div>
+      )}
+      {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
+      <div className="col" style={{ gap: 10 }}>
+        {clientId && rows === null && <div className="mono">Loading…</div>}
+        {rows && !rows.length && <div className="mono" style={{ color: 'var(--text-4)' }}>No Hedra photo avatars for this client yet.</div>}
+        {(rows || []).map((a) => <HedraAvatarCard key={a.id} a={a} sources={sources} onChanged={() => setReload((k) => k + 1)} />)}
+      </div>
+    </div>
+  );
+}
+
 const TalentView = () => {
   const [talent, setTalent] = useState(null);
   const [voices, setVoices] = useState(null);
@@ -608,6 +711,7 @@ const TalentView = () => {
         {talent && !talent.length && <div className="mono" style={{ color: 'var(--text-4)' }}>No talent yet — add your first above.</div>}
         {(talent || []).map((t) => <TalentCard key={t.id} t={t} voices={voices} onChanged={load} />)}
       </div>
+      <HedraAvatarsSection />
     </div>
   );
 };
