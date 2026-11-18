@@ -33,6 +33,8 @@ const DELIVERY_PROMPTS = {
   serious: 'serious, authoritative delivery; composed and confident; steady gaze with minimal smiling',
 };
 const HEDRA_CALM_TEXT = 'calm, measured delivery; steady and composed; subtle natural movement';
+// Studio's HeyGen cost estimate per second of video (HeyGen reports no cost).
+const HEYGEN_EST_PER_SEC = 0.04;
 const DELIVERY_LABELS = { calm: 'Calm', warm: 'Warm', energetic: 'Energetic', laughing: 'Laughing', serious: 'Serious' };
 
 // Cast timestamp in the operator's local 12-hour time; falls back to the raw
@@ -755,7 +757,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     .map((a) => ({ id: a.id, label: (a._invite || a.name || a.contact) + (a._hedra ? ' (Hedra)' : '') }));
   const wordCount = script.trim().split(/\s+/).filter(Boolean).length;
   const estSeconds = Math.max(5, Math.round(wordCount / 2.5));
-  const estCost = (estSeconds * 0.04).toFixed(2);
+  const estCost = (estSeconds * HEYGEN_EST_PER_SEC).toFixed(2);
   // Hedra: rough price = Hedra's published per-second rate (from the model's
   // price text) x estimated length. The exact price is in the pre-render check.
   const hedraEst = (() => {
@@ -2195,6 +2197,20 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
             File: {video.background_file}
           </div>
         )}
+        {(() => {
+          // Hedra: the exact cost Hedra charged. HeyGen reports no cost, only the
+          // length, so its line is an estimate at the dashboard's per-second rate.
+          const secs = video.duration_s != null ? Number(video.duration_s) : null;
+          const len = secs ? ` · ${Math.floor(secs / 60)}:${String(Math.round(secs % 60)).padStart(2, '0')}` : '';
+          const isH = video.provider === 'hedra' || video.engine_used === 'hedra';
+          if (isH && video.cost_usd != null) {
+            return <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Cost: ${Number(video.cost_usd).toFixed(2)} (Hedra, exact){len}</div>;
+          }
+          if (!isH && secs) {
+            return <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }} title="HeyGen doesn't report a cost per video; this is the length x $0.04/s">Cost: ≈ ${(Math.ceil(secs) * HEYGEN_EST_PER_SEC).toFixed(2)} est. (HeyGen){len}</div>;
+          }
+          return null;
+        })()}
         <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>
           {fmtWhen(video.created_at || video.createdAt)} · {ready ? 'ready' : (video.status || 'rendering')}
         </div>
