@@ -697,7 +697,7 @@ function VoiceSettings({ avatar, onClose, onSaved }) {
   };
   const doSave = async () => {
     setErr(''); setSaved(false); setBusy('save');
-    try { await api.setAvatarVoice(avatar._token, avatar.id, payload()); setSaved(true); if (onSaved) onSaved(); }
+    try { await api.setAvatarVoice(avatar._token, avatar.id, payload()); setSaved(true); if (onSaved) onSaved(payload()); }
     catch (e) { setErr(e.message || 'Save failed'); } finally { setBusy(''); }
   };
 

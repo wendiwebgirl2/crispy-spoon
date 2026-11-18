@@ -8,7 +8,7 @@ import { api, generateVideo, previewCastAudio, listVideos, deleteVideo, renameVi
 import { clientToken, voice, ep } from './dashboard-api.js'
 import { fmtStamp, AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, buildMotionPrompt, uploadMany } from './shared.jsx'
 import { EpisodesView, scriptEpLabel } from './episodes.jsx'
-import { LookPicker, AssetsSection } from './brief.jsx'
+import { LookPicker, AssetsSection, VoiceSettings } from './brief.jsx'
 import { NewLookPanel } from './talent.jsx'
 import { PromptLibrary } from './prompt-library.jsx'
 
@@ -266,6 +266,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   // Hedra-only settings (each shown only if the chosen model's API accepts it).
   const [hedraDirection, setHedraDirection] = React.useState('');
   const [hedraQuality, setHedraQuality] = React.useState('');
+  const [voiceFor, setVoiceFor] = React.useState(null);        // avatar whose ElevenLabs settings are open
   const [hedraDuration, setHedraDuration] = React.useState('');
   const [focusX, setFocusX] = React.useState(0.5);
   const [focusY, setFocusY] = React.useState(0.5);
@@ -815,6 +816,21 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const wordCount = script.trim().split(/\s+/).filter(Boolean).length;
   const estSeconds = Math.max(5, Math.round(wordCount / 2.5));
   const estCost = (estSeconds * 0.04).toFixed(2);
+  // Hedra: rough price = Hedra's published per-second rate (from the model's
+  // price text) x estimated length. The exact price is in the pre-render check.
+  const hedraEst = (() => {
+    if (!isHedra) return null;
+    const rates = hOpt.price_rates || [];
+    if (!rates.length) return null;
+    const res = hOpt.resolutions && hOpt.resolutions.length
+      ? (hOpt.resolutions.includes(hedraRes) ? hedraRes : hOpt.resolutions[hOpt.resolutions.length - 1]) : null;
+    const q = String(hedraQuality || (hOpt.quality && hOpt.quality[0]) || '').toLowerCase();
+    const fits = rates.filter((r) => !r.quality || !q || r.quality === q);
+    const rate = (res && fits.find((r) => r.resolutions.includes(res))) || (fits.length === 1 ? fits[0] : null);
+    if (!rate) return null;
+    const secs = estSeconds + 1.5; // the voice track ends with a 1.5 s hold
+    return { cost: (Math.ceil(secs) * rate.usd_per_second).toFixed(2), res: res || rate.resolutions[0], perSec: rate.usd_per_second };
+  })();
   const canGenerate = !generating && !!script.trim() && !!avatar && avatar.status === 'ready' && !avatar._unbuilt;
 
   const reloadQueue = async () => {
@@ -1261,7 +1277,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
               <div style={{ marginBottom: 24 }}>
                 <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
                   <span className="label">SCRIPT</span>
-                  <span className="mono">{wordCount} words · ~{estSeconds}s · ${estCost}</span>
+                  <span className="mono">{wordCount} words · ~{estSeconds}s · {isHedra ? (hedraEst ? '~$' + hedraEst.cost : 'Hedra price before paying') : '$' + estCost}</span>
                 </div>
                 <textarea
                   ref={scriptRef}
@@ -1595,6 +1611,37 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 );
               })()}
               {avatarId && (() => {
+                // ElevenLabs voice settings for this avatar (saved on the avatar,
+                // used by every cast - HeyGen and Hedra). Talent voices live in the
+                // talent library; HeyGen voices have no settings.
+                const sel = readyAvatars.find((a) => a.id === avatarId);
+                if (!sel || sel._talent || sel._unbuilt || !sel.voice_id || /^[0-9a-f]{32}$/i.test(String(sel.voice_id))) return null;
+                const n = (v, d) => (v == null ? d : Number(v));
+                const model = Number(sel.voice_v3) === 4 ? 'v4' : sel.voice_v3 ? 'v3' : 'v2';
+                return (
+                  <div style={{ marginBottom: 16 }}>
+                    <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button className="btn sm" onClick={() => setVoiceFor({ ...sel, _name: sel._invite || sel.contact })}>
+                        <Icon name="mic" size={12} /> Voice settings
+                      </button>
+                      <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>
+                        {model} · stab {n(sel.voice_stability, 0.5).toFixed(2)} · sim {n(sel.voice_similarity, 0.75).toFixed(2)} · style {n(sel.voice_style, 0).toFixed(2)} · speed {n(sel.voice_speed, 1).toFixed(2)}{sel.voice_speaker_boost === 0 ? ' · boost off' : ''}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+              {voiceFor && (
+                <VoiceSettings avatar={voiceFor} onClose={() => setVoiceFor(null)}
+                  onSaved={(saved) => {
+                    // Show the new settings here and drop any price check made with
+                    // the old voice track (the server also refuses to reuse it).
+                    setAvatars((list) => list.map((a) => (a.id === voiceFor.id ? { ...a, ...saved } : a)));
+                    setVoiceFor((v) => (v ? { ...v, ...saved } : v));
+                    setHedraPrep(null);
+                  }} />
+              )}
+              {avatarId && (() => {
                 const sel = readyAvatars.find((a) => a.id === avatarId);
                 if (!sel || !sel.heygen_group_id) return null;
                 if (sel._talent) {
@@ -1821,9 +1868,13 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
               }}>
                 <div className="row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
                   <span className="mono">{isHedra ? 'Hedra price' : 'Estimated cost'}</span>
-                  <span style={{ fontFamily: 'var(--f-display)', fontSize: isHedra ? 14 : 24 }}>{isHedra ? 'shown before you pay' : '$' + estCost}</span>
+                  <span style={{ fontFamily: 'var(--f-display)', fontSize: isHedra && !hedraEst ? 14 : 24 }}>{isHedra ? (hedraEst ? '~$' + hedraEst.cost : 'shown before you pay') : '$' + estCost}</span>
                 </div>
-                <div className="mono">{isHedra ? `~${estSeconds}s · ${wordCount} words · exact price from Hedra in the pre-render check` : `${estSeconds}s · ${wordCount} words · charged on completion`}</div>
+                <div className="mono">{isHedra
+                  ? (hedraEst
+                    ? `~${estSeconds}s · ${wordCount} words · ${hedraEst.res} at ${(hedraEst.perSec * 100).toFixed(2).replace(/\.?0+$/, '')}¢/s (Hedra's rate) · length is a guess; exact price in the pre-render check`
+                    : `~${estSeconds}s · ${wordCount} words · exact price from Hedra in the pre-render check`)
+                  : `${estSeconds}s · ${wordCount} words · charged on completion`}</div>
               </div>
 
               {castType === 'video' ? (
