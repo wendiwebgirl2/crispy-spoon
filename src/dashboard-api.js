@@ -1,5 +1,5 @@
 // dashboard-api.js — same-origin VoiceCast episodes/schedule + Railway HeyGen video.
-const RAILWAY = 'https://cue-caster-api-production.up.railway.app';
+const RAILWAY = import.meta.env.VITE_API_BASE || 'https://cue-caster-api-production.up.railway.app'; // VITE_API_BASE: local dev only
 
 async function j(res) {
   if (res.status === 204) return null;

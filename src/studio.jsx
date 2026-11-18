@@ -4,12 +4,13 @@
 // cast.cuecreative.com Episodes tab.
 
 import React from 'react'
-import { api, generateVideo, previewCastAudio, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, castBoostedVideoBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl } from './api.js'
+import { api, generateVideo, previewCastAudio, listVideos, deleteVideo, renameVideo, castAudioBlob, castWaveformBlob, castBoostedVideoBlob, listRecordings, createAvatarFromRecording, recordingDownloadUrl, hedraModels, engineName, hedraBody, hedraPrepare, hedraAvatars, hedraVoices, hedraFrameUrl, createHedraAvatar } from './api.js'
 import { clientToken, voice, ep } from './dashboard-api.js'
 import { fmtStamp, AvatarTile, Icon, StatusBadge, downloadWithPrompt, saveBlobWithPrompt, ExpressionTags, SendReviewModal, buildMotionPrompt, uploadMany } from './shared.jsx'
 import { EpisodesView, scriptEpLabel } from './episodes.jsx'
 import { LookPicker, AssetsSection } from './brief.jsx'
 import { NewLookPanel } from './talent.jsx'
+import { PromptLibrary } from './prompt-library.jsx'
 
 const SCENES = [
   { id: 'plain',     label: 'Plain', desc: 'No background.' },
@@ -29,6 +30,7 @@ const DELIVERY_PROMPTS = {
   laughing: 'joyful, laughing delivery; genuine laughter and a big warm smile; playful and animated',
   serious: 'serious, authoritative delivery; composed and confident; steady gaze with minimal smiling',
 };
+const HEDRA_CALM_TEXT = 'calm, measured delivery; steady and composed; subtle natural movement';
 const DELIVERY_LABELS = { calm: 'Calm', warm: 'Warm', energetic: 'Energetic', laughing: 'Laughing', serious: 'Serious' };
 
 // Cast timestamp in the operator's local 12-hour time; falls back to the raw
@@ -40,7 +42,135 @@ const fmtWhen = (v) => {
   if (isNaN(d.getTime())) return String(v);
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 };
-const engineLabel = (e) => (e === 'avatar_v' ? 'Avatar V' : e === 'avatar_iv' ? 'Avatar IV' : e === 'avatar_iii' ? 'Avatar III' : '');
+// Create a Hedra photo avatar: a photo (frame from a recording, an upload, or
+// an existing avatar's look) + a voice (one the client has, or cloned from a
+// recording). Hedra's API has no avatar object, so this is all it needs.
+function NewHedraAvatar({ token, avatars, selStyle, onCreated }) {
+  const [name, setName] = React.useState('');
+  const [src, setSrc] = React.useState('recording');
+  const [recs, setRecs] = React.useState([]);
+  const [recId, setRecId] = React.useState('');
+  const [t, setT] = React.useState(3);
+  const [dur, setDur] = React.useState(null);
+  const [frame, setFrame] = React.useState(null);
+  const [frameErr, setFrameErr] = React.useState('');
+  const [file, setFile] = React.useState(null);
+  const [fromAv, setFromAv] = React.useState('');
+  const [voices, setVoices] = React.useState([]);
+  const [voice, setVoice] = React.useState('');
+  const [cloneRec, setCloneRec] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  const full = { ...selStyle, width: '100%', boxSizing: 'border-box', marginBottom: 8 };
+
+  React.useEffect(() => {
+    listRecordings(token).then((r) => {
+      const rows = Array.isArray(r) ? r : (r.recordings || []);
+      setRecs(rows); if (rows[0]) { setRecId(String(rows[0].id)); setCloneRec(String(rows[0].id)); }
+    }).catch(() => setRecs([]));
+    hedraVoices(token).then((r) => { const v = r.voices || []; setVoices(v); setVoice(v[0] ? v[0].voice_id : 'clone'); }).catch(() => setVoices([]));
+  }, [token]);
+
+  // Frame preview, fetched a moment after the slider stops moving.
+  React.useEffect(() => {
+    if (src !== 'recording' || !recId) return undefined;
+    const h = setTimeout(async () => {
+      setFrameErr('');
+      try {
+        const r = await fetch(hedraFrameUrl(token, recId, t));
+        if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || 'No frame'); }
+        const secs = Number(r.headers.get('X-Recording-Seconds')); if (secs) setDur(secs);
+        const url = URL.createObjectURL(await r.blob());
+        setFrame((old) => { if (old) URL.revokeObjectURL(old); return url; });
+      } catch (e) { setFrame(null); setFrameErr(e.message); }
+    }, 400);
+    return () => clearTimeout(h);
+  }, [src, recId, t, token]);
+
+  const lookAvatars = avatars.filter((a) => !a._talent && !a._unbuilt && (a.heygen_avatar_id || a._hedra));
+  const recLabel = (r) => (r.signed_name || r.title || 'Recording') + (r.uploaded_at || r.created_at ? ' · ' + String(r.uploaded_at || r.created_at).slice(0, 10) : '');
+  const canSave = !busy && name.trim() && (src === 'upload' ? file : src === 'recording' ? recId : fromAv) && (voice === 'clone' ? cloneRec : voice);
+
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      const r = await createHedraAvatar({
+        token, name: name.trim(),
+        recording_id: src === 'recording' ? recId : '', t: src === 'recording' ? t : '',
+        from_avatar_id: src === 'avatar' ? fromAv : '',
+        voice_id: voice !== 'clone' ? voice : '', clone_voice_recording_id: voice === 'clone' ? cloneRec : '',
+      }, src === 'upload' ? file : null);
+      onCreated && onCreated(r.avatar);
+    } catch (e) { setErr(e.message || 'Could not create the avatar.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ marginTop: 10, padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface-2)' }}>
+      <div className="label" style={{ marginBottom: 6 }}>NAME</div>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Jane - patio look" style={full} />
+
+      <div className="label" style={{ marginBottom: 6 }}>PHOTO</div>
+      <select value={src} onChange={(e) => setSrc(e.target.value)} style={full}>
+        <option value="recording">Frame from a recording</option>
+        <option value="upload">Upload a photo</option>
+        <option value="avatar">Use an existing avatar's look</option>
+      </select>
+      {src === 'recording' && (recs.length === 0
+        ? <div className="mono" style={{ fontSize: 11, marginBottom: 8 }}>No recordings for this client.</div>
+        : (
+          <>
+            <select value={recId} onChange={(e) => { setRecId(e.target.value); setT(3); setDur(null); }} style={full}>
+              {recs.map((r) => <option key={r.id} value={r.id}>{recLabel(r)}</option>)}
+            </select>
+            <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <input type="range" min="0" max={Math.max(1, Math.floor((dur || 30) - 0.5))} step="0.5" value={t} onChange={(e) => setT(Number(e.target.value))} style={{ flex: 1 }} />
+              <span className="mono" style={{ fontSize: 11, minWidth: 54, textAlign: 'right' }}>{t.toFixed(1)}s{dur ? ' / ' + Math.floor(dur) + 's' : ''}</span>
+            </div>
+            {frame && <img src={frame} alt="frame" style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', marginBottom: 8 }} />}
+            {frameErr && <div className="mono" style={{ fontSize: 11, color: 'var(--accent)', marginBottom: 8 }}>{frameErr}</div>}
+          </>
+        ))}
+      {src === 'upload' && (
+        <>
+          <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files[0] || null)} style={{ fontSize: 12, marginBottom: 8 }} />
+          {file && <img src={URL.createObjectURL(file)} alt="upload" style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', marginBottom: 8 }} />}
+        </>
+      )}
+      {src === 'avatar' && (
+        <select value={fromAv} onChange={(e) => setFromAv(e.target.value)} style={full}>
+          <option value="">Choose an avatar…</option>
+          {lookAvatars.map((a) => <option key={a.id} value={a.id}>{a._invite || a.name || a.contact}{a._hedra ? ' (Hedra)' : ''}</option>)}
+        </select>
+      )}
+
+      <div className="label" style={{ marginBottom: 6 }}>VOICE</div>
+      <select value={voice} onChange={(e) => setVoice(e.target.value)} style={full}>
+        {voices.map((v) => <option key={v.voice_id} value={v.voice_id}>{v.name} ({v.source === 'heygen' ? 'HeyGen voice' : 'ElevenLabs'})</option>)}
+        <option value="clone">Clone a new voice from a recording (ElevenLabs)</option>
+      </select>
+      {voice === 'clone' && (recs.length
+        ? <select value={cloneRec} onChange={(e) => setCloneRec(e.target.value)} style={full}>{recs.map((r) => <option key={r.id} value={r.id}>{recLabel(r)}</option>)}</select>
+        : <div className="mono" style={{ fontSize: 11, marginBottom: 8 }}>No recordings to clone from.</div>)}
+
+      {err && <div className="mono" style={{ fontSize: 11, color: 'var(--accent)', marginBottom: 8 }}>{err}</div>}
+      <button className="btn primary sm" disabled={!canSave} onClick={save} style={{ opacity: canSave ? 1 : 0.5 }}>
+        {busy ? 'Creating…' : 'Create Hedra photo avatar'}
+      </button>
+    </div>
+  );
+}
+
+// One labelled setting in the Studio right column (module level so typing in
+// a field inside it never remounts the input).
+const RailField = ({ label, hint, children }) => (
+  <div style={{ marginBottom: 16 }}>
+    <div className="label" style={{ marginBottom: 6 }}>{label}</div>
+    {children}
+    {hint ? <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 5, lineHeight: 1.5 }}>{hint}</div> : null}
+  </div>
+);
+const engineLabel = (e, hedraModel) => (e === 'hedra' ? 'Hedra' + (hedraModel ? ' · ' + hedraModel : '') : engineName(e));
 
 // destination = where the finished piece goes. types = valid content shapes per
 // destination (each presets an aspect ratio). 'download' is always available so a
@@ -125,7 +255,35 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const [scene, setScene] = React.useState('studio');
   const [language, setLanguage] = React.useState('EN');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
-  const [engine, setEngine] = React.useState('auto');  // 'auto' | 'avatar_v' | 'avatar_iv' | 'avatar_iii'
+  const [engine, setEngine] = React.useState('auto');  // 'auto' | 'avatar_v' | 'avatar_iv' | 'avatar_iii' | 'hedra:<model>'
+  // Hedra engine: shown only when the render server has it switched on.
+  const [hedra, setHedra] = React.useState({ enabled: false, models: [] });
+  const [hedraRes, setHedraRes] = React.useState('1080p');
+  React.useEffect(() => { hedraModels().then((h) => setHedra({ enabled: !!h.enabled, models: h.models || [] })); }, []);
+  const isHedra = String(engine).startsWith('hedra:');
+  const hedraModel = isHedra ? hedra.models.find((m) => m.id === engine.slice(6)) : null;
+  const hOpt = (hedraModel && hedraModel.options) || {};
+  // Hedra-only settings (each shown only if the chosen model's API accepts it).
+  const [hedraDirection, setHedraDirection] = React.useState('');
+  const [hedraQuality, setHedraQuality] = React.useState('');
+  const [hedraDuration, setHedraDuration] = React.useState('');
+  const [focusX, setFocusX] = React.useState(0.5);
+  const [focusY, setFocusY] = React.useState(0.5);
+  const [speakerPoint, setSpeakerPoint] = React.useState(null);
+  const [hedraPrep, setHedraPrep] = React.useState(null);      // { prepared_id, price, photo, request }
+  const [hedraPrepBusy, setHedraPrepBusy] = React.useState(false);
+  const [hedraPrepErr, setHedraPrepErr] = React.useState('');
+  const [newHedraOpen, setNewHedraOpen] = React.useState(false);
+  // Prompt text for a cast. HeyGen: the standing guidance + the Delivery text.
+  // Hedra: ONLY the Delivery text (Calm's text is spelled out, since Calm adds
+  // nothing for HeyGen) - nothing hidden; the pre-render check shows it all.
+  const promptFor = (deliveryText) => (isHedra ? (deliveryText || HEDRA_CALM_TEXT) : buildMotionPrompt(deliveryText));
+  const selStyle = { padding: '7px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 13 };
+  const hedraFields = (extra = {}) => hedraBody({
+    direction: hedraDirection.trim(), quality: hOpt.quality ? (hedraQuality || hOpt.quality[0]) : null,
+    speakerPoint: hOpt.speaker_point ? speakerPoint : null, durationS: hOpt.duration_max_ms ? hedraDuration : null,
+    focusX, focusY, ...extra,
+  });
   // Pre-render check (credit safety): Generate/Recast open this instead of
   // rendering. take = the full-script voice preview; checks gate the Render button.
   const [preflight, setPreflight] = React.useState(null);   // { kind: 'cast' | 'recast', script, avatarId, aspect }
@@ -276,6 +434,16 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       }
       for (const t of talentList) {
         list.push({ ...normalizeAvatar(t), _talent: true, _voiceOnly: false, _token: talentToken, _invite: t.name });
+      }
+      // Hedra photo avatars (photo + voice, nothing at HeyGen). Only on servers
+      // with Hedra; a 404 just means none.
+      const hedraLists = await Promise.all(tokens.map((t) => hedraAvatars(t).then((r) => ({ t, rows: r.avatars || [] })).catch(() => ({ t, rows: [] }))));
+      for (const { t, rows } of hedraLists) {
+        for (const a of rows) {
+          if (seen.has(a.id)) continue;
+          seen.add(a.id);
+          list.push({ ...a, contact: a.name, languages: [], status: 'ready', _hedra: true, _voiceOnly: false, _token: t, _invite: a.name });
+        }
       }
       // Recordings whose twin has not been built yet. Without these the Cast
       // page shows nothing for a client who has recorded but has no avatar -
@@ -781,8 +949,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
         avatarId: editCast.avatar_id || undefined,
         aspectRatio: editCastAspect,
         engine,
+        resolution: isHedra ? hedraRes : undefined,
+        hedra: isHedra ? hedraFields({ preparedId: hedraPrep && hedraPrep.prepared_id }) : undefined,
         expressiveness,
-        motionPrompt: buildMotionPrompt(recastPromptText),
+        motionPrompt: promptFor(recastPromptText),
         deliveryLabel: customMotion.trim() ? 'Custom' : (DELIVERY_LABELS[delivery] || delivery),
         deliveryPrompt: recastPromptText || null,
       });
@@ -866,7 +1036,9 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
         token, title: castTitle.trim() || script.slice(0, 60), avatarId, caption,
         background: (!backgroundAssetId && backgroundColor) ? { type: 'color', value: backgroundColor } : null,
         aspectRatio: lockVertical ? '9:16' : aspectRatio, backgroundAssetId, engine, expressiveness,
-        motionPrompt: buildMotionPrompt(deliveryPromptText),
+        resolution: isHedra ? hedraRes : undefined,
+        hedra: isHedra ? hedraFields({ preparedId: hedraPrep && hedraPrep.prepared_id }) : undefined,
+        motionPrompt: promptFor(deliveryPromptText),
         deliveryLabel: customMotion.trim() ? 'Custom' : (DELIVERY_LABELS[delivery] || delivery),
         deliveryPrompt: deliveryPromptText || null,
         backgroundFile: bgAsset ? bgAsset.filename : (backgroundColor ? `Color ${backgroundColor}` : null),
@@ -906,7 +1078,24 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     if (!pScript) return;
     setChecks({ voice: false, look: false, final: false });
     setTakeErr('');
-    setPreflight({ kind, script: pScript, avatarId: kind === 'recast' ? (editCast && editCast.avatar_id) || null : avatarId, aspect: kind === 'recast' ? editCastAspect : aspectRatio });
+    const pf = { kind, script: pScript, avatarId: kind === 'recast' ? (editCast && editCast.avatar_id) || null : avatarId, aspect: kind === 'recast' ? editCastAspect : (lockVertical ? '9:16' : aspectRatio) };
+    setPreflight(pf);
+    setHedraPrep(null); setSpeakerPoint(null);
+    if (isHedra) loadHedraPrep(pf);
+  };
+  // Hedra: the exact cropped photo + Hedra's own price for this cast (free).
+  const loadHedraPrep = async (pf = preflight) => {
+    if (!pf || !token || !isHedra) return;
+    setHedraPrepBusy(true); setHedraPrepErr(''); setHedraPrep(null);
+    try {
+      const deliveryText = customMotion.trim() || DELIVERY_PROMPTS[delivery];
+      const r = await hedraPrepare({
+        token, script: pf.script, avatar_id: pf.avatarId, engine, aspect_ratio: pf.aspect, resolution: hedraRes,
+        motion_prompt: promptFor(deliveryText), ...hedraFields(),
+      });
+      setHedraPrep(r);
+    } catch (e) { setHedraPrepErr(e.message || 'Could not get the Hedra price.'); }
+    finally { setHedraPrepBusy(false); }
   };
   const takeFresh = !!(take && preflight && take.script === preflight.script && take.avatarId === preflight.avatarId);
   const loadTake = async () => {
@@ -984,7 +1173,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
       {renderMode === 'assembly'
         ? <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}><EpisodesView activeClientId={clientId} episodeRequest={stitchRequest} onEpisodeRequestConsumed={() => setStitchRequest(null)} /></div>
         : (
-          <div className="rail-320" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', flex: 1, minHeight: 0 }}>
+          <div className="rail-320" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 420px', flex: 1, minHeight: 0 }}>
             {/* —— center: script editor + queue —— */}
             <div style={{ overflow: 'auto', padding: 'var(--pad)' }}>
               <div className="row" style={{ justifyContent: 'space-between', marginBottom: 24 }}>
@@ -1210,17 +1399,58 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                     <div className="col" style={{ gap: 8 }}>
                       <div className="label">2 · CHECK THE LOOK</div>
                       <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
-                        {img && <img src={img} alt="avatar look" style={{ width: 160, maxHeight: 200, objectFit: 'contain', background: '#0a0a0a', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)' }} />}
+                        {img && !isHedra && <img src={img} alt="avatar look" style={{ width: 160, maxHeight: 200, objectFit: 'contain', background: '#0a0a0a', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)' }} />}
                         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                          <span className="badge">{engineLabel(engine) || 'Auto engine'}</span>
+                          <span className="badge">{engineName(engine, hedra.models) || 'Auto engine'}</span>
                           <span className="badge">{preflight.aspect}</span>
-                          {preflight.kind === 'cast' && <span className="badge">{bgText}</span>}
-                          {preflight.kind === 'cast' && <span className="badge">{caption ? 'Captions on' : 'No captions'}</span>}
+                          {isHedra && <span className="badge">{hedraRes}</span>}
+                          {preflight.kind === 'cast' && !isHedra && <span className="badge">{bgText}</span>}
+                          {preflight.kind === 'cast' && !isHedra && <span className="badge">{caption ? 'Captions on' : 'No captions'}</span>}
                           {engine !== 'avatar_iii' && <span className="badge">{customMotion.trim() ? 'Custom delivery' : (DELIVERY_LABELS[delivery] || delivery)}</span>}
-                          {engine !== 'avatar_iii' && engine !== 'avatar_v' && <span className="badge">Expressiveness {expressiveness}</span>}
+                          {engine !== 'avatar_iii' && engine !== 'avatar_v' && !isHedra && <span className="badge">Expressiveness {expressiveness}</span>}
                         </div>
                       </div>
-                      {engine !== 'avatar_iii' && (
+                      {isHedra && (
+                        <div className="col" style={{ gap: 8 }}>
+                          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                            This is the exact photo Hedra will animate, cropped to {preflight.aspect}. Background and captions don't apply.
+                            {hOpt.speaker_point ? ' Click the face that should speak if there is more than one person.' : ''}
+                          </div>
+                          {hedraPrepBusy && <div className="mono" style={{ fontSize: 12 }}>Preparing photo and voice, asking Hedra for the price…</div>}
+                          {hedraPrepErr && <div className="mono" style={{ fontSize: 12, color: 'var(--accent)' }}>{hedraPrepErr}</div>}
+                          {hedraPrep && hedraPrep.photo && (
+                            <div style={{ position: 'relative', alignSelf: 'flex-start', cursor: hOpt.speaker_point ? 'crosshair' : 'default' }}
+                              onClick={(e) => {
+                                if (!hOpt.speaker_point) return;
+                                const r = e.currentTarget.getBoundingClientRect();
+                                setSpeakerPoint([+((e.clientX - r.left) / r.width).toFixed(3), +((e.clientY - r.top) / r.height).toFixed(3)]);
+                              }}>
+                              <img src={hedraPrep.photo} alt="photo Hedra will animate" style={{ display: 'block', maxWidth: 260, maxHeight: 260, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)' }} />
+                              {speakerPoint && <div style={{ position: 'absolute', left: `calc(${speakerPoint[0] * 100}% - 7px)`, top: `calc(${speakerPoint[1] * 100}% - 7px)`, width: 14, height: 14, borderRadius: '50%', border: '2px solid #fff', background: 'var(--accent)' }} />}
+                            </div>
+                          )}
+                          {hedraPrep && hedraPrep.request && (
+                            <div style={{ fontSize: 12 }}>
+                              <div className="mono" style={{ fontSize: 11, marginBottom: 4 }}>EXACT PROMPT SENT TO HEDRA</div>
+                              <div style={{ whiteSpace: 'pre-wrap', padding: 8, borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-2)' }}>
+                                {hedraPrep.request.prompt || '(none - this model takes no prompt)'}
+                              </div>
+                            </div>
+                          )}
+                          <div className="row" style={{ gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
+                            <span className="mono" style={{ fontSize: 11 }}>Crop</span>
+                            <select value={focusX} onChange={(e) => { setFocusX(Number(e.target.value)); setHedraPrep(null); setSpeakerPoint(null); }} style={selStyle}>
+                              <option value={0}>Left</option><option value={0.25}>Left of centre</option><option value={0.5}>Centre</option><option value={0.75}>Right of centre</option><option value={1}>Right</option>
+                            </select>
+                            <select value={focusY} onChange={(e) => { setFocusY(Number(e.target.value)); setHedraPrep(null); setSpeakerPoint(null); }} style={selStyle}>
+                              <option value={0}>Top</option><option value={0.5}>Middle</option><option value={1}>Bottom</option>
+                            </select>
+                            <button className="btn sm" disabled={hedraPrepBusy} onClick={() => loadHedraPrep()}>Update photo + price</button>
+                            {speakerPoint && <button className="btn sm" onClick={() => setSpeakerPoint(null)}>Clear speaker point</button>}
+                          </div>
+                        </div>
+                      )}
+                      {engine !== 'avatar_iii' && !isHedra && (
                         <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12, color: 'var(--text-3)' }}>
                           <span>Jewelry or accessories flickering in past renders? Avatar III keeps them steady.</span>
                           <button className="btn sm" onClick={() => setEngine('avatar_iii')}>Use Avatar III</button>
@@ -1235,8 +1465,12 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                     </div>
 
                     <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                      <span className="mono" style={{ fontSize: 12 }}>~{pSecs}s · {pWords} words · est. ${(pSecs * 0.04).toFixed(2)}</span>
-                      <button className="btn primary" disabled={!ready} onClick={confirmRender} style={{ opacity: ready ? 1 : 0.5 }}>
+                      <span className="mono" style={{ fontSize: 12 }}>
+                        {isHedra
+                          ? (hedraPrep && hedraPrep.price ? `Hedra price: $${Number(hedraPrep.price.cost).toFixed(2)} ${hedraPrep.price.currency || ''} · ${hedraPrep.request && hedraPrep.request.resolution ? hedraPrep.request.resolution : ''}` : 'Hedra price: waiting…')
+                          : `~${pSecs}s · ${pWords} words · est. $${(pSecs * 0.04).toFixed(2)}`}
+                      </span>
+                      <button className="btn primary" disabled={!ready || (isHedra && !hedraPrep)} onClick={confirmRender} style={{ opacity: (ready && (!isHedra || hedraPrep)) ? 1 : 0.5 }}>
                         <Icon name="sparkle" size={12} /> Render - spends credits
                       </button>
                     </div>
@@ -1259,7 +1493,11 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   value={avatarId || ''}
                   onChange={(e) => {
                     const av = readyAvatars.find((a) => String(a.id) === e.target.value);
-                    if (av) { setAvatarId(av.id); if (av._token) setToken(av._token); }
+                    if (av) {
+                      setAvatarId(av.id); if (av._token) setToken(av._token);
+                      // A Hedra photo avatar can only render on Hedra.
+                      if (av._hedra && !String(engine).startsWith('hedra:') && hedra.models[0]) setEngine('hedra:' + hedra.models[0].id);
+                    }
                   }}
                   style={{
                     width: '100%', marginBottom: 22, padding: '10px 12px',
@@ -1274,7 +1512,14 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                       ))}
                     </optgroup>
                   )}
-                  {readyAvatars.filter((av) => !av._talent).map((av) => (
+                  {readyAvatars.some((av) => av._hedra) && (
+                    <optgroup label="Hedra photo avatars">
+                      {readyAvatars.filter((av) => av._hedra).map((av) => (
+                        <option key={av.id} value={av.id}>{av.name}{av.created_at ? ' · ' + String(av.created_at).slice(0, 10) : ''}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {readyAvatars.filter((av) => !av._talent && !av._hedra).map((av) => (
                     <option key={av.id} value={av.id} disabled={av._voiceOnly && !av._unbuilt && castType !== 'audio'}>
                       {(av._invite || av.contact)
                         + (av.created_at ? ' · ' + String(av.created_at).slice(0, 10) : '')
@@ -1282,6 +1527,17 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                     </option>
                   ))}
                 </select>
+              )}
+              {castType === 'video' && hedra.enabled && token && (
+                <div style={{ marginTop: -12, marginBottom: 16 }}>
+                  <button className="btn sm" onClick={() => setNewHedraOpen((v) => !v)}>
+                    <Icon name="sparkle" size={12} /> {newHedraOpen ? 'Close' : 'New Hedra photo avatar'}
+                  </button>
+                  {newHedraOpen && (
+                    <NewHedraAvatar token={token} avatars={readyAvatars} selStyle={selStyle}
+                      onCreated={async (a) => { setNewHedraOpen(false); await loadClient(clientId); if (a && a.id) { setAvatarId(a.id); if (!String(engine).startsWith('hedra:') && hedra.models[0]) setEngine('hedra:' + hedra.models[0].id); } }} />
+                  )}
+                </div>
               )}
               {avatarId && (() => {
                 const selUnbuilt = readyAvatars.find((a) => a.id === avatarId);
@@ -1363,17 +1619,88 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 );
               })()}
 
-              <a href="https://app.heygen.com/avatars" target="_blank" rel="noopener noreferrer" className="btn sm"
-                style={{ marginBottom: 22, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Icon name="globe" size={13} /> HeyGen dashboard (subscription features)
-              </a>
-              <div className="label" style={{ marginBottom: 10 }}>BACKGROUND</div>
-              <div className="row" style={{ gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
-                {[['none', 'None'], ['color', 'Color'], ['image', 'Image'], ['gradient', 'Gradient'], ['video', 'Video']].map(([m, lbl]) => (
-                  <button key={m} onClick={() => { setBgMode(m); if (m === 'none') clearBg(); }} className="btn sm"
-                    style={{ background: bgMode === m ? 'var(--surface-2)' : 'transparent', borderColor: bgMode === m ? 'var(--accent)' : 'var(--border)', color: bgMode === m ? 'var(--text)' : 'var(--text-2)' }}>{lbl}</button>
-                ))}
-              </div>
+              {(() => {
+                const selAv = readyAvatars.find((a) => a.id === avatarId);
+                const hedraOnlyAvatar = !!(selAv && selAv._hedra);
+                const full = { ...selStyle, width: '100%' };
+                const aspects = ['16:9', '9:16', '1:1'].filter((r) =>
+                  !(r === '1:1' && engine === 'avatar_v') && !(lockVertical && r !== '9:16') &&
+                  !(isHedra && hOpt.aspect_ratios && !hOpt.aspect_ratios.includes(r)));
+                const resolutions = (hOpt.resolutions || ['540p', '720p', '1080p']);
+                const engineHint = isHedra
+                  ? `${hedraModel ? hedraModel.note + '. ' : ''}Animates the avatar's photo with the same voice track; you'll see the exact photo and Hedra's price before paying.`
+                  : engine === 'avatar_v' ? 'Preserves the photo\u2019s teeth/structure; minimal expression. No 1:1.'
+                  : engine === 'avatar_iv' ? 'More expressive; photo twins can show the wide-smile glitch.'
+                  : engine === 'avatar_iii' ? 'Steadiest: accessories stay put. Ignores Expressiveness and Delivery.'
+                  : 'Avatar V for photo twins (falls back to IV), Avatar IV for stock avatars.';
+                return (
+                  <>
+                    <RailField label="RENDER ENGINE" hint={engineHint}>
+                      <select value={engine} style={full} onChange={(e) => {
+                        const v = e.target.value; setEngine(v); setHedraPrep(null); setSpeakerPoint(null);
+                        if (v === 'avatar_v' && aspectRatio === '1:1') setAspectRatio('16:9');
+                      }}>
+                        <optgroup label="HeyGen">
+                          {[['auto', 'Auto'], ['avatar_v', 'Avatar V'], ['avatar_iv', 'Avatar IV'], ['avatar_iii', 'Avatar III']].map(([k, t]) => (
+                            <option key={k} value={k} disabled={hedraOnlyAvatar}>{t}{hedraOnlyAvatar ? ' (not for Hedra photo avatars)' : ''}</option>
+                          ))}
+                        </optgroup>
+                        {hedra.enabled && hedra.models.length > 0 && (
+                          <optgroup label="Hedra">
+                            {hedra.models.map((m) => <option key={m.id} value={'hedra:' + m.id}>{m.label}{m.longform ? '' : ' (shortforms only)'}</option>)}
+                          </optgroup>
+                        )}
+                      </select>
+                    </RailField>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <RailField label="ASPECT RATIO" hint={lockVertical ? 'Shortforms always 9:16.' : null}>
+                        <select value={aspects.includes(aspectRatio) ? aspectRatio : (aspects[0] || '16:9')} style={full}
+                          onChange={(e) => { setAspectRatio(e.target.value); setHedraPrep(null); }}>
+                          {aspects.map((r) => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                      </RailField>
+                      {isHedra ? (
+                        <RailField label="RESOLUTION">
+                          <select value={resolutions.includes(hedraRes) ? hedraRes : resolutions[resolutions.length - 1]} style={full}
+                            onChange={(e) => { setHedraRes(e.target.value); setHedraPrep(null); }}>
+                            {resolutions.map((r) => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                        </RailField>
+                      ) : (
+                        <RailField label="CAPTIONS">
+                          <select value={caption ? 'on' : 'off'} style={full} onChange={(e) => setCaption(e.target.value === 'on')}>
+                            <option value="off">Off</option>
+                            <option value="on">Burn-in captions</option>
+                          </select>
+                        </RailField>
+                      )}
+                    </div>
+
+                    {isHedra && (hOpt.quality || hOpt.duration_max_ms) && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        {hOpt.quality && (
+                          <RailField label="QUALITY">
+                            <select value={hedraQuality || hOpt.quality[0]} style={full} onChange={(e) => { setHedraQuality(e.target.value); setHedraPrep(null); }}>
+                              {hOpt.quality.map((q) => <option key={q} value={q}>{q[0].toUpperCase() + q.slice(1)}</option>)}
+                            </select>
+                          </RailField>
+                        )}
+                        {hOpt.duration_max_ms && (
+                          <RailField label="LENGTH (SECONDS)">
+                            <input type="number" min="1" max={Math.floor(hOpt.duration_max_ms / 1000)} value={hedraDuration} placeholder="Match the voice"
+                              onChange={(e) => { setHedraDuration(e.target.value); setHedraPrep(null); }} style={{ ...full, boxSizing: 'border-box' }} />
+                          </RailField>
+                        )}
+                      </div>
+                    )}
+
+                    {!isHedra && (
+                      <RailField label="BACKGROUND">
+                        <select value={bgMode} style={{ ...full, marginBottom: bgMode === 'none' ? 0 : 10 }}
+                          onChange={(e) => { const m = e.target.value; setBgMode(m); if (m === 'none') clearBg(); }}>
+                          {[['none', 'None'], ['color', 'Color'], ['image', 'Image'], ['gradient', 'Gradient'], ['video', 'Video']].map(([m, lbl]) => <option key={m} value={m}>{lbl}</option>)}
+                        </select>
               {bgMode === 'color' && (
                 <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 22 }}>
                   <input type="color" value={backgroundColor || '#141428'} onChange={(e) => pickBgColor(e.target.value)} style={{ width: 44, height: 32, padding: 0, border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }} />
@@ -1429,104 +1756,59 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   <div className="mono" style={{ fontSize: 10, color: 'var(--text-4)', marginTop: 6 }}>Plays as a looping background behind the avatar.</div>
                 </div>
               )}
-              <div className="label" style={{ marginBottom: 10 }}>ASPECT RATIO</div>
-              <div className="row" style={{ gap: 4, marginBottom: 22 }}>
-                {['16:9', '9:16', '1:1'].map(r => {
-                  const disabled = (r === '1:1' && engine === 'avatar_v') || (lockVertical && r !== '9:16');
-                  return (
-                  <button key={r} disabled={disabled} onClick={() => setAspectRatio(r)} className="btn sm"
-                    title={lockVertical && r !== '9:16' ? 'Shortforms always cast 9:16' : (disabled ? 'Avatar V does not support square (1:1) - use Auto or Avatar IV' : undefined)}
-                    style={{
-                      flex: 1, justifyContent: 'center',
-                      opacity: disabled ? 0.4 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
-                      background: aspectRatio === r ? 'var(--surface-2)' : 'transparent',
-                      borderColor: aspectRatio === r ? 'var(--accent)' : 'var(--border)',
-                      color: aspectRatio === r ? 'var(--text)' : 'var(--text-2)'
-                    }}>{r}</button>
-                  );
-                })}
-              </div>
-              {lockVertical && <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: -16, marginBottom: 18 }}>Shortform script: always cast 9:16.</div>}
-              <div className="label" style={{ marginBottom: 10 }}>CAPTIONS</div>
-              <button onClick={() => setCaption((v) => !v)} className="row"
-                style={{ width: '100%', justifyContent: 'space-between', padding: 8, marginBottom: 22, borderRadius: 'var(--r-sm)',
-                  background: caption ? 'var(--surface-2)' : 'transparent', border: '1px solid', borderColor: caption ? 'var(--border-strong)' : 'var(--border)',
-                  cursor: 'pointer', color: 'inherit', textAlign: 'left' }}>
-                <span style={{ fontSize: 13 }}>Burn-in captions</span>
-                {caption ? <Icon name="check" size={14} style={{ color: 'var(--accent)' }} /> : <span className="mono" style={{ color: 'var(--text-4)' }}>off</span>}
-              </button>
-              <div className="label" style={{ marginBottom: 10 }}>RENDER ENGINE</div>
-              <div className="row" style={{ gap: 4, marginBottom: 6 }}>
-                {[{ k: 'auto', t: 'Auto' }, { k: 'avatar_v', t: 'Avatar V' }, { k: 'avatar_iv', t: 'Avatar IV' }, { k: 'avatar_iii', t: 'Avatar III' }].map(o => (
-                  <button key={o.k} onClick={() => { setEngine(o.k); if (o.k === 'avatar_v' && aspectRatio === '1:1') setAspectRatio('16:9'); }} className="btn sm"
-                    style={{
-                      flex: 1, justifyContent: 'center',
-                      background: engine === o.k ? 'var(--surface-2)' : 'transparent',
-                      borderColor: engine === o.k ? 'var(--accent)' : 'var(--border)',
-                      color: engine === o.k ? 'var(--text)' : 'var(--text-2)'
-                    }}>{o.t}</button>
-                ))}
-              </div>
-              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 22, lineHeight: 1.5 }}>
-                {engine === 'avatar_v'
-                  ? 'Avatar V - preserves the photo\u2019s teeth/structure; minimal expression.'
-                  : engine === 'avatar_iv'
-                    ? 'Avatar IV - more expressive delivery, but photo twins can show the wide-smile glitch.'
-                    : engine === 'avatar_iii'
-                      ? 'Avatar III - steadiest render: jewelry and accessories stay put. Less animated; ignores Expressiveness and Delivery.'
-                      : 'Auto - Avatar V for photo twins (falls back to IV), Avatar IV for stock avatars.'}
-              </div>
+                      </RailField>
+                    )}
 
-              <div className="label" style={{ marginBottom: 10 }}>EXPRESSIVENESS</div>
-              <div className="row" style={{ gap: 4, marginBottom: 6 }}>
-                {[{ k: 'low', t: 'Low' }, { k: 'medium', t: 'Medium' }, { k: 'high', t: 'High' }].map(o => (
-                  <button key={o.k} onClick={() => setExpressiveness(o.k)} className="btn sm" disabled={engine === 'avatar_v' || engine === 'avatar_iii'}
-                    style={{
-                      flex: 1, justifyContent: 'center', opacity: (engine === 'avatar_v' || engine === 'avatar_iii') ? 0.4 : 1,
-                      background: expressiveness === o.k ? 'var(--surface-2)' : 'transparent',
-                      borderColor: expressiveness === o.k ? 'var(--accent)' : 'var(--border)',
-                      color: expressiveness === o.k ? 'var(--text)' : 'var(--text-2)'
-                    }}>{o.t}</button>
-                ))}
-              </div>
-              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 22, lineHeight: 1.5 }}>
-                {engine === 'avatar_iii'
-                  ? 'Avatar III ignores expressiveness.'
-                  : engine === 'avatar_v'
-                  ? 'Avatar V ignores expressiveness \u2014 use Delivery below, or switch to Avatar IV.'
-                  : 'Applies to Avatar IV. Higher = more animated gestures and face.'}
-              </div>
+                    {!isHedra && engine !== 'avatar_v' && engine !== 'avatar_iii' && (
+                      <RailField label="EXPRESSIVENESS" hint="Avatar IV only. Higher = more animated gestures and face.">
+                        <select value={expressiveness} style={full} onChange={(e) => setExpressiveness(e.target.value)}>
+                          <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                        </select>
+                      </RailField>
+                    )}
 
-              <div className="label" style={{ marginBottom: 10 }}>DELIVERY</div>
-              <div className="row" style={{ gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
-                {[{ k: 'calm', t: 'Calm' }, { k: 'warm', t: 'Warm' }, { k: 'energetic', t: 'Energetic' }, { k: 'laughing', t: 'Laughing' }, { k: 'serious', t: 'Serious' }].map(o => (
-                  <button key={o.k} onClick={() => { setDelivery(o.k); setCustomMotion(''); }} className="btn sm"
-                    style={{
-                      justifyContent: 'center',
-                      background: (!customMotion && delivery === o.k) ? 'var(--surface-2)' : 'transparent',
-                      borderColor: (!customMotion && delivery === o.k) ? 'var(--accent)' : 'var(--border)',
-                      color: (!customMotion && delivery === o.k) ? 'var(--text)' : 'var(--text-2)'
-                    }}>{o.t}</button>
-                ))}
-              </div>
-              <input className="textarea" value={customMotion} onChange={(e) => setCustomMotion(e.target.value)}
-                placeholder="Custom delivery, overrides preset - e.g. laughs, then leans in warmly"
-                style={{ minHeight: 0, height: 36, fontSize: 12, marginBottom: 6 }} />
-              <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 22, lineHeight: 1.5 }}>
-                {engine === 'avatar_iii' ? 'Avatar III ignores Delivery - it renders a steady, neutral read. ' : ''}Drives gestures + expression on Avatar IV and V. Laughing lands best on Avatar IV + High; on Avatar V a big laugh can bring back the wide-smile glitch.
-              </div>
+                    {engine !== 'avatar_iii' && (
+                      <RailField label="DELIVERY" hint={isHedra ? `Sent to Hedra exactly as: "${customMotion.trim() || DELIVERY_PROMPTS[delivery] || HEDRA_CALM_TEXT}"` : 'Drives gestures + expression on Avatar IV and V. On Avatar V a big laugh can bring back the wide-smile glitch.'}>
+                        <select value={customMotion.trim() ? 'custom' : delivery} style={{ ...full, marginBottom: 6 }}
+                          onChange={(e) => { if (e.target.value !== 'custom') { setDelivery(e.target.value); setCustomMotion(''); } setHedraPrep(null); }}>
+                          {[['calm', 'Calm'], ['warm', 'Warm'], ['energetic', 'Energetic'], ['laughing', 'Laughing'], ['serious', 'Serious']].map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+                          {customMotion.trim() && <option value="custom">Custom (typed below)</option>}
+                        </select>
+                        <input className="textarea" value={customMotion} onChange={(e) => { setCustomMotion(e.target.value); setHedraPrep(null); }}
+                          placeholder="Custom delivery, overrides the preset"
+                          style={{ minHeight: 0, height: 34, fontSize: 12, width: '100%', boxSizing: 'border-box' }} />
+                        <PromptLibrary token={token} engineKind={isHedra ? 'hedra' : 'heygen'} value={customMotion} selStyle={selStyle}
+                          onPick={(t) => { setCustomMotion(t); setHedraPrep(null); }} />
+                      </RailField>
+                    )}
 
-              <div className="label" style={{ marginBottom: 10 }}>LANGUAGE</div>
-              <div className="row" style={{ gap: 4, marginBottom: 22, flexWrap: 'wrap' }}>
-                {(avatar && avatar.languages && avatar.languages.length) ? avatar.languages.map(l => (
-                  <button key={l} onClick={() => setLanguage(l)} className="btn sm"
-                    style={{
-                      background: language === l ? 'var(--surface-2)' : 'transparent',
-                      borderColor: language === l ? 'var(--accent)' : 'var(--border)',
-                      color: language === l ? 'var(--text)' : 'var(--text-2)'
-                    }}>{l}</button>
-                )) : <span className="mono">No language packs trained.</span>}
-              </div>
+                    {isHedra && (
+                      <RailField label="HEDRA DIRECTION" hint={`Added after the Delivery text. This and Delivery are the only prompt Hedra gets.${hOpt.prompt_max ? ' Max ' + hOpt.prompt_max.toLocaleString() + ' characters in total.' : ''}`}>
+                        <textarea className="textarea" value={hedraDirection} onChange={(e) => { setHedraDirection(e.target.value); setHedraPrep(null); }}
+                          placeholder="e.g. slow push-in, warm smile at the end, leans toward camera on the key point"
+                          style={{ minHeight: 70, fontSize: 12, width: '100%', boxSizing: 'border-box' }} />
+                        <PromptLibrary token={token} engineKind="hedra" value={hedraDirection} selStyle={selStyle}
+                          onPick={(t) => { setHedraDirection(t); setHedraPrep(null); }} />
+                      </RailField>
+                    )}
+
+                    {avatar && avatar.languages && avatar.languages.length > 0 && (
+                      <RailField label="LANGUAGE">
+                        <select value={language} style={full} onChange={(e) => setLanguage(e.target.value)}>
+                          {avatar.languages.map((l) => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                      </RailField>
+                    )}
+
+                    {!isHedra && (
+                      <a href="https://app.heygen.com/avatars" target="_blank" rel="noopener noreferrer" className="btn sm"
+                        style={{ marginBottom: 16, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}>
+                        <Icon name="globe" size={13} /> HeyGen dashboard
+                      </a>
+                    )}
+                  </>
+                );
+              })()}
 
               <div style={{ marginTop: 'auto' }} />
 
@@ -1538,10 +1820,10 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                 border: '1px solid var(--border)'
               }}>
                 <div className="row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span className="mono">Estimated cost</span>
-                  <span style={{ fontFamily: 'var(--f-display)', fontSize: 24 }}>${estCost}</span>
+                  <span className="mono">{isHedra ? 'Hedra price' : 'Estimated cost'}</span>
+                  <span style={{ fontFamily: 'var(--f-display)', fontSize: isHedra ? 14 : 24 }}>{isHedra ? 'shown before you pay' : '$' + estCost}</span>
                 </div>
-                <div className="mono">{estSeconds}s · {wordCount} words · charged on completion</div>
+                <div className="mono">{isHedra ? `~${estSeconds}s · ${wordCount} words · exact price from Hedra in the pre-render check` : `${estSeconds}s · ${wordCount} words · charged on completion`}</div>
               </div>
 
               {castType === 'video' ? (
@@ -1886,8 +2168,8 @@ const CastCard = ({ video, avatars = [], meta, onRename, onEdit, onDelete, onDow
           {meta && meta.job_number ? <span className="mono" style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', marginRight: 6 }}>Job {meta.job_number}</span> : null}
           {video.title || 'Untitled cast'}
         </div>
-        {engineLabel(video.engine_used) ? (
-          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>{engineLabel(video.engine_used)}</div>
+        {engineLabel(video.engine_used, video.provider_model) ? (
+          <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>{engineLabel(video.engine_used, video.provider_model)}</div>
         ) : null}
         {(video.delivery_label || video.delivery_prompt) && (
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 11, whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.4 }}>
@@ -1970,7 +2252,7 @@ const VideoRow = ({ video, avatars = [] }) => {
             {video.duration && <><span className="mono">·</span><span className="mono">{video.duration}</span></>}
             <span className="mono">·</span>
             <span className="mono">{fmtWhen(video.created_at || video.createdAt)}</span>
-            {engineLabel(video.engine_used) ? <><span className="mono">·</span><span className="mono">{engineLabel(video.engine_used)}</span></> : null}
+            {engineLabel(video.engine_used, video.provider_model) ? <><span className="mono">·</span><span className="mono">{engineLabel(video.engine_used, video.provider_model)}</span></> : null}
           </div>
           {video.status === 'rendering' && (
             <div style={{ marginTop: 8, height: 3, background: 'var(--surface-2)', borderRadius: 2, overflow: 'hidden' }}>

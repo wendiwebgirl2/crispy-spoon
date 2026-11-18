@@ -3,12 +3,13 @@
 // grounded in the client's brief, verified against their PAMW, with history.
 
 import React, { useState, useEffect, useRef } from 'react'
-import { api, generateVideo, listVideos } from './api.js'
+import { api, generateVideo, listVideos, hedraModels } from './api.js'
 import { clientToken } from './dashboard-api.js'
 import { fmtStamp, Icon, ensureOperatorName, authOperatorName, ExpressionTags, buildArchiveZip, SendReviewModal, ApprovalMethodModal, approvalMethodLabel, buildMotionPrompt } from './shared.jsx'
 import { TopicsSection, LookPicker } from './brief.jsx'
 import { HighlightedText, locateQuote } from './annotate.jsx'
 import { NotesThread } from './notes-thread.jsx'
+import { PromptLibrary } from './prompt-library.jsx'
 
 const CHANNEL_FALLBACK = [
   { key: 'longform',  label: 'Longform (5–7 min)', variants: 1 },
@@ -205,7 +206,12 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [castAvatarId, setCastAvatarId] = useState(null);
   const [castLoadingAv, setCastLoadingAv] = useState(false);
   const [castAspect, setCastAspect] = useState('auto');     // 'auto' | '16:9' | '9:16' | '1:1'
-  const [castEngine, setCastEngine] = useState('auto');     // 'auto' | 'avatar_v' | 'avatar_iv' | 'avatar_iii'
+  const [castEngine, setCastEngine] = useState('auto');     // 'auto' | 'avatar_v' | 'avatar_iv' | 'avatar_iii' | 'hedra:<model>'
+  // Hedra engine: shown only when the render server has it switched on.
+  const [castHedra, setCastHedra] = useState({ enabled: false, models: [] });
+  const [castHedraRes, setCastHedraRes] = useState('1080p');
+  useEffect(() => { hedraModels().then((h) => setCastHedra({ enabled: !!h.enabled, models: h.models || [] })); }, []);
+  const castIsHedra = String(castEngine).startsWith('hedra:');
   const [castExpr, setCastExpr] = useState('low');          // 'low' | 'medium' | 'high'
   const [castDelivery, setCastDelivery] = useState('calm');
   const [castCustom, setCastCustom] = useState('');         // custom delivery/expression text — overrides the preset (same as Studio)
@@ -510,7 +516,8 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
         await generateVideo(h.body, {
           token: avatar._token, avatarId: avatar.id, title: castTitleFor(h),
           aspectRatio: aspect, engine: castEngine, expressiveness: castExpr,
-          motionPrompt: buildMotionPrompt(deliveryText),
+          resolution: castIsHedra ? castHedraRes : undefined,
+          motionPrompt: castIsHedra ? deliveryText : buildMotionPrompt(deliveryText), // Hedra: only the Delivery text
           deliveryLabel: castCustom.trim() ? 'Custom' : (castDelivery[0].toUpperCase() + castDelivery.slice(1)),
           deliveryPrompt: deliveryText || null,
         });
@@ -1262,7 +1269,8 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
             {(() => {
               const pill = (on, disabled) => ({ flex: 1, justifyContent: 'center', opacity: disabled ? 0.4 : 1,
                 background: on ? 'var(--surface-2)' : 'transparent', borderColor: on ? 'var(--accent)' : 'var(--border)', color: on ? 'var(--text)' : 'var(--text-2)' });
-              const noExpr = castEngine === 'avatar_v' || castEngine === 'avatar_iii';
+              const noExpr = castEngine === 'avatar_v' || castEngine === 'avatar_iii' || castIsHedra;
+              const hedraModel = castIsHedra ? castHedra.models.find((m) => m.id === castEngine.slice(6)) : null;
               const noDelivery = castEngine === 'avatar_iii';
               return (
                 <div className="col" style={{ gap: 10 }}>
@@ -1273,9 +1281,28 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                         <button key={o.k} className="btn sm" style={pill(castEngine === o.k)}
                           onClick={() => { setCastEngine(o.k); if (o.k === 'avatar_v' && castAspect === '1:1') setCastAspect('auto'); }}>{o.t}</button>
                       ))}
+                      {castHedra.enabled && castHedra.models.length > 0 && (
+                        <button className="btn sm" style={pill(castIsHedra)}
+                          onClick={() => { if (!castIsHedra) setCastEngine('hedra:' + castHedra.models[0].id); }}>Hedra</button>
+                      )}
                     </div>
+                    {castIsHedra && (
+                      <div className="col" style={{ gap: 4 }}>
+                        <select value={castEngine.slice(6)} onChange={(e) => setCastEngine('hedra:' + e.target.value)} style={{ ...inputStyle, width: '100%', fontSize: 12 }}>
+                          {castHedra.models.map((m) => (
+                            <option key={m.id} value={m.id}>{m.label}{m.longform ? '' : ' (shortforms only)'} - {m.note}</option>
+                          ))}
+                        </select>
+                        <div className="row" style={{ gap: 4 }}>
+                          {['540p', '720p', '1080p'].map((r) => (
+                            <button key={r} className="btn sm" style={pill(castHedraRes === r)} onClick={() => setCastHedraRes(r)}>{r}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <span className="mono" style={{ color: 'var(--text-4)', fontSize: 10, lineHeight: 1.5 }}>
-                      {castEngine === 'avatar_v' ? 'Avatar V - preserves the photo\u2019s teeth/structure; minimal expression. No 1:1.'
+                      {castIsHedra ? `Hedra - animates the avatar's photo (cropped to each script's shape) with the same voice track. Expressiveness doesn't apply; the Delivery text is the only prompt Hedra gets.${hedraModel && !hedraModel.longform ? ' This model stops at about 60 seconds - longforms will fail.' : ''}`
+                        : castEngine === 'avatar_v' ?'Avatar V - preserves the photo\u2019s teeth/structure; minimal expression. No 1:1.'
                         : castEngine === 'avatar_iv' ? 'Avatar IV - more expressive delivery, but photo twins can show the wide-smile glitch.'
                         : castEngine === 'avatar_iii' ? 'Avatar III - steadiest render: jewelry and accessories stay put. Ignores Expressiveness and Delivery.'
                         : 'Auto - Avatar V for photo twins (falls back to IV), Avatar IV for stock avatars.'}
@@ -1288,7 +1315,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                         <button key={k} className="btn sm" disabled={noExpr} style={pill(castExpr === k, noExpr)} onClick={() => setCastExpr(k)}>{k[0].toUpperCase() + k.slice(1)}</button>
                       ))}
                     </div>
-                    {noExpr && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 10 }}>{castEngine === 'avatar_v' ? 'Avatar V ignores expressiveness — use Delivery below, or switch to Avatar IV.' : 'Avatar III ignores expressiveness.'}</span>}
+                    {noExpr && <span className="mono" style={{ color: 'var(--text-4)', fontSize: 10 }}>{castIsHedra ? 'Hedra has no expressiveness setting.' : castEngine === 'avatar_v' ?'Avatar V ignores expressiveness — use Delivery below, or switch to Avatar IV.' : 'Avatar III ignores expressiveness.'}</span>}
                   </div>
                   <div className="col" style={{ gap: 4 }}>
                     <span className="mono" style={{ color: 'var(--text-4)', fontSize: 11 }}>Delivery</span>
@@ -1301,6 +1328,10 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                     <input value={castCustom} onChange={(e) => setCastCustom(e.target.value)} disabled={noDelivery}
                       placeholder="Custom expression, overrides the preset - e.g. laughs, then leans in warmly"
                       style={{ ...inputStyle, width: '100%', fontSize: 12, opacity: noDelivery ? 0.5 : 1 }} />
+                    {!noDelivery && (
+                      <PromptLibrary token={(castAvatars.find((a) => a.id === castAvatarId) || {})._token} engineKind={castIsHedra ? 'hedra' : 'heygen'}
+                        value={castCustom} onPick={(t) => setCastCustom(t)} selStyle={inputStyle} />
+                    )}
                     <span className="mono" style={{ color: 'var(--text-4)', fontSize: 10, lineHeight: 1.5 }}>
                       {noDelivery ? 'Avatar III ignores Delivery - it renders a steady, neutral read. ' : ''}Applies to every script in this batch. Drives gestures + expression on Avatar IV and V.
                     </span>

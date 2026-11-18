@@ -321,7 +321,8 @@ function ensureOperatorName() {
   return n;
 }
 
-// Delivery guidance applied to EVERY avatar cast (HeyGen's motion_prompt),
+// Delivery guidance applied to every HEYGEN avatar cast (HeyGen's motion_prompt).
+// Hedra casts never get it: they send only what's chosen in the dashboard.
 // layered in ADDITION to whatever delivery preset or custom motion prompt the
 // operator picks for that cast — never a replacement for it. No admin UI for
 // this yet; edit the constant below to change it for every future cast.
@@ -329,7 +330,9 @@ const GLOBAL_MOTION_PROMPT =
   'Role & Tone: Professional, warm, and composed presenter delivering clear, engaging messaging.\n\n' +
   'Camera & Eye Contact: Maintain steady, direct eye contact with the camera lens throughout the entire delivery. Keep head movements subtle and natural without tilting or turning away from the frame.\n\n' +
   'Facial & Mouth Control: Lip movements are natural and precisely synchronized to every spoken word, clearly shaping each syllable. The upper lip stays relaxed and low, covering the upper teeth; teeth are only minimally visible while speaking, at their natural size and proportions — never enlarged or exaggerated. No broad or toothy smiles; any smile is subtle and closed-lip.\n\n' +
-  'Gestures & Posture: Integrate deliberate, natural open-palm hand gestures at key emphasis points, keeping hands within the chest and lower-frame area. Avoid rapid, constant, or repetitive hand movements. Maintain upright, relaxed body posture with steady shoulders. No hand jewelry — no rings, bracelets, or watches should appear on the hands at any point in the delivery.';
+  'Gestures & Posture: Integrate deliberate, natural open-palm hand gestures at key emphasis points, keeping hands within the chest and lower-frame area. Avoid rapid, constant, or repetitive hand movements. Maintain upright, relaxed body posture with steady shoulders.';
+// (2026-11-17: removed the "No hand jewelry — no rings, bracelets, or watches"
+// sentence; naming rings in the prompt may be what made a ring appear.)
 
 // Every cast site builds its motion_prompt through this — combines the
 // always-on global guidance with that cast's own preset/custom prompt (which

@@ -11,7 +11,9 @@
 // ---- Backend base URL -------------------------------------------------------
 // The Railway API that serves consent / recordings / avatar-video routes.
 // MIGRATION POINT: change this single string to repoint the whole app.
-export const API_BASE = "https://cue-caster-api-production.up.railway.app";
+// VITE_API_BASE overrides it for a LOCAL dev run only (e.g. pointing at the
+// staging API); production builds never set it, so they keep this address.
+export const API_BASE = import.meta.env.VITE_API_BASE || "https://cue-caster-api-production.up.railway.app";
 
 // ---- Token resolution (dev/testing phase, pre-auth) -------------------------
 // Default demo invitation token. Open the bare dashboard and it "just works".
@@ -126,8 +128,69 @@ export function listVideos(token = currentToken()) {
 }
 
 // Kick off a new HeyGen render from a script.
-export function generateVideo(script, { token = currentToken(), title, avatarId, caption, background, aspectRatio, backgroundAssetId, engine, expressiveness, motionPrompt, deliveryLabel, deliveryPrompt, backgroundFile } = {}) {
-  return apiPostJson("/api/videos/generate", { token, script, title, avatar_id: avatarId, caption: !!caption, background: background || null, aspect_ratio: aspectRatio || null, background_asset_id: backgroundAssetId || null, engine: engine || null, expressiveness: expressiveness || null, motion_prompt: motionPrompt || null, delivery_label: deliveryLabel || null, delivery_prompt: deliveryPrompt || null, background_file: backgroundFile || null });
+// `hedra` = the Hedra-only settings (hedraBody() below); ignored by HeyGen casts.
+export function generateVideo(script, { token = currentToken(), title, avatarId, caption, background, aspectRatio, backgroundAssetId, engine, expressiveness, motionPrompt, deliveryLabel, deliveryPrompt, backgroundFile, resolution, hedra } = {}) {
+  return apiPostJson("/api/videos/generate", { token, script, title, avatar_id: avatarId, caption: !!caption, background: background || null, aspect_ratio: aspectRatio || null, background_asset_id: backgroundAssetId || null, engine: engine || null, expressiveness: expressiveness || null, motion_prompt: motionPrompt || null, delivery_label: deliveryLabel || null, delivery_prompt: deliveryPrompt || null, background_file: backgroundFile || null, resolution: resolution || null, ...(hedra || {}) });
+}
+
+// Hedra-only cast settings -> request fields. Only what the model accepts is
+// ever sent on to Hedra (the server checks each against the model's schema).
+export function hedraBody({ direction, quality, speakerPoint, durationS, focusX, focusY, preparedId } = {}) {
+  return {
+    hedra_prompt: direction || null,
+    quality: quality || null,
+    speaker_point: speakerPoint || null,
+    duration_ms: durationS ? Math.round(Number(durationS) * 1000) : null,
+    focus_x: focusX == null ? 0.5 : focusX,
+    focus_y: focusY == null ? 0.5 : focusY,
+    prepared_id: preparedId || null,
+  };
+}
+
+// Prompt library: prompts that work well, saved for reuse (one list per account).
+export function listPrompts(token) { return apiGet("/api/prompts/" + encodeURIComponent(token)); }
+export function savePrompt(token, p) { return apiPostJson("/api/prompts", { token, ...p }); }
+export function updatePrompt(token, id, p) { return apiPutJson(`/api/prompts/${encodeURIComponent(token)}/${encodeURIComponent(id)}`, p); }
+export function deletePrompt(token, id) { return apiDelete(`/api/prompts/${encodeURIComponent(token)}/${encodeURIComponent(id)}`); }
+
+// Before paying: the exact cropped photo + Hedra's own price. Spends nothing.
+export function hedraPrepare(body) { return apiPostJson("/api/hedra/prepare", body); }
+export function hedraAvatars(token) { return apiGet("/api/hedra/avatars/" + encodeURIComponent(token)); }
+export function hedraVoices(token) { return apiGet("/api/hedra/voices/" + encodeURIComponent(token)); }
+// One still from a recording at `t` seconds (an image URL for <img>).
+export function hedraFrameUrl(token, recordingId, t) {
+  return `${API_BASE}/api/hedra/recording-frame/${encodeURIComponent(token)}/${encodeURIComponent(recordingId)}?t=${encodeURIComponent(t)}`;
+}
+// Create a Hedra photo avatar. fields: { token, name, recording_id, t,
+// from_avatar_id, voice_id, clone_voice_recording_id }, photoFile: optional File.
+export async function createHedraAvatar(fields, photoFile) {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) if (v != null && v !== "") fd.append(k, v);
+  if (photoFile) fd.append("photo", photoFile);
+  return parse(await fetch(API_BASE + "/api/hedra/avatars", { method: "POST", body: fd }));
+}
+
+// Hedra engine: { enabled, models: [{ id, label, longform, note }] }. A server
+// without the Hedra code (404) or with it switched off reads as disabled, and
+// the picker then simply doesn't show Hedra.
+export async function hedraModels() {
+  try { return await apiGet("/api/hedra/models"); } catch { return { enabled: false, models: [] }; }
+}
+
+// Shared label for a cast engine: stored values ('avatar_v', 'hedra') and
+// picker values ('hedra:<model>').
+export function engineName(e, models) {
+  if (!e) return "";
+  if (e === "avatar_v") return "Avatar V";
+  if (e === "avatar_iv") return "Avatar IV";
+  if (e === "avatar_iii") return "Avatar III";
+  if (e === "hedra") return "Hedra";
+  if (String(e).startsWith("hedra:")) {
+    const id = String(e).slice(6);
+    const m = (models || []).find((x) => x.id === id);
+    return "Hedra · " + (m ? m.label : id);
+  }
+  return "";
 }
 
 // ---- Domain calls: consent + recordings (Onboarding) ------------------------
