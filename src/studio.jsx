@@ -12,6 +12,7 @@ import { LookPicker, AssetsSection, VoiceSettings } from './brief.jsx'
 import { NewLookPanel } from './talent.jsx'
 import { PromptLibrary } from './prompt-library.jsx'
 import { NewHedraAvatar, HedraLooks } from './hedra-avatars.jsx'
+import { CastPresets } from './cast-presets.jsx'
 
 const SCENES = [
   { id: 'plain',     label: 'Plain', desc: 'No background.' },
@@ -696,6 +697,59 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   }
 
   const readyAvatars = clientAvatars;   // client-scoped; non-ready shown disabled
+  // —— saved cast settings (presets) ——
+  // Everything in the right column that's the same from cast to cast. Not the
+  // avatar, script or title. A background image is a client's asset, so it is
+  // only applied when this client has it.
+  const castSettings = () => ({
+    engine, aspectRatio, hedraRes, caption, language, expressiveness, delivery, customMotion,
+    hedraDirection, hedraQuality, hedraDuration, focusX, focusY,
+    bgMode, backgroundColor, backgroundAssetId, gradFrom, gradTo, gradDir,
+  });
+  const describeCastSettings = (st) => {
+    const eng = engineName(st.engine, hedra.models) || (st.engine === 'auto' ? 'HeyGen Auto' : st.engine || '?');
+    const isH = String(st.engine || '').startsWith('hedra:');
+    return [eng, st.aspectRatio, isH ? st.hedraRes : (st.caption ? 'captions on' : null),
+      st.customMotion ? 'custom delivery' : (DELIVERY_LABELS[st.delivery] || st.delivery),
+      isH && st.hedraDirection ? 'direction: "' + String(st.hedraDirection).slice(0, 40) + (String(st.hedraDirection).length > 40 ? '…' : '') + '"' : null,
+      st.bgMode && st.bgMode !== 'none' ? 'background: ' + st.bgMode : null,
+    ].filter(Boolean).join(' · ');
+  };
+  const applyCastSettings = (preset) => {
+    const st = preset.settings || {};
+    const has = (k) => st[k] !== undefined;
+    const selAv = avatars.find((a) => a.id === avatarId);
+    if (has('engine')) {
+      const hedraOk = String(st.engine).startsWith('hedra:') ? (hedra.enabled && hedra.models.some((m) => 'hedra:' + m.id === st.engine)) : !(selAv && selAv._hedra);
+      if (hedraOk) setEngine(st.engine);
+    }
+    if (has('aspectRatio') && !lockVertical) setAspectRatio(st.aspectRatio);
+    if (has('hedraRes')) setHedraRes(st.hedraRes);
+    if (has('caption')) setCaption(!!st.caption);
+    if (has('language')) setLanguage(st.language);
+    if (has('expressiveness')) setExpressiveness(st.expressiveness);
+    if (has('delivery')) setDelivery(st.delivery);
+    if (has('customMotion')) setCustomMotion(st.customMotion || '');
+    if (has('hedraDirection')) setHedraDirection(st.hedraDirection || '');
+    if (has('hedraQuality')) setHedraQuality(st.hedraQuality || '');
+    if (has('hedraDuration')) setHedraDuration(st.hedraDuration || '');
+    if (has('focusX')) setFocusX(Number(st.focusX));
+    if (has('focusY')) setFocusY(Number(st.focusY));
+    if (has('gradFrom')) setGradFrom(st.gradFrom);
+    if (has('gradTo')) setGradTo(st.gradTo);
+    if (has('gradDir')) setGradDir(st.gradDir);
+    if (has('bgMode')) {
+      const assetHere = st.backgroundAssetId && bgAssets.some((a) => String(a.id) === String(st.backgroundAssetId));
+      if (st.backgroundAssetId && !assetHere) { setBgMode('none'); clearBg(); }
+      else {
+        setBgMode(st.bgMode);
+        setBackgroundColor(st.backgroundColor || null);
+        setBackgroundAssetId(assetHere ? st.backgroundAssetId : null);
+      }
+    }
+    setHedraPrep(null); setSpeakerPoint(null);
+  };
+
   // Avatars whose photo can seed a Hedra photo avatar or a new Hedra look.
   const hedraLookSources = readyAvatars.filter((a) => !a._talent && !a._unbuilt && (a.heygen_avatar_id || a._hedra))
     .map((a) => ({ id: a.id, label: (a._invite || a.name || a.contact) + (a._hedra ? ' (Hedra)' : '') }));
@@ -1581,6 +1635,11 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                   : 'Avatar V for photo twins (falls back to IV), Avatar IV for stock avatars.';
                 return (
                   <>
+                    <RailField label="SAVED CAST SETTINGS">
+                      <CastPresets token={token} selStyle={selStyle}
+                        avatar={selAv ? { id: selAv.id, label: selAv._invite || selAv.name || selAv.contact || 'this avatar' } : null}
+                        getSettings={castSettings} describe={describeCastSettings} onApply={applyCastSettings} />
+                    </RailField>
                     <RailField label="RENDER ENGINE" hint={engineHint}>
                       <select value={engine} style={full} onChange={(e) => {
                         const v = e.target.value; setEngine(v); setHedraPrep(null); setSpeakerPoint(null);

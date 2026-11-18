@@ -185,6 +185,14 @@ export async function deleteHedraLook(token, id, lookId) {
   return parse(await fetch(API_BASE + hedraLookPath(token, id) + "/" + encodeURIComponent(lookId), { method: "DELETE" }));
 }
 
+// Saved cast settings (Studio presets), shared across the account.
+export function listCastPresets(token) { return apiGet("/api/cast-presets/" + encodeURIComponent(token)); }
+export function saveCastPreset(token, { name, avatar_id, settings }) { return apiPostJson("/api/cast-presets", { token, name, avatar_id, settings }); }
+export function updateCastPreset(token, id, { name, avatar_id, settings }) { return apiPutJson("/api/cast-presets/" + encodeURIComponent(token) + "/" + encodeURIComponent(id), { name, avatar_id, settings }); }
+export async function deleteCastPreset(token, id) {
+  return parse(await fetch(API_BASE + "/api/cast-presets/" + encodeURIComponent(token) + "/" + encodeURIComponent(id), { method: "DELETE" }));
+}
+
 // Hedra engine: { enabled, models: [{ id, label, longform, note }] }. A server
 // without the Hedra code (404) or with it switched off reads as disabled, and
 // the picker then simply doesn't show Hedra.
