@@ -109,6 +109,8 @@ const AiCheckView = ({ activeClientId, onSelectClient }) => {
   const [pick, setPick] = useState({}); // engine id -> selected
   const [cfg, setCfg] = useState(null);
   const [cfgOpen, setCfgOpen] = useState(false);
+  const [engOpen, setEngOpen] = useState(false);   // "Choose engines" panel
+  const [engOff, setEngOff] = useState(null);      // draft list of engines turned off
   const [newQ, setNewQ] = useState('');
   const [sugg, setSugg] = useState([]);
   const [busy, setBusy] = useState('');
@@ -124,7 +126,7 @@ const AiCheckView = ({ activeClientId, onSelectClient }) => {
   const apply = (o) => {
     setOv(o);
     setCfg((c) => (c && c._cid === cid ? c : { ...o.config, _cid: cid }));
-    setPick((p) => (Object.keys(p).length ? p : Object.fromEntries(o.engines.map((e) => [e.id, e.configured]))));
+    setPick((p) => (Object.keys(p).length ? p : Object.fromEntries(o.engines.map((e) => [e.id, e.configured && e.enabled !== false]))));
     setView((v) => (v && o.checks.some((c) => c.id === v.check.id) && v.check.status !== 'running' ? v : o.latest));
     if (!o.config.saved && !o.prompts.length) setCfgOpen(true);
   };
@@ -179,7 +181,13 @@ const AiCheckView = ({ activeClientId, onSelectClient }) => {
   const clientName = (clientList.find((c) => c.id === cid) || {}).name || ov.config.clientName || '';
   const labelOf = Object.fromEntries(ov.engines.map((e) => [e.id, e.label]));
   const activeQs = ov.prompts.filter((p) => p.active).length;
-  const chosen = ov.engines.filter((e) => e.configured && pick[e.id]).map((e) => e.id);
+  const usable = (e) => e.configured && e.enabled !== false;
+  const chosen = ov.engines.filter((e) => usable(e) && pick[e.id]).map((e) => e.id);
+  const saveEngines = () => act('eng', async () => {
+    const o2 = await api.setAiEngines(cid, engOff || []);
+    setPick(Object.fromEntries(o2.engines.map((e) => [e.id, e.configured && e.enabled !== false])));
+    apply(o2); setEngOpen(false);
+  }, 'Saved. Engines turned off are skipped in every check until you turn them back on.');
   const calls = Math.min(activeQs, ov.maxPrompts) * chosen.length;
   const s = view && view.check.summary;
   const o = s && s.overall;
@@ -231,12 +239,15 @@ const AiCheckView = ({ activeClientId, onSelectClient }) => {
         <div className="row" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           {clientPicker}
           {ov.engines.map((e) => (
-            <label key={e.id} className="row mono" title={e.configured ? `model ${e.model}${e.via ? ` via ${e.via}` : ''}` : `Add ${e.keyName} to the server env file to turn this on`}
-              style={{ gap: 6, alignItems: 'center', fontSize: 12, opacity: e.configured ? 1 : 0.45, cursor: e.configured ? 'pointer' : 'not-allowed', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '6px 9px' }}>
-              <input type="checkbox" disabled={!e.configured || isRunning} checked={!!(e.configured && pick[e.id])} onChange={(ev) => setPick((p) => ({ ...p, [e.id]: ev.target.checked }))} />
-              <Dot engine={e.id} /> {e.label}{e.via && <span style={{ color: 'var(--text-4)' }}> · via {e.via}</span>}{!e.configured && ' (not set up)'}
+            <label key={e.id} className="row mono" title={!e.configured ? `Add ${e.keyName} to the server env file to turn this on` : !usable(e) ? 'Turned off for all checks - use "Choose engines" to turn it back on' : `model ${e.model}${e.via ? ` via ${e.via}` : ''}`}
+              style={{ gap: 6, alignItems: 'center', fontSize: 12, opacity: usable(e) ? 1 : 0.45, cursor: usable(e) ? 'pointer' : 'not-allowed', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '6px 9px' }}>
+              <input type="checkbox" disabled={!usable(e) || isRunning} checked={!!(usable(e) && pick[e.id])} onChange={(ev) => setPick((p) => ({ ...p, [e.id]: ev.target.checked }))} />
+              <Dot engine={e.id} /> {e.label}{e.via && <span style={{ color: 'var(--text-4)' }}> · via {e.via}</span>}{!e.configured ? ' (not set up)' : !usable(e) ? ' (turned off)' : ''}
             </label>
           ))}
+          <button className="btn sm" disabled={isRunning} onClick={() => { setEngOff(ov.engines.filter((e) => e.enabled === false).map((e) => e.id)); setEngOpen((v) => !v); }}>
+            <Icon name="sliders" size={12} /> Choose engines
+          </button>
         </div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
           <button className="btn primary sm" disabled={!!busy || isRunning || !calls} onClick={run} style={{ opacity: busy || isRunning || !calls ? 0.6 : 1 }}>
@@ -254,6 +265,26 @@ const AiCheckView = ({ activeClientId, onSelectClient }) => {
               <div style={{ height: '100%', width: `${view.check.total ? Math.round((view.check.done / view.check.total) * 100) : 0}%`, background: 'var(--accent-2, #fbb033)', transition: 'width .4s' }} />
             </div>
             <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 4 }}>{view.check.done} of {view.check.total} answers in — you can leave this page, it keeps running.</div>
+          </div>
+        )}
+        {engOpen && engOff && (
+          <div className="col" style={{ gap: 8, marginTop: 14, maxWidth: 560, padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface-2)' }}>
+            <div className="label">ENGINES USED FOR AI CHECKS (ALL CLIENTS)</div>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>An engine turned off is never asked, so it costs nothing, until you turn it back on here.</div>
+            {ov.engines.map((e) => {
+              const on = !engOff.includes(e.id);
+              return (
+                <label key={e.id} className="row mono" style={{ gap: 8, alignItems: 'center', fontSize: 12, opacity: e.configured ? 1 : 0.5 }}>
+                  <input type="checkbox" checked={on} onChange={(ev) => setEngOff((o) => (ev.target.checked ? o.filter((x) => x !== e.id) : [...o, e.id]))} />
+                  <Dot engine={e.id} /> <span style={{ minWidth: 80 }}>{e.label}</span>
+                  <span style={{ color: 'var(--text-4)' }}>{e.configured ? `${e.model}${e.via ? ` via ${e.via}` : ''}` : `not set up (${e.keyName})`}</span>
+                </label>
+              );
+            })}
+            <div className="row" style={{ gap: 8 }}>
+              <button className="btn primary sm" disabled={busy === 'eng'} onClick={saveEngines}>{busy === 'eng' ? 'Saving…' : 'Save'}</button>
+              <button className="btn sm" onClick={() => setEngOpen(false)}>Cancel</button>
+            </div>
           </div>
         )}
         {cfgOpen && cfg && (
