@@ -12,6 +12,7 @@ const CHAN_COLORS = {
   longform: '#fbb033', shortform: '#d6608f', blog: '#4a90d6', episode: '#6bbf8a',
   podcast: '#fbb033', transistor: '#fbb033', instagram: '#d6608f', linkedin: '#4a90d6', x: '#6bbf8a',
   youtube: '#c94a4a', facebook: '#4a6fd6', cast: '#6bbf8a',
+  threads: '#8a8a8a', google_business: '#4ab86f',
   default: '#b09a8d',
 };
 const SOCIAL_CHANNELS = [
@@ -20,6 +21,19 @@ const SOCIAL_CHANNELS = [
   { key: 'instagram', label: 'Instagram' },
   { key: 'transistor', label: 'Transistor (podcast)' },
 ];
+// A static post (images + caption) goes to photo platforms instead (Upload-Post
+// photo posting; keys are Upload-Post's platform names).
+const STATIC_CHANNELS = [
+  { key: 'facebook', label: 'Facebook' },
+  { key: 'instagram', label: 'Instagram' },
+  { key: 'linkedin', label: 'LinkedIn' },
+  { key: 'x', label: 'X' },
+  { key: 'threads', label: 'Threads' },
+  { key: 'google_business', label: 'Google Business' },
+];
+const isStaticEp = (e) => !!e && (e.output_format === 'static' || e.episode_format === 'static');
+const chansFor = (e) => (isStaticEp(e) ? STATIC_CHANNELS : SOCIAL_CHANNELS);
+const ALL_POST_CHANNELS = [...SOCIAL_CHANNELS, ...STATIC_CHANNELS.filter((c) => !SOCIAL_CHANNELS.some((x) => x.key === c.key))];
 const EXTRA_COLORS = ['#c96f4a', '#8a7ad6', '#4ab8a8', '#d6c04a'];
 const colorFallback = (k) => EXTRA_COLORS[String(k).split('').reduce((a, c) => a + c.charCodeAt(0), 0) % EXTRA_COLORS.length];
 const colorOf = (k) => CHAN_COLORS[k] || colorFallback(k);
@@ -230,6 +244,7 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
   const [detailTime, setDetailTime] = useState('09:00');
 
   const [dist, setDist] = useState(null);           // episode being distributed
+  const [connected, setConnected] = useState(null); // { platforms } on the client's Upload-Post profile (static posts)
   const [distChannels, setDistChannels] = useState(new Set());
   const [distFeed, setDistFeed] = useState(false);
   const [distDate, setDistDate] = useState('');
@@ -267,9 +282,10 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
       // scheduled or posted it moves to "Scheduled / posted" below (still editable
       // there), and once it has an air date it moves to "Marked aired".
       const linked = new Set(itArr.filter((i) => i.episode_id).map((i) => i.episode_id));
-      const planned = new Set(itArr.filter((i) => i.episode_id && SOCIAL_CHANNELS.some((s) => s.key === i.channel) && (i.status === 'scheduled' || i.status === 'delivered')).map((i) => i.episode_id));
-      const finished = (e) => e.hasVideo || e.hasOutput;
-      const cleared = (e) => e.approval_status === 'approved' || e.approval_status === 'approved_with_changes' || linked.has(e.id);
+      const planned = new Set(itArr.filter((i) => i.episode_id && ALL_POST_CHANNELS.some((s) => s.key === i.channel) && (i.status === 'scheduled' || i.status === 'delivered')).map((i) => i.episode_id));
+      // A static post is ready to schedule once it has at least one image.
+      const finished = (e) => (isStaticEp(e) ? e.staticCount > 0 : (e.hasVideo || e.hasOutput));
+      const cleared = (e) => isStaticEp(e) || e.approval_status === 'approved' || e.approval_status === 'approved_with_changes' || linked.has(e.id);
       setEpisodes(epsArr.filter((e) => finished(e) && cleared(e) && !e.air_date && !planned.has(e.id)));
       setPlannedEps(epsArr.filter((e) => finished(e) && cleared(e) && !e.air_date && planned.has(e.id)));
       setAiredEps(epsArr.filter((e) => finished(e) && cleared(e) && e.air_date));
@@ -315,7 +331,8 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
   const openDistribute = (epi) => {
     const mine = items.filter((i) => i.episode_id === epi.id);
     setDist(epi); setDistRerun(false);
-    setDistChannels(new Set(mine.map((i) => i.channel).filter((c) => SOCIAL_CHANNELS.some((s) => s.key === c))));
+    if (isStaticEp(epi)) { setConnected(null); api.connectedPlatforms(cid).then(setConnected).catch(() => setConnected({ platforms: null })); }
+    setDistChannels(new Set(mine.map((i) => i.channel).filter((c) => chansFor(epi).some((s) => s.key === c))));
     setDistFeed(!!epi.feedInclude);
     const w = splitWhen(mine[0] && mine[0].scheduled_for);
     const cw = cadenceWhen(epi.title);
@@ -327,6 +344,7 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
   // Transistor gets a fresh feed episode — it can't re-air the original one.
   const openRerun = (epi) => {
     setDist(epi); setDistRerun(true);
+    if (isStaticEp(epi)) { setConnected(null); api.connectedPlatforms(cid).then(setConnected).catch(() => setConnected({ platforms: null })); }
     setDistChannels(new Set());
     setDistTitle(`Encore: ${String(epi.title || '').replace(/^\s*encore:\s*/i, '')}`);
     const cw = cadenceWhen(epi.title);
@@ -406,9 +424,11 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
   // Podcast channels publish the audio; social/video channels need a stitched video.
   const isEpisodeItem = !!(detail && detail.episode_id);
   const isPodcastChannel = !!(detail && (detail.channel === 'transistor' || detail.channel === 'podcast'));
-  const needsVideo = isEpisodeItem && !isPodcastChannel;
+  const detailStatic = isStaticEp(detail);
+  const needsVideo = isEpisodeItem && !isPodcastChannel && !detailStatic;
   const needsAudio = isEpisodeItem && isPodcastChannel;
-  const mediaMissing = (needsVideo && detail?.episode_has_video === false) || (needsAudio && detail?.episode_has_audio === false);
+  const mediaMissing = (needsVideo && detail?.episode_has_video === false) || (needsAudio && detail?.episode_has_audio === false)
+    || (detailStatic && !(detail.episode_static_count > 0));
   const detailMeta = (() => { if (!detail || !detail.publish_meta) return null; try { return JSON.parse(detail.publish_meta); } catch { return null; } })();
 
   return (
@@ -470,13 +490,19 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
             {episodes.map((epi) => {
-              const scheduledCount = items.filter((i) => i.episode_id === epi.id && SOCIAL_CHANNELS.some((s) => s.key === i.channel)).length;
+              const scheduledCount = items.filter((i) => i.episode_id === epi.id && chansFor(epi).some((s) => s.key === i.channel)).length;
               return (
                 <div key={epi.id} className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{epi.title}</div>
                   <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    {epi.approval_status !== 'approved' && epi.approval_status !== 'approved_with_changes' && <span className="mono" style={{ fontSize: 11, color: 'var(--warn)' }}>awaiting client approval</span>}
-                    <span className="mono" style={{ fontSize: 11, color: epi.feedInclude ? 'var(--ok)' : 'var(--text-4)' }}>{epi.feedInclude ? '● podcast feed' : '○ feed off'}</span>
+                    {isStaticEp(epi) ? (
+                      <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>static post · {epi.staticCount} image{epi.staticCount === 1 ? '' : 's'}</span>
+                    ) : (
+                      <>
+                        {epi.approval_status !== 'approved' && epi.approval_status !== 'approved_with_changes' && <span className="mono" style={{ fontSize: 11, color: 'var(--warn)' }}>awaiting client approval</span>}
+                        <span className="mono" style={{ fontSize: 11, color: epi.feedInclude ? 'var(--ok)' : 'var(--text-4)' }}>{epi.feedInclude ? '● podcast feed' : '○ feed off'}</span>
+                      </>
+                    )}
                     {scheduledCount > 0 && <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{scheduledCount} scheduled</span>}
                   </div>
                   <div className="row" style={{ gap: 6, marginTop: 'auto' }}>
@@ -497,7 +523,7 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
             <div className="col" style={{ gap: 6, marginTop: 10 }}>
               <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Episodes with posts on the calendar. Use “Schedule” to add or move channels.</div>
               {plannedEps.map((epi) => {
-                const mine = items.filter((i) => i.episode_id === epi.id && SOCIAL_CHANNELS.some((s) => s.key === i.channel));
+                const mine = items.filter((i) => i.episode_id === epi.id && chansFor(epi).some((s) => s.key === i.channel));
                 const posted = mine.filter((i) => i.status === 'delivered').length;
                 const waiting = mine.filter((i) => i.status === 'scheduled').sort((a, b) => String(a.scheduled_for).localeCompare(String(b.scheduled_for)));
                 return (
@@ -547,16 +573,23 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
                 <input value={distTitle} onChange={(e) => setDistTitle(e.target.value)} style={inputStyle} /></label>
             )}
             <div className="col" style={{ gap: 6 }}>
-              <span className="mono" style={{ color: 'var(--text-4)' }}>Social channels</span>
-              {SOCIAL_CHANNELS.map((c) => (
-                <label key={c.key} className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13 }}>
-                  <input type="checkbox" checked={distChannels.has(c.key)} onChange={() => toggleDistChannel(c.key)} />
-                  <span style={{ width: 10, height: 10, borderRadius: 2, background: colorOf(c.key), flex: 'none' }} />
-                  <span>{c.label}</span>
-                </label>
-              ))}
+              <span className="mono" style={{ color: 'var(--text-4)' }}>{isStaticEp(dist) ? `Social channels · static post (${dist.staticCount || 0} image${dist.staticCount === 1 ? '' : 's'})` : 'Social channels'}</span>
+              {chansFor(dist).map((c) => {
+                // Static posts: channels not connected on the client's Upload-Post profile can't be picked.
+                const off = isStaticEp(dist) && connected && connected.platforms && !connected.platforms.includes(c.key) && !(c.key === 'x' && connected.platforms.includes('twitter'));
+                return (
+                  <label key={c.key} className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13, opacity: off ? 0.45 : 1 }} title={off ? 'Not connected on this client\'s Upload-Post profile yet' : ''}>
+                    <input type="checkbox" disabled={off} checked={distChannels.has(c.key) && !off} onChange={() => toggleDistChannel(c.key)} />
+                    <span style={{ width: 10, height: 10, borderRadius: 2, background: colorOf(c.key), flex: 'none' }} />
+                    <span>{c.label}{off ? ' (not connected)' : ''}</span>
+                  </label>
+                );
+              })}
+              {isStaticEp(dist) && connected && connected.platforms == null && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Couldn't check which channels are connected right now; unconnected ones are skipped by Upload-Post.</span>}
+              {isStaticEp(dist) && connected && !connected.profile && <span className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>This client has no Upload-Post profile yet (Brief → Social Distribution), so nothing can be posted.</span>}
+              {isStaticEp(dist) && !connected && <span className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>Checking connected channels…</span>}
             </div>
-            {!distRerun && (
+            {!distRerun && !isStaticEp(dist) && (
             <label className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
               <input type="checkbox" checked={distFeed} onChange={(e) => setDistFeed(e.target.checked)} />
               <span>Also include in the podcast feed</span>

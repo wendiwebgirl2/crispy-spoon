@@ -554,6 +554,8 @@ export const api = {
   youtubeStatus: (id) => vcReq(`/clients/${id}/distribution/youtube-status`),
   metaStatus: (id) => vcReq(`/clients/${id}/distribution/meta-status`),
   channelStatus: (id, channel) => vcReq(`/clients/${id}/distribution/channel-status/${channel}`),
+  // Every platform connected on the client's Upload-Post profile: { profile, platforms: [...] | null }.
+  connectedPlatforms: (id) => vcReq(`/clients/${id}/distribution/connected`),
   putDistribution: (id, payload) => vcReq(`/clients/${id}/distribution`, { method: "PUT", body: JSON.stringify(payload) }),
   createInvite: (id, payload) => vcReq(`/clients/${id}/invites`, { method: "POST", body: JSON.stringify(payload) }),
   deleteInvite: (clientId, inviteId) => vcReq(`/clients/${clientId}/invites/${inviteId}`, { method: "DELETE" }),

@@ -4,6 +4,7 @@ import { ep, video, rec, clientToken, sched } from './dashboard-api.js'
 import { api, episodeWaveformStart, episodeWaveformStatus, episodeWaveformFileUrl } from './api.js'
 import { LookPicker } from './brief.jsx'
 import { NotesThread } from './notes-thread.jsx'
+import { StaticPostEditor } from './static-post.jsx'
 
 const inputStyle = {
   background: 'var(--surface-2)', color: 'var(--text)',
@@ -42,6 +43,7 @@ const typePrefix = (channel, variant) => {
   if (channel === 'longform') return 'LF';
   if (channel === 'tvradio') return 'TV' + (variant || 1);
   if (channel === 'blog') return 'Blog';
+  if (channel === 'static') return 'Post';
   return (channel || '—').slice(0, 2).toUpperCase();
 };
 
@@ -414,7 +416,7 @@ function YourAvatars({ cid }) {
   );
 }
 
-function EpisodeEditor({ cid, epId, onChange, assetsBump }) {
+function EpisodeEditor({ cid, epId, onChange, assetsBump, scripts }) {
   const [full, setFull] = useState(null);
   const [outs, setOuts] = useState([]);
   const [recordings, setRecordings] = useState([]);
@@ -683,6 +685,14 @@ function EpisodeEditor({ cid, epId, onChange, assetsBump }) {
   };
 
   if (!full) return <div className="mono" style={{ color: 'var(--text-3)' }}>Loading episode…</div>;
+  if (full.output_format === 'static') {
+    const reloadAssets = () => api.listAssets(cid).then((r) => setAssets((Array.isArray(r) ? r : (r && r.assets ? r.assets : [])).filter((a) => a.hasFile !== false && a.kind !== 'thumb'))).catch(() => {});
+    return (
+      <StaticPostEditor key={full.id} cid={cid} epId={epId} full={full} assets={assets} scripts={scripts}
+        onAssetsChanged={reloadAssets} onSaved={() => { refresh(); if (onChange) onChange(); }}
+        onFormat={async (fmt) => { await setFormat(fmt); if (onChange) onChange(); }} />
+    );
+  }
   const audioOpts = outs.map((o) => ({ id: o.id, label: (o.text || '').slice(0, 40) || ('output ' + o.id) }));
 
   return (
@@ -695,8 +705,8 @@ function EpisodeEditor({ cid, epId, onChange, assetsBump }) {
       <div className="card card-pad" style={{ marginBottom: 10 }}>
         <div className="label" style={{ marginBottom: 8 }}>FINAL FORMAT · choose before stitching</div>
         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-          {[['audiogram', 'Audiogram'], ['video', 'Video avatar'], ['audio', 'Audio only']].map(([k, lab]) => (
-            <button key={k} className="btn sm" onClick={() => setFormat(k)}
+          {[['audiogram', 'Audiogram'], ['video', 'Video avatar'], ['audio', 'Audio only'], ['static', 'Static post']].map(([k, lab]) => (
+            <button key={k} className="btn sm" onClick={() => { if (k === 'static' && !window.confirm('Make this a static post (images + caption, no video)? Its recordings and settings are kept.')) return; setFormat(k); if (k === 'static' && onChange) onChange(); }}
               style={{
                 background: (full.output_format || 'video') === k ? 'var(--surface-2)' : 'transparent',
                 borderColor: (full.output_format || 'video') === k ? 'var(--accent)' : 'var(--border)',
@@ -1410,7 +1420,7 @@ function PieceRow({ cid, e, active, onOpen, onRemove, onArchive }) {
   return (
     <div className="card" style={{ padding: 8, border: '1px solid ' + (active ? 'var(--accent)' : 'var(--border)'), background: active ? 'var(--surface-2)' : 'var(--surface)' }}>
       <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-        <span className="mono" style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', flex: 'none' }}>{kind.label || 'Piece'}</span>
+        <span className="mono" style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', flex: 'none' }}>{e.output_format === 'static' ? 'Static post' : (kind.label || 'Piece')}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{baseSubject(e)}</div>
           <div className="mono" style={{ color: 'var(--text-4)', fontSize: 10.5 }}>
@@ -1443,6 +1453,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [newTitle, setNewTitle] = useState('');
+  const [newKind, setNewKind] = useState('episode');   // 'episode' | 'static'
   const [newTopic, setNewTopic] = useState('');
   const [newJob, setNewJob] = useState('');
   const [newScriptId, setNewScriptId] = useState(null);
@@ -1550,7 +1561,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
   const create = async () => {
     if (!newTitle.trim()) { setErr('Title needed'); return; }
     setCreating(true); setErr('');
-    try { const e = await ep.create(cid, newTitle.trim(), newTopic.trim() || undefined, newJob.trim() || undefined, newScriptId); setNewTitle(''); setNewTopic(''); setNewJob(''); setNewScriptId(null); await load(); setOpenId(e.id); }
+    try { const e = await ep.create(cid, newTitle.trim(), newTopic.trim() || undefined, newJob.trim() || undefined, newScriptId, newKind === 'static' ? 'static' : undefined); setNewTitle(''); setNewTopic(''); setNewJob(''); setNewScriptId(null); setNewKind('episode'); await load(); setOpenId(e.id); }
     catch (e) { setErr(e.message || 'Could not create episode.'); } finally { setCreating(false); }
   };
   const remove = async (id) => {
@@ -1688,8 +1699,12 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
       <div style={{ overflow: 'auto', padding: 'var(--pad)' }}>
       {onBackToStudio && <button className="btn sm" style={{ marginBottom: 10 }} onClick={onBackToStudio}><Icon name="arrow-l" size={12} /> Studio</button>}
       <div className="card card-pad" style={{ marginBottom: 14 }}>
-        <div className="label" style={{ marginBottom: 10 }}>NEW EPISODE</div>
-        <div className="row" style={{ gap: 8 }}>
+        <div className="label" style={{ marginBottom: 10 }}>NEW EPISODE OR STATIC POST</div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <select value={newKind} onChange={(e) => setNewKind(e.target.value)} style={{ ...inputStyle, maxWidth: 150 }} title="A static post is images + caption for socials (no video)">
+            <option value="episode">Episode</option>
+            <option value="static">Static post</option>
+          </select>
           {pickableScripts.length > 0 && (
             <select value="" onChange={(e) => {
               const s = pickableScripts.find((x) => String(x.id) === e.target.value);
@@ -1698,6 +1713,7 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
               setNewTopic((s.topic && s.topic.trim()) || '');
               setNewJob(s.job_number || '');
               setNewScriptId(s.id);
+              if (s.channel === 'static') setNewKind('static');
             }} style={{ ...inputStyle, maxWidth: 240 }}>
               <option value="">Approved scripts…</option>
               {pickableScripts.map((s) => (
@@ -1705,16 +1721,16 @@ function EpisodesView({ activeClientId, episodeRequest, onEpisodeRequestConsumed
               ))}
             </select>
           )}
-          <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Episode title" style={{ ...inputStyle, flex: 1 }} />
+          <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder={newKind === 'static' ? 'Post title (internal)' : 'Episode title'} style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
           <input value={newJob} onChange={(e) => setNewJob(e.target.value)} placeholder="Job #" style={{ ...inputStyle, maxWidth: 90 }} />
-          <button className="btn primary" onClick={create} disabled={creating}><Icon name="plus" size={13} /> {creating ? 'Creating…' : 'Create episode'}</button>
+          <button className="btn primary" onClick={create} disabled={creating}><Icon name="plus" size={13} /> {creating ? 'Creating…' : newKind === 'static' ? 'Create static post' : 'Create episode'}</button>
         </div>
       </div>
 
       {err && <div className="mono" style={{ color: 'var(--accent)', marginBottom: 10 }}>{err}</div>}
 
       {openId != null ? (
-        <EpisodeEditor cid={cid} epId={openId} onChange={load} assetsBump={assetsBump} />
+        <EpisodeEditor cid={cid} epId={openId} onChange={load} assetsBump={assetsBump} scripts={approvedScripts} />
       ) : (
         <div className="card card-pad" style={{ borderStyle: 'dashed' }}>
           <div className="mono" style={{ color: 'var(--text-3)' }}>Select an episode from the list on the right to open it here — or create a new one above.</div>
