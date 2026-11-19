@@ -92,10 +92,12 @@ export async function previewVoiceBlob(token, avatarId, body) {
 // Pre-render check: the whole cast script in the exact voice the render will
 // use (ElevenLabs takes are reused by the render, so this costs nothing extra).
 // Returns { url, source } where source is 'elevenlabs' | 'heygen'.
-export async function previewCastAudio(token, script, avatarId) {
+// extra (Hedra casts): { engine, clean_pauses } so the preview is exactly the
+// track Hedra will get.
+export async function previewCastAudio(token, script, avatarId, extra = {}) {
   const resp = await fetch(API_BASE + "/api/videos/preview-audio", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, script, avatar_id: avatarId || null }),
+    body: JSON.stringify({ token, script, avatar_id: avatarId || null, ...extra }),
   });
   const ct = resp.headers.get("content-type") || "";
   if (!ct.includes("audio")) {
@@ -135,8 +137,9 @@ export function generateVideo(script, { token = currentToken(), title, avatarId,
 
 // Hedra-only cast settings -> request fields. Only what the model accepts is
 // ever sent on to Hedra (the server checks each against the model's schema).
-export function hedraBody({ direction, quality, speakerPoint, durationS, focusX, focusY, preparedId } = {}) {
+export function hedraBody({ direction, quality, speakerPoint, durationS, focusX, focusY, preparedId, cleanPauses } = {}) {
   return {
+    clean_pauses: cleanPauses !== false,
     hedra_prompt: direction || null,
     quality: quality || null,
     speaker_point: speakerPoint || null,

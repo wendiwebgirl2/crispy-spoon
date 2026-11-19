@@ -152,6 +152,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   // Hedra-only settings (each shown only if the chosen model's API accepts it).
   const [hedraDirection, setHedraDirection] = React.useState('');
   const [hedraQuality, setHedraQuality] = React.useState('');
+  const [hedraClean, setHedraClean] = React.useState(true);    // Clean pauses (silence breaths between sentences)
   const [voiceFor, setVoiceFor] = React.useState(null);        // avatar whose ElevenLabs settings are open
   const [hedraDuration, setHedraDuration] = React.useState('');
   const [focusX, setFocusX] = React.useState(0.5);
@@ -169,7 +170,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   const hedraFields = (extra = {}) => hedraBody({
     direction: hedraDirection.trim(), quality: hOpt.quality ? (hedraQuality || hOpt.quality[0]) : null,
     speakerPoint: hOpt.speaker_point ? speakerPoint : null, durationS: hOpt.duration_max_ms ? hedraDuration : null,
-    focusX, focusY, ...extra,
+    focusX, focusY, cleanPauses: hedraClean, ...extra,
   });
   // Pre-render check (credit safety): Generate/Recast open this instead of
   // rendering. take = the full-script voice preview; checks gate the Render button.
@@ -705,7 +706,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
   // only applied when this client has it.
   const castSettings = () => ({
     engine, aspectRatio, hedraRes, caption, language, expressiveness, delivery, customMotion,
-    hedraDirection, hedraQuality, hedraDuration, focusX, focusY,
+    hedraDirection, hedraQuality, hedraDuration, focusX, focusY, hedraClean,
     bgMode, backgroundColor, backgroundAssetId, gradFrom, gradTo, gradDir,
   });
   const describeCastSettings = (st) => {
@@ -735,6 +736,7 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     if (has('hedraDirection')) setHedraDirection(st.hedraDirection || '');
     if (has('hedraQuality')) setHedraQuality(st.hedraQuality || '');
     if (has('hedraDuration')) setHedraDuration(st.hedraDuration || '');
+    if (has('hedraClean')) setHedraClean(st.hedraClean !== false);
     if (has('focusX')) setFocusX(Number(st.focusX));
     if (has('focusY')) setFocusY(Number(st.focusY));
     if (has('gradFrom')) setGradFrom(st.gradFrom);
@@ -1055,14 +1057,15 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
     } catch (e) { setHedraPrepErr(e.message || 'Could not get the Hedra price.'); }
     finally { setHedraPrepBusy(false); }
   };
-  const takeFresh = !!(take && preflight && take.script === preflight.script && take.avatarId === preflight.avatarId);
+  const takeClean = isHedra && hedraClean;
+  const takeFresh = !!(take && preflight && take.script === preflight.script && take.avatarId === preflight.avatarId && take.clean === takeClean);
   const loadTake = async () => {
     if (!preflight || !token) return;
     setTakeBusy(true); setTakeErr('');
     try {
-      const r = await previewCastAudio(token, preflight.script, preflight.avatarId);
+      const r = await previewCastAudio(token, preflight.script, preflight.avatarId, isHedra ? { engine, clean_pauses: hedraClean } : {});
       if (take && take.url) URL.revokeObjectURL(take.url);
-      setTake({ ...r, script: preflight.script, avatarId: preflight.avatarId });
+      setTake({ ...r, script: preflight.script, avatarId: preflight.avatarId, clean: takeClean });
     } catch (e) { setTakeErr(e.message || 'Could not preview the voice.'); }
     finally { setTakeBusy(false); }
   };
@@ -1699,6 +1702,11 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
                               onChange={(e) => { setHedraDuration(e.target.value); setHedraPrep(null); }} style={{ ...full, boxSizing: 'border-box' }} />
                           </RailField>
                         )}
+                        <RailField label="PAUSES" hint="Turns breaths and clicks between sentences into true silence, so the mouth rests when she isn't speaking. Words aren't touched; Play full script plays exactly this track.">
+                          <label className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+                            <input type="checkbox" checked={hedraClean} onChange={(e) => { setHedraClean(e.target.checked); setHedraPrep(null); }} /> Clean pauses
+                          </label>
+                        </RailField>
                       </div>
                     )}
 
