@@ -296,6 +296,12 @@ const StudioView = ({ onNavigate, castRequest, onCastConsumed, activeClientId, o
         tokens.map((t) => api.listAvatars(t).catch(() => ({})))
       );
       const perToken = perTokenFull.map((r) => (r && r.avatars) || []);
+      // Use a token the render server actually knows. An old invite whose
+      // token isn't on the render server answers 404 to everything, and the
+      // prompt library + saved cast settings (keyed by token) then look empty
+      // and can't save (found 2026-11-19: a client's first invite was one).
+      const liveIdx = perTokenFull.findIndex((r) => r && Array.isArray(r.avatars));
+      if (liveIdx > 0) setToken(tokens[liveIdx]);
       // Shared talent library (generic AI announcers/voiceovers) — castable for
       // every client; the render engine returns it with each client's list.
       // Take it from the first token that answered, so one dead invite can't hide
