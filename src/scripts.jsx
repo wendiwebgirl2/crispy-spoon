@@ -107,6 +107,27 @@ const FOLLOW_NOTE = {
   removed: 'Its passage was cut or rewritten in the longform, so it was not updated. Choose new text.',
   too_long: 'The updated passage is over the shortform limit, so it was not changed. Trim it.',
 };
+// Timeliness + shortform auto-fix notes (server: lib/timeliness.js).
+const fmtAir = (iso) => { try { return new Date(String(iso).slice(0, 10) + 'T12:00:00Z').toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' }); } catch { return iso; } };
+const airLabel = (a) => (a && a.date ? `${a.basis === 'planner' ? '' : '~'}${fmtAir(a.date)}${a.basis === 'planner' ? ' (Planner)' : ' (projected)'}` : '');
+const autoFixText = (f) => {
+  const q = (arr) => (arr || []).map((t) => `“${t}”`).join(', ');
+  const air = f.air ? airLabel({ date: f.air, basis: f.basis }) : '';
+  if (f.kind === 'season') {
+    return f.fixed
+      ? `Auto-fixed: rewrote the out-of-season reference ${q(f.terms)} because this airs ${air}.${f.note ? ` ${f.note}` : ''}`
+      : `Season mismatch: mentions ${q(f.terms)} but airs ${air}. ${f.note || ''}`;
+  }
+  if (f.kind === 'shortform') {
+    const parts = [];
+    if (f.fixed && f.removed) parts.push(`Auto-fixed: removed “${f.removed}” from the start so the clip stands on its own.`);
+    if (f.backrefs && f.backrefs.length) parts.push(`Still refers back to earlier in the episode: ${q(f.backrefs)}.`);
+    if (f.note) parts.push(f.note);
+    return parts.join(' ');
+  }
+  return f.note || '';
+};
+const readAutoFix = (h) => { try { const a = JSON.parse(h.auto_fix || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
 const epPrefix = (s) => { const n = String(s.episode_number || '').trim().replace(/^E/i, ''); return n && !/^E\d+\s*[-–]/i.test(String(s.title || '').trim()) ? `E${n} - ` : ''; };
 const castTitleFor = (s) => `${epPrefix(s)}${typePrefix(s.channel, s.variant)}: ${(s.title && s.title.trim()) || (s.topic && s.topic.trim()) || 'Untitled'}`;
 
@@ -202,6 +223,15 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
   const [swapPreview, setSwapPreview] = useState(null);
   const [swapBusy, setSwapBusy] = useState(false);
   const [swapErr, setSwapErr] = useState('');
+  // Episode holds: pause an episode (later ones move up a number) until a date.
+  const [holds, setHolds] = useState([]);
+  const [holdOpen, setHoldOpen] = useState(false);
+  const [holdEp, setHoldEp] = useState('');
+  const [holdUntil, setHoldUntil] = useState('');
+  const [holdPreview, setHoldPreview] = useState(null);
+  const [holdBusy, setHoldBusy] = useState(false);
+  const [holdErr, setHoldErr] = useState('');
+  const [timingBusy, setTimingBusy] = useState(false);
   const [castAvatars, setCastAvatars] = useState([]);       // [{ id, name, _token }]
   const [castAvatarId, setCastAvatarId] = useState(null);
   const [castLoadingAv, setCastLoadingAv] = useState(false);
@@ -270,6 +300,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     setBrief(null); setHistory([]); setResults([]); setErr(''); setSelected(new Set());
     api.getBrief(clientId).then(setBrief).catch(() => {});
     api.listScripts(clientId).then(s => setHistory(s || [])).catch(() => {});
+    setHolds([]); api.listHolds(clientId).then(h => setHolds(h || [])).catch(() => {});
     api.channels(clientId).then(ch => { if (Array.isArray(ch) && ch.length) setChannels(ch); }).catch(() => {});
   }, [clientId]);
 
@@ -281,6 +312,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
 
   const refreshHistory = async () => {
     try { const s = await api.listScripts(clientId); setHistory(s || []); } catch { /* noop */ }
+    try { const h = await api.listHolds(clientId); setHolds(h || []); } catch { /* noop */ }
   };
 
   const generate = async () => {
@@ -638,8 +670,48 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
       const r = await api.swapEpisodes(clientId, swapA, swapB);
       await refreshHistory();
       setSwapOpen(false); setSwapA(''); setSwapB('');
-      setBatchMsg(`Swapped E${swapA} and E${swapB}.${r.unpaired && r.unpaired.length ? ' Some pieces had no match on the other episode and kept their air dates.' : ''}`);
+      setBatchMsg(`Swapped E${swapA} and E${swapB}.${r.unpaired && r.unpaired.length ? ' Some pieces had no match on the other episode and kept their air dates.' : ''} Timing is being re-checked for both.`);
     } catch (e) { setSwapErr(e.message); } finally { setSwapBusy(false); }
+  };
+  useEffect(() => {
+    setHoldPreview(null); setHoldErr('');
+    if (!holdOpen || !holdEp) return undefined;
+    let live = true;
+    api.holdEpisode(clientId, holdEp, { preview: true }).then((r) => { if (live) setHoldPreview(r); }).catch((e) => { if (live) setHoldErr(e.message); });
+    return () => { live = false; };
+  }, [holdOpen, holdEp, clientId]);
+  const runHold = async () => {
+    setHoldBusy(true); setHoldErr('');
+    try {
+      const r = await api.holdEpisode(clientId, holdEp, { until: holdUntil || null });
+      await refreshHistory();
+      setHoldOpen(false); setHoldEp(''); setHoldUntil('');
+      setBatchMsg(`E${r.ep} is on hold${r.until ? ` until ${fmtAir(r.until)}` : ''}.${r.shifts && r.shifts.length ? ` ${r.shifts.length} later episode${r.shifts.length === 1 ? '' : 's'} moved up one number.` : ''}`);
+    } catch (e) { setHoldErr(e.message); } finally { setHoldBusy(false); }
+  };
+  const resumeHeld = async (hold) => {
+    if (!window.confirm(`Bring “${hold.topic || 'this episode'}” back now? It takes the next free episode number at the end of the queue, and its timing is re-checked.`)) return;
+    try {
+      const r = await api.resumeHold(clientId, hold.id);
+      setBatchMsg(`Back from hold as E${r.ep}. Checking its timing…`);
+      await refreshHistory();
+      setTimeout(refreshHistory, 15000);
+    } catch (e) { setErr(e.message); }
+  };
+  const changeHoldDate = async (hold, until) => {
+    try { await api.setHoldUntil(clientId, hold.id, until); await refreshHistory(); } catch (e) { setErr(e.message); }
+  };
+  const runTimingCheck = async () => {
+    setTimingBusy(true); setErr(''); setBatchMsg('Checking timing on every unaired script…');
+    try {
+      const r = await api.timelinessCheck(clientId);
+      const bits = [];
+      if (r.seasonFixed) bits.push(`${r.seasonFixed} auto-fixed for season`);
+      if (r.seasonFlagged) bits.push(`${r.seasonFlagged} flagged (couldn't auto-fix — check them)`);
+      if (r.shortformsUpdated) bits.push(`${r.shortformsUpdated} shortform${r.shortformsUpdated === 1 ? '' : 's'} given a “This week…” opener`);
+      setBatchMsg(bits.length ? `Timing check: ${bits.join(' · ')}.` : 'Timing check: nothing out of season.');
+      await refreshHistory();
+    } catch (e) { setBatchMsg(''); setErr('Timing check failed: ' + (e.message || e)); } finally { setTimingBusy(false); }
   };
   const saveEdit = async () => {
     try {
@@ -730,10 +802,11 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     for (const h of history) {
       const t = (h.topic && h.topic.trim()) ? h.topic.trim() : '';
       const ep = String(h.episode_number || '').trim().replace(/^E/i, '');
-      const key = ep ? 'ep:' + ep.toLowerCase() : (t ? 'topic:' + t.toLowerCase() : 'untitled');
-      if (!groups.has(key)) groups.set(key, { key, ep, epLabel: ep ? 'E' + ep + ' - ' : '', topics: [], date: h.created_at, items: [] });
+      const key = h.hold_id ? 'hold:' + h.hold_id : (ep ? 'ep:' + ep.toLowerCase() : (t ? 'topic:' + t.toLowerCase() : 'untitled'));
+      if (!groups.has(key)) groups.set(key, { key, ep, epLabel: ep ? 'E' + ep + ' - ' : '', topics: [], date: h.created_at, items: [], hold: h.hold_id ? (holds.find((x) => x.id === h.hold_id) || { id: h.hold_id }) : null, air: null });
       const g = groups.get(key);
       g.items.push(h);
+      if (!g.air && h.air_estimate) g.air = h.air_estimate;
       if (t && !g.topics.some((x) => x.toLowerCase() === t.toLowerCase())) g.topics.push(t);
       if (h.created_at && (!g.date || h.created_at > g.date)) g.date = h.created_at;
     }
@@ -750,8 +823,9 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
     }
     // Numbered episodes highest first (E10, E2, E1); anything with no number after them, newest first.
     const epNum = (g) => { const n = parseInt(g.ep, 10); return Number.isNaN(n) ? -1 : n; };
-    return [...groups.values()].sort((a, b) => (epNum(b) - epNum(a)) || (a.ep ? 0 : (b.date || '').localeCompare(a.date || '')));
-  }, [history]);
+    // On-hold cards sit after everything else.
+    return [...groups.values()].sort((a, b) => (Number(!!a.hold) - Number(!!b.hold)) || (epNum(b) - epNum(a)) || (a.ep ? 0 : (b.date || '').localeCompare(a.date || '')));
+  }, [history, holds]);
   // Aired episodes drop into the archive section at the bottom; a card only
   // counts once it has a number, so unnumbered one-off scripts stay put.
   const airedCard = (g) => !!g.ep && g.items.some((h) => h.aired);
@@ -917,6 +991,8 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
               </>
             )}
             {swapChoices.length > 1 && <button className="btn sm" onClick={() => setSwapOpen(true)}>Swap episodes</button>}
+            {swapChoices.length > 0 && <button className="btn sm" onClick={() => setHoldOpen(true)} title="Pause an episode for later — later episodes move up a number">Put on hold</button>}
+            {history.length > 0 && <button className="btn sm" disabled={timingBusy} onClick={runTimingCheck} title="Check every unaired script against its expected air date, and give shortforms their “This week…” opener">{timingBusy ? 'Checking…' : 'Check timing'}</button>}
             <span className="mono">{history.length} on file</span>
           </div>
         </div>
@@ -930,6 +1006,7 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                 <Icon name="arrow-r" size={13} style={{ color: 'var(--text-4)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
                 <span style={{ fontSize: 14, fontWeight: 600, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
                   {g.epLabel}{g.topic}
+                  {g.hold && <span className="mono" style={{ fontSize: 11, color: 'var(--warn)', border: '1px solid var(--warn)', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>ON HOLD{g.hold.from_ep ? ` (was E${g.hold.from_ep})` : ''} · {g.hold.hold_until ? `back ${fmtAir(g.hold.hold_until)}` : 'no return date'}</span>}
                   <span style={{ display: 'inline-flex', gap: 3 }}>
                     {[...new Set(g.items.map((i) => i.channel))].map((ch) => (
                       <span key={ch} title={labelFor(ch)} style={{ width: 8, height: 8, borderRadius: 4, background: chColor(ch), display: 'inline-block' }} />
@@ -951,10 +1028,18 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                     <Icon name="close" size={12} />
                   </span>
                 </span>
-                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>{g.date ? String(g.date).slice(0, 10) : ''} · {g.items.length} {g.items.length === 1 ? 'script' : 'scripts'}</span>
+                <span className="mono" style={{ color: 'var(--text-4)', fontSize: 12 }}>{g.air ? <span title="Expected air date — scripts are checked for season against this date">airs {airLabel(g.air)} · </span> : null}{g.date ? String(g.date).slice(0, 10) : ''} · {g.items.length} {g.items.length === 1 ? 'script' : 'scripts'}</span>
               </button>
               {open && (
               <div className="col" style={{ gap: 8, padding: '0 14px 14px' }}>
+                {g.hold && (
+                  <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', border: '1px dashed var(--warn)', borderRadius: 'var(--r-md)' }}>
+                    <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>On hold. Comes back automatically on</span>
+                    <input type="date" className="input" value={g.hold.hold_until || ''} onChange={(e) => changeHoldDate(g.hold, e.target.value)} style={{ ...inputStyle, padding: '4px 8px' }} />
+                    <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>(leave blank to keep it until you resume it)</span>
+                    <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => resumeHeld(g.hold)}><Icon name="play" size={12} /> Resume now</button>
+                  </div>
+                )}
                 {g.items.map(h => (
             <div key={h.id} className="col" style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface)', gap: 10, ...chStripe(h.channel) }}>
               <div style={{ minWidth: 0 }}>
@@ -986,6 +1071,12 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
                     <button className="btn sm" title="Dismiss" onClick={async () => { try { await api.updateScript(clientId, h.id, { follow_note: null }); await refreshHistory(); } catch (e) { setErr(e.message); } }}>×</button>
                   </div>
                 )}
+                {readAutoFix(h).map((f) => (
+                  <div key={f.kind} className="row" style={{ gap: 8, marginTop: 6, alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: 12, color: f.fixed && !(f.backrefs && f.backrefs.length) && !f.note ? 'var(--ok)' : 'var(--warn)' }}>{autoFixText(f)}</span>
+                    <button className="btn sm" title="Dismiss" onClick={async () => { try { await api.updateScript(clientId, h.id, { auto_fix_dismiss: f.kind }); await refreshHistory(); } catch (e) { setErr(e.message); } }}>×</button>
+                  </div>
+                ))}
                 <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                   <strong>{epPrefix(h)}{typePrefix(h.channel, h.variant)}: {(h.title && h.title.trim()) || (h.topic && h.topic.trim()) || 'Untitled'} · </strong>{h.body}
                 </div>
@@ -1238,6 +1329,45 @@ const ScriptsView = ({ onCastScript, activeClientId, onSelectClient, onBackToStu
             <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn sm" disabled={swapBusy} onClick={() => setSwapOpen(false)}>Cancel</button>
               <button className="btn primary sm" disabled={swapBusy || !swapPreview || swapPreview.blockers.length > 0} onClick={runSwap}>{swapBusy ? 'Swapping…' : 'Swap'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {holdOpen && (
+        <div onClick={() => { if (!holdBusy) setHoldOpen(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,15,0.55)', display: 'grid', placeItems: 'center', padding: 24, zIndex: 100 }}>
+          <div onClick={(e) => e.stopPropagation()} className="card card-pad" style={{ width: 'min(520px, 96vw)', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="label">Put an episode on hold</div>
+            <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <select className="input" value={holdEp} onChange={(e) => setHoldEp(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
+                <option value="">Episode…</option>
+                {swapChoices.map((n) => <option key={n} value={n}>E{n}</option>)}
+              </select>
+              <label style={{ fontSize: 12.5, color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                Bring back on
+                <input type="date" className="input" value={holdUntil} onChange={(e) => setHoldUntil(e.target.value)} style={{ ...inputStyle, padding: '6px 8px' }} />
+              </label>
+            </div>
+            {holdPreview && (
+              <div style={{ fontSize: 13 }}>
+                <strong>E{holdPreview.ep}{holdPreview.topic ? `: ${holdPreview.topic}` : ''}</strong> leaves the queue ({holdPreview.scripts} scripts).
+                {holdPreview.shifts.length > 0 && (
+                  <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6, lineHeight: 1.6 }}>
+                    {holdPreview.shifts.map((x) => <div key={x.from}>E{x.from} becomes E{x.to}{x.topic ? `: ${x.topic}` : ''}</div>)}
+                  </div>
+                )}
+              </div>
+            )}
+            {holdPreview && !holdPreview.blockers.length && (
+              <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+                Its scripts, approvals, casts and images stay together, just without a number. {holdUntil ? `On ${fmtAir(holdUntil)} it comes back` : 'When you resume it, it comes back'} as the next episode at the end of the queue and is checked again for season. Check any thumbnails with the number printed on them.
+              </div>
+            )}
+            {holdPreview && (holdPreview.warnings || []).map((w) => <div key={w} className="mono" style={{ color: 'var(--warn)', fontSize: 12 }}>{w}</div>)}
+            {holdPreview && holdPreview.blockers.map((b) => <div key={b} className="mono" style={{ color: 'var(--err)', fontSize: 12 }}>{b}</div>)}
+            {holdErr && <div className="mono" style={{ color: 'var(--err)', fontSize: 12 }}>{holdErr}</div>}
+            <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn sm" disabled={holdBusy} onClick={() => setHoldOpen(false)}>Cancel</button>
+              <button className="btn primary sm" disabled={holdBusy || !holdPreview || holdPreview.blockers.length > 0} onClick={runHold}>{holdBusy ? 'Holding…' : 'Put on hold'}</button>
             </div>
           </div>
         </div>
