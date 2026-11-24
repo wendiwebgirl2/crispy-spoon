@@ -664,6 +664,13 @@ const PlannerView = ({ activeClientId, onSelectClient, onCastScript, onBackToStu
             {detailMeta && detailMeta.ok === false && (
               <div className="mono" style={{ color: 'var(--accent)', fontSize: 12 }}>Last attempt failed: {detailMeta.error}</div>
             )}
+            {(() => {
+              // YouTube posted, but the custom thumbnail didn't take (e.g. channel not verified).
+              const r = detailMeta && detailMeta.ok && detailMeta.result;
+              const yt = r && r.results && r.results.youtube;
+              const warn = (r && r.thumbnail_warning) || (yt && yt.thumbnail_error ? `YouTube refused the thumbnail: ${yt.thumbnail_error}` : null);
+              return warn ? <div className="mono" style={{ color: 'var(--accent-2)', fontSize: 12 }}>Thumbnail not set: {warn}</div> : null;
+            })()}
             {detail.script_body && <div style={{ overflow: 'auto', maxHeight: 200, whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.6, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: 10, background: 'var(--surface)' }}>{detail.script_body}</div>}
             <div className="row" style={{ gap: 8 }}>
               <label className="col" style={{ gap: 4, flex: 1 }}><span className="mono" style={{ color: 'var(--text-4)' }}>Publish date</span><input type="date" value={detailDate} onChange={(e) => setDetailDate(e.target.value)} style={inputStyle} /></label>
